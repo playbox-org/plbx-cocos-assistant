@@ -637,3 +637,138 @@ body,
 .size-bar-fill.over-limit {
   background-color: #f44336;
 }
+
+/* -- Preview Overlay -- */
+.preview-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.preview-modal {
+  position: relative;
+  width: 85%;
+  max-width: 900px;
+  max-height: 90%;
+  background: #2b2b2b;
+  border: 1px solid #444;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #3a3a3a;
+  background: #333;
+}
+
+.preview-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ddd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-close-btn {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.preview-close-btn:hover { color: #fff; }
+
+.preview-body {
+  display: flex;
+  gap: 1px;
+  background: #3a3a3a;
+  flex: 1;
+  overflow: auto;
+  min-height: 200px;
+}
+
+.preview-side {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px;
+  background: #2b2b2b;
+}
+
+.preview-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #888;
+  margin-bottom: 8px;
+}
+
+.preview-media-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 150px;
+  width: 100%;
+  position: relative;
+}
+
+.preview-media-wrap img {
+  max-width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  border-radius: 3px;
+  image-rendering: auto;
+}
+
+.preview-media-wrap audio {
+  width: 100%;
+  max-width: 320px;
+}
+
+.preview-meta {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #aaa;
+  text-align: center;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.preview-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid #3a3a3a;
+  background: #333;
+}
+
+.preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid #3a3a3a;
+  background: #333;
+}

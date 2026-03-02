@@ -86,10 +86,10 @@
         </div>
         <div class="preset-row">
           <span class="form-label">Presets:</span>
-          <button class="btn-preset" data-preset="web">Web Optimized</button>
-          <button class="btn-preset" data-preset="max">Max Quality</button>
-          <button class="btn-preset" data-preset="fast">Fast</button>
-          <button class="btn-preset" data-preset="high">High Compression</button>
+          <button id="preset-web" class="btn-preset" data-preset="web">Web Optimized</button>
+          <button id="preset-max" class="btn-preset" data-preset="max">Max Quality</button>
+          <button id="preset-fast" class="btn-preset" data-preset="fast">Fast</button>
+          <button id="preset-high" class="btn-preset" data-preset="high">High Compression</button>
         </div>
         <div class="form-row" style="margin-bottom:0;">
           <span id="ffmpeg-status" style="font-size:11px;color:#777;"></span>
@@ -257,4 +257,47 @@
     </div>
 
   </div><!-- end .tab-content -->
+
+  <!-- ===================== PREVIEW OVERLAY ===================== -->
+  <div id="preview-overlay" class="preview-overlay" style="display:none;">
+    <div class="preview-backdrop" id="preview-backdrop"></div>
+    <div class="preview-modal">
+      <div class="preview-header">
+        <span id="preview-title" class="preview-title">Preview</span>
+        <button id="preview-close" class="preview-close-btn">&times;</button>
+      </div>
+      <div class="preview-body">
+        <div class="preview-side">
+          <div class="preview-label">ORIGINAL</div>
+          <div class="preview-media-wrap" id="preview-orig-wrap"></div>
+          <div class="preview-meta" id="preview-orig-meta"></div>
+        </div>
+        <div class="preview-side">
+          <div class="preview-label">COMPRESSED</div>
+          <div class="preview-media-wrap" id="preview-comp-wrap">
+            <span class="spinner" id="preview-spinner" style="display:none;"></span>
+          </div>
+          <div class="preview-meta" id="preview-comp-meta"></div>
+        </div>
+      </div>
+      <div class="preview-controls">
+        <span class="form-label">Format</span>
+        <select id="preview-format" class="form-select" style="max-width:120px;">
+          <option value="webp">WebP</option>
+          <option value="jpeg">JPEG</option>
+          <option value="png">PNG</option>
+          <option value="avif">AVIF</option>
+        </select>
+        <span class="form-label" style="margin-left:12px;">Quality</span>
+        <div class="slider-row" style="flex:1;">
+          <input type="range" id="preview-quality" class="form-slider" min="1" max="100" value="80" />
+          <span id="preview-quality-val" class="slider-value">80</span>
+        </div>
+      </div>
+      <div class="preview-actions">
+        <button id="preview-apply" class="btn">Apply</button>
+        <button id="preview-cancel" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
 </div><!-- end .panel-root -->
