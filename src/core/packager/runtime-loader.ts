@@ -177,6 +177,23 @@ function _stringToArrayBuffer(str) {
   return new TextEncoder().encode(str).buffer;
 }
 
+// MIME types for data URIs (binary files stored as base64)
+var MIME = {'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif',
+  '.webp':'image/webp','.avif':'image/avif','.svg':'image/svg+xml',
+  '.mp3':'audio/mpeg','.ogg':'audio/ogg','.wav':'audio/wav',
+  '.mp4':'video/mp4','.webm':'video/webm',
+  '.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf',
+  '.bin':'application/octet-stream','.cconb':'application/octet-stream'};
+function _getMime(url) {
+  var dot = url.lastIndexOf('.');
+  var q = url.indexOf('?', dot);
+  var ext = q > 0 ? url.substring(dot, q) : url.substring(dot);
+  return MIME[ext.toLowerCase()] || 'application/octet-stream';
+}
+function _toDataUri(url, base64) {
+  return 'data:' + _getMime(url) + ';base64,' + base64;
+}
+
 function patchAPIs() {
   if (DEBUG) console.log('[plbx] Patching browser APIs');
 
@@ -285,23 +302,6 @@ function patchAPIs() {
   window.XMLHttpRequest.LOADING = 3;
   window.XMLHttpRequest.OPENED = 1;
   window.XMLHttpRequest.UNSENT = 0;
-
-  // MIME types for data URIs (binary files stored as base64)
-  var MIME = {'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif',
-    '.webp':'image/webp','.avif':'image/avif','.svg':'image/svg+xml',
-    '.mp3':'audio/mpeg','.ogg':'audio/ogg','.wav':'audio/wav',
-    '.mp4':'video/mp4','.webm':'video/webm',
-    '.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf',
-    '.bin':'application/octet-stream','.cconb':'application/octet-stream'};
-  function _getMime(url) {
-    var dot = url.lastIndexOf('.');
-    var q = url.indexOf('?', dot);
-    var ext = q > 0 ? url.substring(dot, q) : url.substring(dot);
-    return MIME[ext.toLowerCase()] || 'application/octet-stream';
-  }
-  function _toDataUri(url, base64) {
-    return 'data:' + _getMime(url) + ';base64,' + base64;
-  }
 
   // 2. Patch Image
   var OriginalImage = window.Image;
