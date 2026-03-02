@@ -1,39 +1,260 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-</head>
-<body>
-  <div class="panel-root">
-    <div class="tab-header">
-      <button id="tab-build-report" class="tab-btn active">Build Report</button>
-      <button id="tab-compress"     class="tab-btn">Compress</button>
-      <button id="tab-package"      class="tab-btn">Package</button>
-      <button id="tab-deploy"       class="tab-btn">Deploy</button>
-    </div>
-
-    <div class="tab-content">
-      <div id="content-build-report" class="tab-pane">
-        <h2 class="pane-title">Build Report</h2>
-        <p class="pane-placeholder">Build report data will appear here after a build completes.</p>
-      </div>
-
-      <div id="content-compress" class="tab-pane" style="display:none;">
-        <h2 class="pane-title">Compress</h2>
-        <p class="pane-placeholder">Image and asset compression settings will appear here.</p>
-      </div>
-
-      <div id="content-package" class="tab-pane" style="display:none;">
-        <h2 class="pane-title">Package</h2>
-        <p class="pane-placeholder">ZIP packaging and bundling options will appear here.</p>
-      </div>
-
-      <div id="content-deploy" class="tab-pane" style="display:none;">
-        <h2 class="pane-title">Deploy</h2>
-        <p class="pane-placeholder">Deployment configuration and upload controls will appear here.</p>
-      </div>
-    </div>
+<div class="panel-root">
+  <!-- Tab Header -->
+  <div class="tab-header">
+    <button id="tab-build-report" class="tab-btn active">Build Report</button>
+    <button id="tab-compress"     class="tab-btn">Compress</button>
+    <button id="tab-package"      class="tab-btn">Package</button>
+    <button id="tab-deploy"       class="tab-btn">Deploy</button>
   </div>
-</body>
-</html>
+
+  <!-- Tab Content -->
+  <div class="tab-content">
+
+    <!-- ===================== BUILD REPORT ===================== -->
+    <div id="content-build-report" class="tab-pane">
+      <div class="toolbar">
+        <button id="btn-analyze" class="btn">Analyze Project</button>
+        <button id="btn-sort-size" class="btn btn-secondary btn-small">Sort by Size</button>
+        <button id="btn-sort-name" class="btn btn-secondary btn-small">Sort by Name</button>
+        <span id="scan-status" style="color:#777;font-size:12px;margin-left:8px;"></span>
+      </div>
+
+      <div id="report-summary" class="summary-bar" style="display:none;">
+        <div class="summary-item">
+          <span class="summary-label">Total Assets</span>
+          <span id="summary-count" class="summary-value">0</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Source Size</span>
+          <span id="summary-source-size" class="summary-value">—</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Build Size</span>
+          <span id="summary-build-size" class="summary-value">—</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Images</span>
+          <span id="summary-images" class="summary-value">0</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Audio</span>
+          <span id="summary-audio" class="summary-value">0</span>
+        </div>
+      </div>
+
+      <div class="data-table-wrap">
+        <table class="data-table" id="report-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th class="col-type">Type</th>
+              <th class="col-size">Source Size</th>
+              <th class="col-size">Build Size</th>
+              <th class="col-type">Extension</th>
+            </tr>
+          </thead>
+          <tbody id="report-tbody">
+            <tr>
+              <td colspan="5">
+                <div class="empty-state">
+                  <div class="empty-state-icon">📊</div>
+                  <span>Click "Analyze Project" to scan assets</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===================== COMPRESS ===================== -->
+    <div id="content-compress" class="tab-pane" style="display:none;">
+      <div class="compress-controls">
+        <div class="form-row">
+          <span class="form-label">Format</span>
+          <select id="compress-format" class="form-select" style="max-width:120px;">
+            <option value="webp">WebP</option>
+            <option value="jpeg">JPEG</option>
+            <option value="png">PNG</option>
+            <option value="avif">AVIF</option>
+          </select>
+          <span class="form-label" style="margin-left:12px;">Quality</span>
+          <div class="slider-row" style="flex:1;">
+            <input type="range" id="compress-quality" class="form-slider" min="1" max="100" value="80" />
+            <span id="compress-quality-val" class="slider-value">80</span>
+          </div>
+        </div>
+        <div class="preset-row">
+          <span class="form-label">Presets:</span>
+          <button class="btn-preset" data-preset="web">Web Optimized</button>
+          <button class="btn-preset" data-preset="max">Max Quality</button>
+          <button class="btn-preset" data-preset="fast">Fast</button>
+          <button class="btn-preset" data-preset="high">High Compression</button>
+        </div>
+        <div class="form-row" style="margin-bottom:0;">
+          <span id="ffmpeg-status" style="font-size:11px;color:#777;"></span>
+          <div style="flex:1;"></div>
+          <button id="btn-compress-all" class="btn btn-small" style="margin-left:auto;">Compress All</button>
+        </div>
+      </div>
+
+      <div class="data-table-wrap">
+        <table class="data-table" id="compress-table">
+          <thead>
+            <tr>
+              <th>Asset</th>
+              <th class="col-type">Type</th>
+              <th class="col-size">Original</th>
+              <th class="col-size">Compressed</th>
+              <th class="col-size">Savings</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="compress-tbody">
+            <tr>
+              <td colspan="7">
+                <div class="empty-state">
+                  <div class="empty-state-icon">🗜</div>
+                  <span>Run "Analyze Project" in Build Report tab first</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===================== PACKAGE ===================== -->
+    <div id="content-package" class="tab-pane" style="display:none;">
+      <div style="display:flex;gap:16px;flex-shrink:0;flex-wrap:wrap;margin-bottom:10px;">
+        <!-- Network Grid -->
+        <div style="flex:1;min-width:300px;">
+          <div class="section-header">Networks</div>
+          <div id="network-grid" class="network-grid"></div>
+        </div>
+
+        <!-- Package Options -->
+        <div style="min-width:240px;max-width:320px;">
+          <div class="section-header">Options</div>
+          <div class="form-group">
+            <span class="form-label">Orientation</span>
+            <div class="radio-group">
+              <label class="radio-label"><input type="radio" name="orientation" value="portrait" checked /> Portrait</label>
+              <label class="radio-label"><input type="radio" name="orientation" value="landscape" /> Landscape</label>
+              <label class="radio-label"><input type="radio" name="orientation" value="auto" /> Auto</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <span class="form-label">iOS Store URL</span>
+            <input type="text" id="pkg-store-ios" class="form-input" placeholder="https://apps.apple.com/..." />
+          </div>
+          <div class="form-group">
+            <span class="form-label">Android Store URL</span>
+            <input type="text" id="pkg-store-android" class="form-input" placeholder="https://play.google.com/..." />
+          </div>
+          <div class="form-group">
+            <span class="form-label">Build Directory</span>
+            <input type="text" id="pkg-build-dir" class="form-input" placeholder="/path/to/web-mobile/..." />
+          </div>
+          <div class="form-group">
+            <span class="form-label">Output Directory</span>
+            <input type="text" id="pkg-output-dir" class="form-input" placeholder="/path/to/output/..." />
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar" style="flex-shrink:0;">
+        <button id="btn-build-all" class="btn">Build All</button>
+        <button id="btn-open-output" class="btn btn-secondary">Open Output Folder</button>
+        <span id="pkg-status" style="color:#777;font-size:12px;margin-left:8px;"></span>
+      </div>
+
+      <div class="data-table-wrap">
+        <table class="data-table" id="pkg-results-table">
+          <thead>
+            <tr>
+              <th>Network</th>
+              <th>Format</th>
+              <th class="col-size">Size</th>
+              <th>Limit</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="pkg-results-tbody">
+            <tr>
+              <td colspan="5">
+                <div class="empty-state">
+                  <div class="empty-state-icon">📦</div>
+                  <span>Select networks and click "Build All"</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===================== DEPLOY ===================== -->
+    <div id="content-deploy" class="tab-pane" style="display:none;">
+      <!-- Auth card -->
+      <div class="login-card" style="flex-shrink:0;">
+        <div class="section-header" style="margin-top:0;">Authentication</div>
+        <div class="form-row">
+          <span class="form-label">API Token</span>
+          <input type="password" id="deploy-token" class="form-input" placeholder="Paste your PLBX API token..." />
+          <button id="btn-save-token" class="btn btn-small">Save &amp; Login</button>
+        </div>
+        <div id="login-status" class="login-status disconnected">Not connected</div>
+      </div>
+
+      <!-- Deploy config -->
+      <div style="flex-shrink:0;background:#333;border:1px solid #3a3a3a;border-radius:4px;padding:12px;margin-bottom:10px;">
+        <div class="section-header" style="margin-top:0;">Deployment</div>
+        <div class="form-row">
+          <span class="form-label">Project</span>
+          <select id="deploy-project" class="form-select">
+            <option value="">— select project —</option>
+          </select>
+          <button id="btn-refresh-projects" class="btn btn-secondary btn-small">Refresh</button>
+        </div>
+        <div class="form-row">
+          <span class="form-label">Project Name</span>
+          <input type="text" id="deploy-project-name" class="form-input" placeholder="my-game" />
+        </div>
+        <div class="form-row">
+          <span class="form-label">Deployment Name</span>
+          <input type="text" id="deploy-name" class="form-input" placeholder="v1.0.0" />
+        </div>
+        <div class="form-row">
+          <span class="form-label">Network Build</span>
+          <select id="deploy-network" class="form-select" style="max-width:200px;">
+            <option value="ironsource">ironSource</option>
+            <option value="applovin">AppLovin</option>
+            <option value="google">Google Ads</option>
+            <option value="facebook">Facebook/Meta</option>
+            <option value="unity">Unity Ads</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <span class="form-label">Build Path</span>
+          <input type="text" id="deploy-build-path" class="form-input" placeholder="/path/to/packaged/output/..." />
+        </div>
+        <div class="form-row" style="margin-bottom:0;">
+          <button id="btn-deploy" class="btn" style="min-width:100px;">Deploy</button>
+          <span id="deploy-status" style="color:#777;font-size:12px;margin-left:12px;"></span>
+        </div>
+      </div>
+
+      <!-- Result -->
+      <div id="deploy-result" style="display:none;flex-shrink:0;background:#333;border:1px solid #3a3a3a;border-radius:4px;padding:12px;">
+        <div class="section-header" style="margin-top:0;">Result</div>
+        <div class="result-url-row">
+          <span id="deploy-result-url" class="result-url">—</span>
+          <button id="btn-copy-url" class="btn btn-secondary btn-small">Copy</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end .tab-content -->
+</div><!-- end .panel-root -->

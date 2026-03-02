@@ -34,19 +34,61 @@
     ],
     "messages": {
       "open-panel": {
-        "methods": [
-          "openPanel"
-        ]
+        "methods": ["openPanel"]
       },
       "on-build-finished": {
-        "methods": [
-          "onBuildFinished"
-        ]
+        "methods": ["onBuildFinished"]
       },
       "scene:ready": {
-        "methods": [
-          "onSceneReady"
-        ]
+        "methods": ["onSceneReady"]
+      },
+      "scan-assets": {
+        "methods": ["scanAssets"]
+      },
+      "get-last-build-result": {
+        "methods": ["getLastBuildResult"]
+      },
+      "compress-image": {
+        "methods": ["compressImageAsset"]
+      },
+      "compress-image-preview": {
+        "methods": ["compressImagePreview"]
+      },
+      "get-image-meta": {
+        "methods": ["getImageMeta"]
+      },
+      "check-ffmpeg": {
+        "methods": ["checkFfmpeg"]
+      },
+      "compress-audio": {
+        "methods": ["compressAudioAsset"]
+      },
+      "package-networks": {
+        "methods": ["packageNetworks"]
+      },
+      "get-networks": {
+        "methods": ["getNetworks"]
+      },
+      "deploy": {
+        "methods": ["deploy"]
+      },
+      "plbx-login": {
+        "methods": ["plbxLogin"]
+      },
+      "plbx-list-projects": {
+        "methods": ["plbxListProjects"]
+      },
+      "get-settings": {
+        "methods": ["getSettings"]
+      },
+      "save-settings": {
+        "methods": ["saveSettings"]
+      },
+      "get-token": {
+        "methods": ["getToken"]
+      },
+      "save-token": {
+        "methods": ["saveToken"]
       }
     },
     "builder": "./dist/builder"
