@@ -68,6 +68,7 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
             originalHtml: builder.toHtml(),
             zipBase64,
             cssContent,
+            buildDir: options.buildDir,
           });
 
           outputPath = join(networkOutDir, `index${formatSuffix}.html`);

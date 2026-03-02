@@ -301,6 +301,34 @@ function patchAPIs() {
 }
 
 function bootCocos() {
+  if (DEBUG) console.log('[plbx] Booting Cocos...');
+
+  // Execute boot scripts in order (polyfills, system.bundle, etc.)
+  var scripts = window.__plbx_scripts || [];
+  for (var i = 0; i < scripts.length; i++) {
+    var jsContent = _findInJs(scripts[i]);
+    if (jsContent) {
+      if (DEBUG) console.log('[plbx] Executing: ' + scripts[i]);
+      try {
+        var FnRef = Object.getPrototypeOf(function(){}).constructor;
+        var execFn = FnRef(jsContent);
+        execFn();
+      } catch(e) {
+        console.error('[plbx] Boot script error (' + scripts[i] + '):', e);
+      }
+    } else if (DEBUG) {
+      console.warn('[plbx] Script not found in ZIP: ' + scripts[i]);
+    }
+  }
+
+  // Call deferred boot callback (System.import etc.)
+  if (typeof window.__plbx_boot === 'function') {
+    if (DEBUG) console.log('[plbx] Calling deferred boot');
+    try { window.__plbx_boot(); } catch(e) {
+      console.error('[plbx] Boot callback error:', e);
+    }
+  }
+
   // Register font loader after cc is available
   function registerFontLoader() {
     if (typeof cc === 'undefined' || !cc.assetManager) {
@@ -310,7 +338,7 @@ function bootCocos() {
     function loadFont(url, opts, cb) {
       var data = _findInRes(url);
       if (!data) { if (cb) cb(); return; }
-      var family = url.replace(/[.\\/ "']/g, '');
+      var family = url.replace(/[.\\\\/\\ "']/g, '');
       try {
         var face = new FontFace(family, 'url(' + data + ')');
         document.fonts.add(face);
@@ -342,7 +370,14 @@ export function generateRuntimeLoader(options: RuntimeLoaderOptions = {}): strin
 
 /**
  * Generate the complete self-contained HTML with embedded assets.
- * This is the main entry point for creating playable ad HTML files.
+ *
+ * This is the main entry point for creating playable ad single-HTML files.
+ * Rewrites the original Cocos HTML to be fully self-contained:
+ * - Replaces <link stylesheet> with inline <style>
+ * - Removes static <script src="..."> tags (JS loaded from ZIP)
+ * - Inlines systemjs-importmap JSON
+ * - Defers boot script until ZIP is unpacked
+ * - Injects ZIP data + JSZip library + runtime loader
  */
 export function generateFullHtml(params: {
   /** The original Cocos build index.html content */
@@ -355,43 +390,94 @@ export function generateFullHtml(params: {
   cssContent?: string;
   /** Runtime loader options */
   loaderOptions?: RuntimeLoaderOptions;
+  /** Build directory for reading import-map and other inline data */
+  buildDir?: string;
 }): string {
   const { originalHtml, zipBase64, jsModules, cssContent, loaderOptions = {} } = params;
+  const buildDir = params.buildDir;
 
   const jszipRuntime = getJSZipRuntime();
   const runtimeLoader = generateRuntimeLoader(loaderOptions);
 
-  // Build the injection block
+  // --- Phase 1: Rewrite original HTML ---
+
+  // Collect script paths that need to be executed after unpack (in order)
+  const scriptOrder: string[] = [];
+  let rewrittenHtml = originalHtml;
+
+  // 1. Replace <link rel="stylesheet" href="..."> with <style>cssContent</style>
+  if (cssContent) {
+    rewrittenHtml = rewrittenHtml.replace(
+      /<link[^>]*rel=["']stylesheet["'][^>]*href=["'][^"']*["'][^>]*\/?>/gi,
+      '<style>' + cssContent + '</style>',
+    );
+  }
+
+  // 2. Process <script> tags: remove external ones, inline import-map, defer boot
+  // Collect external script src paths (for boot execution order)
+  const scriptSrcRegex = /<script[^>]*\bsrc=["']([^"']+)["'][^>]*>[^<]*<\/script>/gi;
+  rewrittenHtml = rewrittenHtml.replace(scriptSrcRegex, (match, src) => {
+    // Keep mraid.js reference as-is (provided by ad SDK at runtime)
+    if (src === 'mraid.js') return match;
+
+    // Inline systemjs-importmap
+    if (match.includes('systemjs-importmap')) {
+      if (buildDir) {
+        try {
+          const { readFileSync } = require('fs');
+          const { join } = require('path');
+          const mapContent = readFileSync(join(buildDir, src), 'utf-8');
+          return '<script type="systemjs-importmap">' + mapContent + '</script>';
+        } catch { /* fall through */ }
+      }
+      // If we can't read the file, keep the tag as data (not a network request)
+      scriptOrder.push(src);
+      return '<!-- importmap: ' + src + ' -->';
+    }
+
+    // Regular script: remember path for boot order, remove tag
+    scriptOrder.push(src);
+    return '<!-- plbx: ' + src + ' loaded from ZIP -->';
+  });
+
+  // 3. Wrap inline boot script (System.import / System.register) in deferred callback
+  rewrittenHtml = rewrittenHtml.replace(
+    /(<script>)([\s\S]*?System\.import[\s\S]*?)(<\/script>)/i,
+    (match, open, content, close) => {
+      return open + '\nwindow.__plbx_boot = function() {\n' + content.trim() + '\n};\n' + close;
+    },
+  );
+
+  // --- Phase 2: Build injection block ---
+
   let injection = '';
 
-  // 1. Pre-populated JS modules (if provided)
+  // Pre-populated JS modules (optional)
   if (jsModules && Object.keys(jsModules).length > 0) {
     injection += '<script>window.__res = ' + JSON.stringify(jsModules) + ';</script>\n';
   } else {
     injection += '<script>window.__res = {};</script>\n';
   }
 
-  // 2. Inline CSS (minified)
-  if (cssContent) {
-    injection += '<style>' + cssContent + '</style>\n';
-  }
+  // Script execution order for boot sequence
+  injection += '<script>window.__plbx_scripts = ' + JSON.stringify(scriptOrder) + ';</script>\n';
 
-  // 3. ZIP data (non-JS/CSS assets)
+  // ZIP data
   injection += '<script>window.__zip = "' + zipBase64 + '";</script>\n';
 
-  // 4. JSZip library
+  // JSZip library
   injection += '<script>' + jszipRuntime + '</script>\n';
 
-  // 5. Runtime loader (patches + unpack + boot)
+  // Runtime loader (patches + unpack + boot)
   injection += '<script>' + runtimeLoader + '</script>\n';
 
-  // Inject into <head> as first children
-  const headIndex = originalHtml.indexOf('<head>');
+  // --- Phase 3: Inject into <head> ---
+
+  const headIndex = rewrittenHtml.indexOf('<head>');
   if (headIndex === -1) {
-    // No <head> tag — wrap everything
-    return '<!DOCTYPE html><html><head>' + injection + '</head>' + originalHtml + '</html>';
+    return '<!DOCTYPE html><html><head>' + injection + '</head>' + rewrittenHtml + '</html>';
   }
 
   const insertPos = headIndex + '<head>'.length;
-  return originalHtml.slice(0, insertPos) + '\n' + injection + originalHtml.slice(insertPos);
+  return rewrittenHtml.slice(0, insertPos) + '\n' + injection + rewrittenHtml.slice(insertPos);
 }
