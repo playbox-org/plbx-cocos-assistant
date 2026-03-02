@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { packageForNetworks } from '../../../src/core/packager/packager';
 import { join } from 'path';
-import { mkdirSync, writeFileSync, existsSync, rmSync } from 'fs';
+import { mkdirSync, writeFileSync, existsSync, rmSync, readFileSync } from 'fs';
 
 const FIXTURES = join(__dirname, '../../fixtures');
 const MOCK_BUILD = join(FIXTURES, 'mock-build');
@@ -62,8 +62,37 @@ describe('packageForNetworks', () => {
       networks: ['applovin', 'google', 'facebook'],
       config: defaultConfig,
     });
-    expect(result.results).toHaveLength(3);
+    // facebook has dualFormat=true, so it produces 2 results (html + zip)
+    expect(result.results).toHaveLength(4);
     expect(result.totalTime).toBeGreaterThan(0);
+  });
+
+  it('should produce dual format outputs for dualFormat networks', async () => {
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['facebook'],
+      config: defaultConfig,
+    });
+    expect(result.results).toHaveLength(2);
+    const formats = result.results.map(r => r.format);
+    expect(formats).toContain('html');
+    expect(formats).toContain('zip');
+  });
+
+  it('should embed runtime loader in HTML output', async () => {
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['applovin'],
+      config: defaultConfig,
+    });
+    const htmlPath = result.results[0].outputPath;
+    const html = readFileSync(htmlPath, 'utf-8');
+    expect(html).toContain('window.__zip');
+    expect(html).toContain('window.__res');
+    expect(html).toContain('JSZip');
+    expect(html).toContain('XMLHttpRequest');
   });
 
   it('should validate size limits', async () => {

@@ -1,12 +1,13 @@
-import { readFileSync, mkdirSync, existsSync, writeFileSync, cpSync, rmSync } from 'fs';
-import { join, basename } from 'path';
+import { readFileSync, mkdirSync, existsSync, writeFileSync, cpSync, rmSync, readdirSync, statSync } from 'fs';
+import { join, basename, relative, extname } from 'path';
 import { HtmlBuilder } from './html-builder';
 import { getAdapter } from './network-adapters';
 import { buildZip } from './zip-builder';
 import { getNetwork, NETWORKS } from '../../shared/networks';
-import { PackageResult } from '../../shared/types';
+import { PackageResult, OutputFormat } from '../../shared/types';
 import { PackagerOptions, PackagerResult } from './types';
-import { fileToDataUri } from './asset-inliner';
+import { packDirectoryToZip } from './asset-inliner';
+import { generateFullHtml } from './runtime-loader';
 
 export async function packageForNetworks(options: PackagerOptions): Promise<PackagerResult> {
   const startTime = Date.now();
@@ -36,75 +37,83 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
       const builder = new HtmlBuilder(baseHtml);
       adapter.transform(builder, options.config);
 
-      let outputPath: string;
-      let outputSize: number;
-
-      // Determine formats to build
-      // Some networks support dual format (both html and zip)
-      const formats: Array<'html' | 'zip'> = [network.format];
+      // Determine all formats to build
+      const formats: OutputFormat[] = [network.format];
       if (network.dualFormat) {
         formats.push(network.format === 'html' ? 'zip' : 'html');
       }
 
-      // Build primary format
-      if (network.format === 'html' || network.inlineAssets) {
-        // Single HTML — inline all assets
-        // For now: just write the transformed HTML
-        // In full implementation: inline all external CSS/JS/images as data URIs
-        const finalHtml = builder.toHtml();
-        outputPath = join(networkOutDir, 'index.html');
-        writeFileSync(outputPath, finalHtml);
-        outputSize = Buffer.byteLength(finalHtml, 'utf-8');
-      } else {
-        // ZIP — copy build dir + transformed HTML + extras
-        const tempDir = join(networkOutDir, '_temp');
-        mkdirSync(tempDir, { recursive: true });
+      for (const format of formats) {
+        const formatSuffix = formats.length > 1 ? `-${format}` : '';
+        let outputPath: string;
+        let outputSize: number;
 
-        // Copy build assets to temp dir
-        cpSync(options.buildDir, tempDir, { recursive: true });
+        if (format === 'html') {
+          // Single HTML — pack all assets into ZIP, embed with runtime loader
+          options.onProgress?.(networkId, 'processing', `Building ${format.toUpperCase()}...`);
 
-        // Overwrite index.html with transformed version
-        writeFileSync(join(tempDir, 'index.html'), builder.toHtml());
+          const zipBuffer = await packDirectoryToZip(options.buildDir);
+          const zipBase64 = zipBuffer.toString('base64');
 
-        // Build ZIP
-        const zipPath = join(networkOutDir, `${networkId}.zip`);
-        const extraFiles: Array<{ zipPath: string; content: string }> = [];
+          // Extract JS files for pre-population (faster loading)
+          const jsModules = extractJsModules(options.buildDir);
 
-        // Add config.json if adapter provides it
-        const zipConfig = adapter.getZipConfig(options.config);
-        if (zipConfig) {
-          extraFiles.push({
-            zipPath: 'config.json',
-            content: JSON.stringify(zipConfig),
+          const finalHtml = generateFullHtml({
+            originalHtml: builder.toHtml(),
+            zipBase64,
+            jsModules,
           });
+
+          outputPath = join(networkOutDir, `index${formatSuffix}.html`);
+          writeFileSync(outputPath, finalHtml);
+          outputSize = Buffer.byteLength(finalHtml, 'utf-8');
+        } else {
+          // ZIP — copy build dir + transformed HTML + extras
+          options.onProgress?.(networkId, 'processing', `Building ZIP...`);
+
+          const tempDir = join(networkOutDir, '_temp');
+          mkdirSync(tempDir, { recursive: true });
+
+          cpSync(options.buildDir, tempDir, { recursive: true });
+          writeFileSync(join(tempDir, 'index.html'), builder.toHtml());
+
+          const zipPath = join(networkOutDir, `${networkId}${formatSuffix}.zip`);
+          const extraFiles: Array<{ zipPath: string; content: string }> = [];
+
+          const zipConfig = adapter.getZipConfig(options.config);
+          if (zipConfig) {
+            extraFiles.push({
+              zipPath: 'config.json',
+              content: JSON.stringify(zipConfig),
+            });
+          }
+
+          const zipResult = await buildZip({
+            sourceDir: tempDir,
+            outputPath: zipPath,
+            prefix: network.zipStructure || '',
+            jsBundleName: adapter.getJsBundleName() || undefined,
+            extraFiles,
+          });
+
+          outputPath = zipResult.outputPath;
+          outputSize = zipResult.size;
+
+          rmSync(tempDir, { recursive: true, force: true });
         }
 
-        const zipResult = await buildZip({
-          sourceDir: tempDir,
-          outputPath: zipPath,
-          prefix: network.zipStructure || '',
-          jsBundleName: adapter.getJsBundleName() || undefined,
-          extraFiles,
+        results.push({
+          networkId: formats.length > 1 ? `${networkId}-${format}` : networkId,
+          networkName: network.name,
+          outputPath,
+          outputSize,
+          maxSize: network.maxSize,
+          withinLimit: outputSize <= network.maxSize,
+          format,
         });
-
-        outputPath = zipResult.outputPath;
-        outputSize = zipResult.size;
-
-        // Clean up temp dir
-        rmSync(tempDir, { recursive: true, force: true });
       }
 
       options.onProgress?.(networkId, 'done');
-
-      results.push({
-        networkId,
-        networkName: network.name,
-        outputPath,
-        outputSize,
-        maxSize: network.maxSize,
-        withinLimit: outputSize <= network.maxSize,
-        format: network.format,
-      });
 
     } catch (error: any) {
       options.onProgress?.(networkId, 'error', error.message);
@@ -124,4 +133,28 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
     results,
     totalTime: Date.now() - startTime,
   };
+}
+
+/**
+ * Extract JS module contents from a build directory for pre-populating window.__res.
+ * This allows the runtime loader to execute JS modules without waiting for ZIP unpack.
+ */
+function extractJsModules(buildDir: string): Record<string, string> {
+  const modules: Record<string, string> = {};
+
+  function scanDir(dir: string) {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        scanDir(fullPath);
+      } else if (extname(entry.name) === '.js') {
+        const relPath = relative(buildDir, fullPath);
+        modules[relPath] = readFileSync(fullPath, 'utf-8');
+      }
+    }
+  }
+
+  scanDir(buildDir);
+  return modules;
 }
