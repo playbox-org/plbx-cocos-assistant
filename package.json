@@ -9,7 +9,7 @@
   "main": "./dist/main.js",
   "panels": {
     "default": {
-      "title": "i18n:plbx-cocos-extension.panels.default.title",
+      "title": "Playbox",
       "type": "dockable",
       "main": "./dist/panels/default",
       "flags": {
@@ -73,6 +73,11 @@
           "getImageMeta"
         ]
       },
+      "get-asset-data-uri": {
+        "methods": [
+          "getAssetDataUri"
+        ]
+      },
       "check-ffmpeg": {
         "methods": [
           "checkFfmpeg"
@@ -81,6 +86,11 @@
       "compress-audio": {
         "methods": [
           "compressAudioAsset"
+        ]
+      },
+      "compress-audio-preview": {
+        "methods": [
+          "compressAudioPreview"
         ]
       },
       "package-networks": {

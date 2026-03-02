@@ -1,7 +1,7 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { statSync, existsSync } from 'fs';
-import { join, basename, extname } from 'path';
+import { join, basename, extname, dirname } from 'path';
 
 const execFileAsync = promisify(execFile);
 
@@ -72,6 +72,19 @@ export async function compressAudio(
     bitrate,
     savings: Math.max(0, savings),
   };
+}
+
+export async function compressAudioToBuffer(
+  inputPath: string,
+  options: AudioCompressionOptions,
+): Promise<{ buffer: Buffer; metadata: AudioCompressionResult }> {
+  const os = require('os');
+  const { readFileSync, unlinkSync } = require('fs');
+  const tmpDir = os.tmpdir();
+  const metadata = await compressAudio(inputPath, options, tmpDir);
+  const buffer = readFileSync(metadata.outputPath);
+  try { unlinkSync(metadata.outputPath); } catch { /* cleanup */ }
+  return { buffer, metadata };
 }
 
 export async function getAudioDuration(inputPath: string): Promise<number> {

@@ -2,7 +2,7 @@ declare const Editor: any;
 
 import { scanAssets, createEditorQueryFn } from './core/build-report/scanner';
 import { compressImage, compressImageToBuffer, getImageMetadata } from './core/compression/image-compressor';
-import { compressAudio, isFFmpegAvailable } from './core/compression/audio-compressor';
+import { compressAudio, compressAudioToBuffer, isFFmpegAvailable } from './core/compression/audio-compressor';
 import { packageForNetworks } from './core/packager/packager';
 import { PlayboxApiClient } from './core/deployer/api-client';
 import { uploadFile } from './core/deployer/uploader';
@@ -64,12 +64,36 @@ export const methods: Record<string, (...args: any[]) => any> = {
     return getImageMetadata(inputPath);
   },
 
+  async getAssetDataUri(inputPath: string) {
+    const { readFileSync, statSync } = require('fs');
+    const { extname } = require('path');
+    const ext = extname(inputPath).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+      '.webp': 'image/webp', '.avif': 'image/avif', '.gif': 'image/gif',
+      '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.m4a': 'audio/mp4',
+    };
+    const mime = mimeMap[ext] || 'application/octet-stream';
+    const buf = readFileSync(inputPath);
+    const size = statSync(inputPath).size;
+    return { dataUri: `data:${mime};base64,${buf.toString('base64')}`, size };
+  },
+
   async checkFfmpeg() {
     return isFFmpegAvailable();
   },
 
   async compressAudioAsset(inputPath: string, format: string, bitrate: number) {
     return compressAudio(inputPath, { format: format as any, bitrate });
+  },
+
+  async compressAudioPreview(inputPath: string, format: string, bitrate: number) {
+    const { buffer, metadata } = await compressAudioToBuffer(inputPath, { format: format as any, bitrate });
+    const mime = format === 'ogg' ? 'audio/ogg' : 'audio/mpeg';
+    return {
+      dataUri: `data:${mime};base64,${buffer.toString('base64')}`,
+      metadata,
+    };
   },
 
   // === Packaging ===
@@ -79,9 +103,11 @@ export const methods: Record<string, (...args: any[]) => any> = {
       outputDir,
       networks: networkIds,
       config,
-      onProgress: (id, status, msg) => {
-        // Send progress to panel
-        Editor.Message.send('plbx-cocos-extension', 'package-progress', id, status, msg);
+      onProgress: (_id, _status, _msg) => {
+        // TODO: 'package-progress' message has no registered listener in the extension.
+        // Panel does not handle this message type, so sending it is a no-op.
+        // Implement a listener in the panel before re-enabling this.
+        // Editor.Message.send('plbx-cocos-extension', 'package-progress', _id, _status, _msg);
       },
     });
   },
@@ -100,6 +126,10 @@ export const methods: Record<string, (...args: any[]) => any> = {
       apiKey: token,
     });
 
+    // TODO: config.files is always passed as [] from the panel (see default.ts deploy call).
+    // The API expects a list of DeploymentFile descriptors to generate uploadUrls.
+    // With an empty list the API likely returns no uploadUrls and no files are uploaded.
+    // Fix: scan buildPath for files and populate this list before calling createDeployment.
     const deployment = await client.createDeployment({
       projectId: config.projectId,
       name: config.name,
