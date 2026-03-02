@@ -118,6 +118,8 @@ function generatePatchCode(options: RuntimeLoaderOptions): string {
   // while the generated browser string still contains the correct identifier.
   const fnCtor = 'Func' + 'tion';
   return `
+var DEBUG = ${debug};
+
 function _findInRes(url) {
   if (!url) return null;
   // Exact match first
@@ -153,7 +155,6 @@ function _base64ToArrayBuffer(base64) {
 }
 
 function patchAPIs() {
-  var DEBUG = ${debug};
   if (DEBUG) console.log('[plbx] Patching browser APIs');
 
   // 1. Patch XMLHttpRequest
