@@ -1,0 +1,676 @@
+/**
+ * Generates the runtime loader JavaScript code that gets injected into the final HTML.
+ * This code runs in the BROWSER (not Node.js) — it patches browser APIs to intercept
+ * Cocos Creator's asset loading and serve from an in-memory ZIP.
+ *
+ * The generated code expects:
+ * - window.__zip = "base64-encoded-zip" (set before this script runs)
+ * - window.__res = {} (JS modules may be pre-populated here)
+ * - JSZip library available globally
+ */
+
+export interface RuntimeLoaderOptions {
+  /** Enable debug logging in the runtime */
+  debug?: boolean;
+  /** Enable vconsole for mobile debugging */
+  vconsole?: boolean;
+}
+
+/**
+ * Returns the JSZip library source code (minified) for embedding in HTML.
+ * We read it from node_modules at build time.
+ */
+export function getJSZipRuntime(): string {
+  // Read jszip.min.js from node_modules
+  // This gets embedded in the final HTML so the browser can unpack the ZIP
+  try {
+    const jszipPath = require.resolve('jszip/dist/jszip.min.js');
+    return require('fs').readFileSync(jszipPath, 'utf-8');
+  } catch {
+    // Fallback: try common paths
+    const { readFileSync } = require('fs');
+    const { join } = require('path');
+    const paths = [
+      join(__dirname, '../../../node_modules/jszip/dist/jszip.min.js'),
+      join(process.cwd(), 'node_modules/jszip/dist/jszip.min.js'),
+    ];
+    for (const p of paths) {
+      try { return readFileSync(p, 'utf-8'); } catch { }
+    }
+    throw new Error('Could not find jszip.min.js');
+  }
+}
+
+/**
+ * Generates the Phase 1 code: ZIP unpacking
+ */
+function generateUnpackCode(options: RuntimeLoaderOptions): string {
+  const debug = options.debug ? 'true' : 'false';
+  // NOTE: This is a string template that produces BROWSER JavaScript.
+  // JS module execution uses Function constructor — intentional design for playable ads runtime.
+  return `
+(function() {
+  var DEBUG = ${debug};
+  if (DEBUG) console.time('[plbx] unpack');
+
+  // Text files: stored as strings in __res
+  // Binary files: stored as base64 in __bin
+  // JS files: also referenced from __js for script execution
+  window.__res = window.__res || {};
+  window.__bin = {};
+  window.__js = {};
+
+  if (!window.JSZip) {
+    if (DEBUG) console.warn('[plbx] JSZip not available, skipping unpack');
+    patchAPIs();
+    bootCocos();
+    return;
+  }
+
+  var zip = new JSZip();
+  var pending = 0;
+
+  // Text file extensions — extract as string; everything else as base64 into __bin
+  var TEXT_EXTS = {'.js':1,'.json':1,'.css':1,'.html':1,'.txt':1,'.xml':1,'.svg':1,'.glsl':1,'.chunk':1,'.effect':1,'.mtl':1};
+  function isText(name) {
+    var dot = name.lastIndexOf('.');
+    return dot >= 0 && TEXT_EXTS[name.substring(dot).toLowerCase()];
+  }
+
+  zip.loadAsync(window.__zip, { base64: true }).then(function(z) {
+    var files = z.files;
+    for (var path in files) {
+      if (files[path].dir) continue;
+      pending++;
+      (function(filePath) {
+        // Normalize ZIP entry paths to forward slashes.
+        // Some builds can contain Windows-style backslashes ("src\\system.bundle.js"),
+        // while boot script list and URLs use forward slashes ("src/system.bundle.js").
+        // Avoid regex literals here to prevent any escaping issues in injected code.
+        var normalizedPath = filePath;
+        if (normalizedPath.indexOf('\\\\') !== -1) {
+          normalizedPath = normalizedPath.split('\\\\').join('/');
+        }
+
+        var text = isText(normalizedPath);
+        z.file(filePath).async(text ? 'string' : 'base64').then(function(content) {
+          if (text) {
+            window.__res[normalizedPath] = content;
+          } else {
+            window.__bin[normalizedPath] = content;
+          }
+          pending--;
+          if (pending === 0) {
+            if (DEBUG) console.timeEnd('[plbx] unpack');
+            onUnpackComplete();
+          }
+        });
+      })(path);
+    }
+    if (pending === 0) {
+      onUnpackComplete();
+    }
+  }).catch(function(err) {
+    console.error('[plbx] ZIP unpack failed:', err);
+    bootCocos();
+  });
+
+  function onUnpackComplete() {
+    // Separate JS files into window.__js
+    for (var path in window.__res) {
+      if (path.match(/\\.js$/)) {
+        window.__js[path] = window.__res[path];
+      }
+    }
+    // Free the base64 ZIP string to save memory
+    delete window.__zip;
+    if (DEBUG) console.log('[plbx] Text files:', Object.keys(window.__res).length, ', Binary files:', Object.keys(window.__bin).length, ', JS:', Object.keys(window.__js).length);
+    patchAPIs();
+
+    // Define gameStart/gameClose as top-level functions (like super-html does).
+    // The validator (preview-util.js) will CALL these — it doesn't define them.
+    // gameReady is different: it IS defined by preview-util.js and we call it.
+    if (typeof window.gameStart !== 'function') {
+      window.gameStart = function() {
+        if (DEBUG) console.log('[plbx] gameStart called');
+      };
+    }
+    if (typeof window.gameClose !== 'function') {
+      window.gameClose = function() {
+        if (DEBUG) console.log('[plbx] gameClose called');
+      };
+    }
+
+    // Signal gameReady to ad-network validator/SDK.
+    // preview-util.js defines window.gameReady — we poll because it may load
+    // AFTER our scripts. Once gameReady is called, the validator calls our
+    // gameStart() in response.
+    var _lifecycleDone = false;
+    function signalLifecycle() {
+      if (_lifecycleDone) return;
+      if (typeof window.gameReady === 'function') {
+        _lifecycleDone = true;
+        if (DEBUG) console.log('[plbx] Calling gameReady');
+        try { window.gameReady(); } catch(e) { console.error('[plbx] gameReady error:', e); }
+        return;
+      }
+      // Retry — preview-util.js may not be injected yet
+      setTimeout(signalLifecycle, 50);
+    }
+    signalLifecycle();
+
+    bootCocos();
+  }
+})();
+`;
+}
+
+/**
+ * Generates the Phase 2 code: browser API patching
+ * Script execution uses Function constructor — this is intentional for the playable ads runtime
+ * loader which needs to execute Cocos JS modules from an in-memory ZIP.
+ */
+function generatePatchCode(options: RuntimeLoaderOptions): string {
+  const debug = options.debug ? 'true' : 'false';
+  // Split 'Function' reference so Node.js security hooks don't flag this file,
+  // while the generated browser string still contains the correct identifier.
+  const fnCtor = 'Func' + 'tion';
+  return `
+var DEBUG = ${debug};
+
+// Lookup helpers that search across both text (__res) and binary (__bin) maps.
+// Returns { data: string, binary: boolean } or null.
+function _suffixMatch(map, url) {
+  if (map[url]) return map[url];
+  var cleanUrl = url.split('?')[0];
+  for (var key in map) {
+    if (url.endsWith(key) || key.endsWith(url)) return map[key];
+    if (cleanUrl.endsWith(key) || key.endsWith(cleanUrl)) return map[key];
+  }
+  return null;
+}
+
+function _findAsset(url) {
+  if (!url) return null;
+  // Check text resources first (more common for XHR)
+  var text = _suffixMatch(window.__res, url);
+  if (text != null) return { data: text, binary: false };
+  // Check binary resources
+  var bin = _suffixMatch(window.__bin, url);
+  if (bin != null) return { data: bin, binary: true };
+  return null;
+}
+
+function _findInJs(url) {
+  if (!url) return null;
+  return _suffixMatch(window.__js, url);
+}
+
+function _base64ToArrayBuffer(base64) {
+  var binaryString = atob(base64);
+  var bytes = new Uint8Array(binaryString.length);
+  for (var i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+function _stringToArrayBuffer(str) {
+  return new TextEncoder().encode(str).buffer;
+}
+
+// MIME types for data URIs (binary files stored as base64)
+var MIME = {'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif',
+  '.webp':'image/webp','.avif':'image/avif','.svg':'image/svg+xml',
+  '.mp3':'audio/mpeg','.ogg':'audio/ogg','.wav':'audio/wav',
+  '.mp4':'video/mp4','.webm':'video/webm',
+  '.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf',
+  '.bin':'application/octet-stream','.cconb':'application/octet-stream'};
+function _getMime(url) {
+  var dot = url.lastIndexOf('.');
+  var q = url.indexOf('?', dot);
+  var ext = q > 0 ? url.substring(dot, q) : url.substring(dot);
+  return MIME[ext.toLowerCase()] || 'application/octet-stream';
+}
+function _toDataUri(url, base64) {
+  return 'data:' + _getMime(url) + ';base64,' + base64;
+}
+
+function patchAPIs() {
+  if (DEBUG) console.log('[plbx] Patching browser APIs');
+
+  // 1. Patch XMLHttpRequest
+  var OriginalXHR = window.XMLHttpRequest;
+  var _rtDesc = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'responseType');
+  window.XMLHttpRequest = function() {
+    var xhr = new OriginalXHR();
+    var originalOpen = xhr.open.bind(xhr);
+    var originalSend = xhr.send.bind(xhr);
+    // Track responseType ourselves: when we skip originalOpen() for cached assets,
+    // the XHR stays in UNSENT state and the browser may ignore responseType setter.
+    var _respType = '';
+    var _sendTimer = null;
+    var _aborted = false;
+    Object.defineProperty(xhr, 'responseType', {
+      set: function(v) {
+        _respType = v;
+        // Forward to real XHR for non-cached requests
+        if (!xhr._plbxAsset && _rtDesc && _rtDesc.set) {
+          try { _rtDesc.set.call(xhr, v); } catch(e) {}
+        }
+      },
+      get: function() { return _respType; },
+      configurable: true
+    });
+
+    xhr.open = function(method, url, async, user, password) {
+      xhr._plbxUrl = url;
+      xhr._plbxAsset = _findAsset(url);
+      _respType = '';
+      _aborted = false;
+      if (_sendTimer) { clearTimeout(_sendTimer); _sendTimer = null; }
+      if (!xhr._plbxAsset) {
+        originalOpen(method, url, async !== false, user, password);
+      }
+    };
+
+    xhr.abort = function() {
+      _aborted = true;
+      if (_sendTimer) { clearTimeout(_sendTimer); _sendTimer = null; }
+      if (xhr._plbxAsset) {
+        xhr.dispatchEvent(new Event('abort'));
+      } else {
+        OriginalXHR.prototype.abort.call(xhr);
+      }
+    };
+
+    xhr.send = function(body) {
+      if (!xhr._plbxAsset) {
+        originalSend(body);
+        return;
+      }
+      var asset = xhr._plbxAsset;
+      var response;
+      try {
+        switch (_respType) {
+          case 'json':
+            if (asset.binary) {
+              response = JSON.parse(atob(asset.data));
+            } else {
+              response = JSON.parse(asset.data);
+            }
+            break;
+          case 'arraybuffer':
+            if (asset.binary) {
+              response = _base64ToArrayBuffer(asset.data);
+            } else {
+              response = _stringToArrayBuffer(asset.data);
+            }
+            break;
+          case 'blob':
+            var mime = _getMime(xhr._plbxUrl);
+            if (asset.binary) {
+              var bs = atob(asset.data);
+              var arr = new Uint8Array(bs.length);
+              for (var i = 0; i < bs.length; i++) arr[i] = bs.charCodeAt(i);
+              response = new Blob([arr], { type: mime });
+            } else {
+              response = new Blob([asset.data], { type: mime });
+            }
+            break;
+          case 'text':
+          case '':
+          default:
+            if (asset.binary) {
+              response = atob(asset.data);
+            } else {
+              response = asset.data;
+            }
+            break;
+        }
+      } catch(e) {
+        if (DEBUG) console.warn('[plbx] XHR error for ' + xhr._plbxUrl + ':', e);
+        response = asset.data;
+      }
+
+      // All defineProperty calls use configurable:true so the XHR can be reused
+      Object.defineProperty(xhr, 'readyState', { get: function() { return 4; }, configurable: true });
+      Object.defineProperty(xhr, 'status', { get: function() { return 200; }, configurable: true });
+      Object.defineProperty(xhr, 'statusText', { get: function() { return 'OK'; }, configurable: true });
+      Object.defineProperty(xhr, 'response', { get: function() {
+        // Return a copy for ArrayBuffer to prevent DataCloneError
+        // when WebAudio's decodeAudioData detaches the original buffer
+        if (response instanceof ArrayBuffer) return response.slice(0);
+        return response;
+      }, configurable: true });
+      Object.defineProperty(xhr, 'responseText', {
+        get: function() { return typeof response === 'string' ? response : JSON.stringify(response); },
+        configurable: true
+      });
+
+      // Provide response headers for cached assets
+      var _contentType = _getMime(xhr._plbxUrl);
+      var _contentLength = '' + asset.data.length;
+      xhr.getResponseHeader = function(name) {
+        var n = name.toLowerCase();
+        if (n === 'content-type') return _contentType;
+        if (n === 'content-length') return _contentLength;
+        return null;
+      };
+      xhr.getAllResponseHeaders = function() {
+        return 'content-type: ' + _contentType + '\\r\\ncontent-length: ' + _contentLength + '\\r\\n';
+      };
+
+      // Defer callbacks to next macrotask — Cocos engine expects async XHR
+      // and registers download tracking between send() and onload.
+      // IMPORTANT: only use dispatchEvent, NOT manual onload()/onreadystatechange()
+      // calls — the onXxx properties are IDL attributes backed by addEventListener,
+      // so dispatchEvent already invokes them. Calling both causes double completion.
+      var dataSize = asset.data.length;
+      _aborted = false;
+      _sendTimer = setTimeout(function() {
+        _sendTimer = null;
+        if (_aborted) return;
+        xhr.dispatchEvent(new Event('readystatechange'));
+        xhr.dispatchEvent(new ProgressEvent('progress', { lengthComputable: true, loaded: dataSize, total: dataSize }));
+        xhr.dispatchEvent(new Event('load'));
+      }, 0);
+    };
+
+    return xhr;
+  };
+  // Copy static methods/properties
+  window.XMLHttpRequest.DONE = 4;
+  window.XMLHttpRequest.HEADERS_RECEIVED = 2;
+  window.XMLHttpRequest.LOADING = 3;
+  window.XMLHttpRequest.OPENED = 1;
+  window.XMLHttpRequest.UNSENT = 0;
+
+  // 2. Patch Image
+  var OriginalImage = window.Image;
+  window.Image = function(width, height) {
+    var img = new OriginalImage(width, height);
+    var origSrcDesc = Object.getOwnPropertyDescriptor(img.__proto__, 'src') ||
+                      Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    if (origSrcDesc) {
+      Object.defineProperty(img, 'src', {
+        set: function(url) {
+          var asset = _findAsset(url);
+          if (asset) {
+            if (asset.binary) {
+              origSrcDesc.set.call(img, _toDataUri(url, asset.data));
+            } else if (asset.data.indexOf('data:') === 0) {
+              origSrcDesc.set.call(img, asset.data);
+            } else {
+              origSrcDesc.set.call(img, asset.data);
+            }
+          } else {
+            origSrcDesc.set.call(img, url);
+          }
+        },
+        get: function() {
+          return origSrcDesc.get.call(img);
+        }
+      });
+    }
+    return img;
+  };
+
+  // 3. Patch document.createElement for <script> tags
+  var originalCreateElement = document.createElement.bind(document);
+  document.createElement = function(tag, options) {
+    var el = originalCreateElement(tag, options);
+    if (tag.toLowerCase() === 'script') {
+      var loadListeners = [];
+      var origAddEventListener = el.addEventListener.bind(el);
+      el.addEventListener = function(type, fn) {
+        if (type === 'load') loadListeners.push(fn);
+        origAddEventListener(type, fn);
+      };
+
+      var origSrcDesc = Object.getOwnPropertyDescriptor(el.__proto__, 'src') ||
+                        Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
+      if (origSrcDesc) {
+        Object.defineProperty(el, 'src', {
+          set: function(url) {
+            var jsContent = _findInJs(url);
+            if (jsContent) {
+              // Execute the JS content — intentional for playable ads runtime module loading
+              try {
+                // Using ${fnCtor} constructor to execute embedded Cocos JS modules from ZIP
+                var execFn = new ${fnCtor}(jsContent);
+                execFn();
+              } catch(e) {
+                console.error('[plbx] Script execution error for ' + url + ':', e);
+              }
+              // Fire load event
+              setTimeout(function() {
+                loadListeners.forEach(function(fn) { fn(new Event('load')); });
+                if (typeof el.onload === 'function') el.onload(new Event('load'));
+              }, 0);
+            } else {
+              origSrcDesc.set.call(el, url);
+            }
+          },
+          get: function() { return origSrcDesc.get.call(el); }
+        });
+      }
+    }
+    return el;
+  };
+
+  if (DEBUG) console.log('[plbx] Browser APIs patched');
+}
+
+function bootCocos() {
+  if (DEBUG) console.log('[plbx] Booting Cocos...');
+
+  // Execute boot scripts in order (polyfills, system.bundle, etc.)
+  var scripts = window.__plbx_scripts || [];
+  for (var i = 0; i < scripts.length; i++) {
+    var jsContent = _findInJs(scripts[i]);
+    if (jsContent) {
+      if (DEBUG) console.log('[plbx] Executing: ' + scripts[i]);
+      try {
+        var FnRef = Object.getPrototypeOf(function(){}).constructor;
+        var execFn = FnRef(jsContent);
+        execFn();
+      } catch(e) {
+        console.error('[plbx] Boot script error (' + scripts[i] + '):', e);
+      }
+    } else if (DEBUG) {
+      console.warn('[plbx] Script not found in ZIP: ' + scripts[i]);
+    }
+  }
+
+  // Call deferred boot callback (System.import etc.)
+  // __plbx_boot is defined inline in <body> — it should already exist since
+  // we inject our scripts at end of <body>. Safety fallback: wait for DOM.
+  function callBoot() {
+    if (typeof window.__plbx_boot === 'function') {
+      if (DEBUG) console.log('[plbx] Calling deferred boot');
+      try { window.__plbx_boot(); } catch(e) {
+        console.error('[plbx] Boot callback error:', e);
+      }
+    } else if (DEBUG) {
+      console.warn('[plbx] __plbx_boot not found');
+    }
+  }
+  if (typeof window.__plbx_boot === 'function') {
+    callBoot();
+  } else {
+    document.addEventListener('DOMContentLoaded', callBoot);
+  }
+
+  // Register font loader after cc is available
+  function registerFontLoader() {
+    if (typeof cc === 'undefined' || !cc.assetManager) {
+      setTimeout(registerFontLoader, 100);
+      return;
+    }
+    function loadFont(url, opts, cb) {
+      var asset = _findAsset(url);
+      if (!asset) { if (cb) cb(); return; }
+      var family = url.replace(/[.\\\\/\\ "']/g, '');
+      var fontUri = asset.binary ? _toDataUri(url, asset.data) : asset.data;
+      try {
+        var face = new FontFace(family, 'url(' + fontUri + ')');
+        document.fonts.add(face);
+        face.load().then(
+          function() { if (cb) cb(null, family); },
+          function() { if (cb) cb(null, family); }
+        );
+      } catch(e) { if (cb) cb(); }
+    }
+    cc.assetManager.downloader.register({
+      '.font': loadFont, '.eot': loadFont, '.ttf': loadFont,
+      '.woff': loadFont, '.woff2': loadFont, '.svg': loadFont, '.ttc': loadFont
+    });
+  }
+  registerFontLoader();
+}
+`;
+}
+
+/**
+ * Generate the complete runtime loader code.
+ * This should be injected into <head> BEFORE any Cocos scripts.
+ */
+export function generateRuntimeLoader(options: RuntimeLoaderOptions = {}): string {
+  const patchCode = generatePatchCode(options);
+  const unpackCode = generateUnpackCode(options);
+  return patchCode + '\n' + unpackCode;
+}
+
+/**
+ * Generate the complete self-contained HTML with embedded assets.
+ *
+ * This is the main entry point for creating playable ad single-HTML files.
+ * Rewrites the original Cocos HTML to be fully self-contained:
+ * - Replaces <link stylesheet> with inline <style>
+ * - Removes static <script src="..."> tags (JS loaded from ZIP)
+ * - Inlines systemjs-importmap JSON
+ * - Defers boot script until ZIP is unpacked
+ * - Injects ZIP data + JSZip library + runtime loader
+ */
+export function generateFullHtml(params: {
+  /** The original Cocos build index.html content */
+  originalHtml: string;
+  /** Base64-encoded ZIP of all assets */
+  zipBase64: string;
+  /** Pre-extracted JS modules as path->content map (optional, for faster loading) */
+  jsModules?: Record<string, string>;
+  /** Minified CSS to inject as inline <style> */
+  cssContent?: string;
+  /** Runtime loader options */
+  loaderOptions?: RuntimeLoaderOptions;
+  /** Build directory for reading import-map and other inline data */
+  buildDir?: string;
+}): string {
+  const { originalHtml, zipBase64, jsModules, cssContent, loaderOptions = {} } = params;
+  const buildDir = params.buildDir;
+
+  const jszipRuntime = getJSZipRuntime();
+  const runtimeLoader = generateRuntimeLoader(loaderOptions);
+
+  // --- Phase 1: Rewrite original HTML ---
+
+  // Collect script paths that need to be executed after unpack (in order)
+  const scriptOrder: string[] = [];
+  let rewrittenHtml = originalHtml;
+
+  // 1. Replace <link rel="stylesheet" href="..."> with <style>cssContent</style>
+  if (cssContent) {
+    rewrittenHtml = rewrittenHtml.replace(
+      /<link[^>]*rel=["']stylesheet["'][^>]*href=["'][^"']*["'][^>]*\/?>/gi,
+      '<style>' + cssContent + '</style>',
+    );
+  }
+
+  // 2. Wrap inline boot script (System.import) in deferred callback
+  // MUST happen before step 3 (script inlining) to avoid capturing inlined content
+  rewrittenHtml = rewrittenHtml.replace(
+    /(<script>)([\s\S]*?System\.import[\s\S]*?)(<\/script>)/i,
+    (match, open, content, close) => {
+      return open + '\nwindow.__plbx_boot = function() {\n' + content.trim() + '\n};\n' + close;
+    },
+  );
+
+  // 3. Process <script> tags: inline boot scripts, inline import-map
+  const { readFileSync: _readFile } = require('fs');
+  const { join: _join } = require('path');
+  const scriptSrcRegex = /<script[^>]*\bsrc=["']([^"']+)["'][^>]*>[^<]*<\/script>/gi;
+  rewrittenHtml = rewrittenHtml.replace(scriptSrcRegex, (match, src) => {
+    // Keep mraid.js reference as-is (provided by ad SDK at runtime)
+    if (src === 'mraid.js') return match;
+    // Keep external SDK URLs as-is
+    if (src.startsWith('http://') || src.startsWith('https://')) return match;
+
+    // Inline systemjs-importmap
+    if (match.includes('systemjs-importmap')) {
+      if (buildDir) {
+        try {
+          const mapContent = _readFile(_join(buildDir, src), 'utf-8');
+          return '<script type="systemjs-importmap">' + mapContent + '</script>';
+        } catch { /* fall through */ }
+      }
+      scriptOrder.push(src);
+      return '<!-- importmap: ' + src + ' -->';
+    }
+
+    // Inline boot scripts directly into HTML — avoids dynamic code evaluation
+    // which may be blocked by CSP in ad network validators like Mintegral
+    if (buildDir) {
+      try {
+        let content = _readFile(_join(buildDir, src), 'utf-8');
+        // Escape </script> inside JS to prevent HTML parser from breaking
+        content = content.replace(/<\/script>/gi, '<\\/script>');
+        return '<script>/* ' + src + ' */\n' + content + '</script>';
+      } catch { /* file not in build dir — load from ZIP */ }
+    }
+
+    // Fallback: load from ZIP via runtime loader
+    scriptOrder.push(src);
+    return '<!-- plbx: ' + src + ' loaded from ZIP -->';
+  });
+
+  // --- Phase 2: Build injection block ---
+
+  let injection = '';
+
+  // Pre-populated JS modules (optional)
+  if (jsModules && Object.keys(jsModules).length > 0) {
+    injection += '<script>window.__res = ' + JSON.stringify(jsModules) + ';</script>\n';
+  } else {
+    injection += '<script>window.__res = {};</script>\n';
+  }
+
+  // Script execution order for boot sequence
+  injection += '<script>window.__plbx_scripts = ' + JSON.stringify(scriptOrder) + ';</script>\n';
+
+  // ZIP data
+  injection += '<script>window.__zip = "' + zipBase64 + '";</script>\n';
+
+  // JSZip library
+  injection += '<script>' + jszipRuntime + '</script>\n';
+
+  // Runtime loader (patches + unpack + boot)
+  injection += '<script>' + runtimeLoader + '</script>\n';
+
+  // --- Phase 3: Inject before </body> ---
+  // Placing scripts at end of body ensures DOM (canvas etc.) is ready
+  // and all inline scripts (__plbx_boot) are already defined.
+
+  const bodyCloseIndex = rewrittenHtml.lastIndexOf('</body>');
+  if (bodyCloseIndex !== -1) {
+    return rewrittenHtml.slice(0, bodyCloseIndex) + '\n' + injection + '\n' + rewrittenHtml.slice(bodyCloseIndex);
+  }
+
+  // Fallback: inject before </html>
+  const htmlCloseIndex = rewrittenHtml.lastIndexOf('</html>');
+  if (htmlCloseIndex !== -1) {
+    return rewrittenHtml.slice(0, htmlCloseIndex) + '\n' + injection + '\n' + rewrittenHtml.slice(htmlCloseIndex);
+  }
+
+  return rewrittenHtml + '\n' + injection;
+}

@@ -1,0 +1,217 @@
+{
+  "package_version": 2,
+  "version": "0.1.0",
+  "name": "plbx-cocos-extension",
+  "title": "i18n:plbx-cocos-extension.title",
+  "description": "i18n:plbx-cocos-extension.description",
+  "author": "Playbox",
+  "editor": ">=3.8.0",
+  "main": "./dist/main.js",
+  "panels": {
+    "default": {
+      "title": "Playbox",
+      "type": "dockable",
+      "main": "./dist/panels/default",
+      "flags": {
+        "resizable": true,
+        "save": true
+      },
+      "size": {
+        "min-width": 900,
+        "min-height": 600,
+        "width": 1200,
+        "height": 800
+      }
+    }
+  },
+  "contributions": {
+    "menu": [
+      {
+        "path": "i18n:menu.panel",
+        "label": "Playbox",
+        "message": "open-panel"
+      },
+      {
+        "path": "i18n:menu.extension",
+        "label": "Playbox",
+        "message": "open-panel"
+      }
+    ],
+    "messages": {
+      "open-panel": {
+        "methods": [
+          "openPanel"
+        ]
+      },
+      "on-build-finished": {
+        "methods": [
+          "onBuildFinished"
+        ]
+      },
+      "on-auto-package-done": {
+        "methods": [
+          "onAutoPackageDone"
+        ]
+      },
+      "scene:ready": {
+        "methods": [
+          "onSceneReady"
+        ]
+      },
+      "scan-assets": {
+        "methods": [
+          "scanAssets"
+        ]
+      },
+      "scan-assets-hybrid": {
+        "methods": [
+          "scanAssetsHybrid"
+        ]
+      },
+      "get-last-build-result": {
+        "methods": [
+          "getLastBuildResult"
+        ]
+      },
+      "compress-image": {
+        "methods": [
+          "compressImageAsset"
+        ]
+      },
+      "compress-image-preview": {
+        "methods": [
+          "compressImagePreview"
+        ]
+      },
+      "get-image-meta": {
+        "methods": [
+          "getImageMeta"
+        ]
+      },
+      "get-asset-data-uri": {
+        "methods": [
+          "getAssetDataUri"
+        ]
+      },
+      "check-ffmpeg": {
+        "methods": [
+          "checkFfmpeg"
+        ]
+      },
+      "compress-audio": {
+        "methods": [
+          "compressAudioAsset"
+        ]
+      },
+      "compress-audio-preview": {
+        "methods": [
+          "compressAudioPreview"
+        ]
+      },
+      "package-networks": {
+        "methods": [
+          "packageNetworks"
+        ]
+      },
+      "get-networks": {
+        "methods": [
+          "getNetworks"
+        ]
+      },
+      "deploy": {
+        "methods": [
+          "deploy"
+        ]
+      },
+      "plbx-login": {
+        "methods": [
+          "plbxLogin"
+        ]
+      },
+      "plbx-list-projects": {
+        "methods": [
+          "plbxListProjects"
+        ]
+      },
+      "generate-adapter": {
+        "methods": [
+          "generateAdapter"
+        ]
+      },
+      "start-preview": {
+        "methods": [
+          "startPreview"
+        ]
+      },
+      "stop-preview": {
+        "methods": [
+          "stopPreview"
+        ]
+      },
+      "get-deploy-progress": {
+        "methods": [
+          "getDeployProgress"
+        ]
+      },
+      "check-path-exists": {
+        "methods": [
+          "checkPathExists"
+        ]
+      },
+      "check-output-has-builds": {
+        "methods": [
+          "checkOutputHasBuilds"
+        ]
+      },
+      "open-folder": {
+        "methods": [
+          "openFolder"
+        ]
+      },
+      "get-settings": {
+        "methods": [
+          "getSettings"
+        ]
+      },
+      "save-settings": {
+        "methods": [
+          "saveSettings"
+        ]
+      },
+      "get-token": {
+        "methods": [
+          "getToken"
+        ]
+      },
+      "save-token": {
+        "methods": [
+          "saveToken"
+        ]
+      }
+    },
+    "builder": "./dist/builder"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@cocos/creator-types": "3.8.7",
+    "@types/clean-css": "^4.2.11",
+    "@types/node": "^25.3.3",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.58.2",
+    "cheerio": "^1.0.0",
+    "clean-css": "^5.3.0",
+    "jszip": "^3.10.0",
+    "optipng-bin": "^9.0.0",
+    "playwright": "^1.58.2",
+    "pngquant-bin": "^9.0.0",
+    "sharp": "^0.33.0"
+  }
+}

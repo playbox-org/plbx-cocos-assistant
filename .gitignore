@@ -1,0 +1,30 @@
+node_modules/
+dist/
+.DS_Store
+
+# Local tool state
+.claude/
+.superpowers/
+.playwright-mcp/
+
+# Internal docs (plans, research, specs)
+docs/
+
+# Root-level debug/test artifacts
+/*.log
+/*.png
+/*.jpeg
+/*.jpg
+
+# Test fixtures — large binary build files (generate locally)
+tests/fixtures/spades-build/web-mobile/
+tests/fixtures/spades-build/super-html-ref/
+tests/fixtures/spades-build/output/
+tests/fixtures/spades-build/pack-output/
+tests/fixtures/roadside-build/web-mobile/
+tests/fixtures/roadside-build/super-html-ref/
+tests/fixtures/roadside-build/output/
+tests/fixtures/roadside-build/pack-output/
+tests/fixtures/pack-output/
+tests/fixtures/mock-build/
+tests/fixtures/integration-output/
