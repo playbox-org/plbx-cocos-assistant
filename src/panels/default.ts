@@ -146,6 +146,7 @@ module.exports = Editor.Panel.define({
     this._initCompress();
     this._initPackage();
     this._initDeploy();
+    this._initPreview();
   },
 
   close() {},
@@ -327,6 +328,11 @@ module.exports = Editor.Panel.define({
         const isAudio = /\.(mp3|ogg|wav|m4a)$/i.test(asset.name ?? '');
         const tr = document.createElement('tr');
         tr.id = 'compress-row-' + encodeURIComponent(asset.path ?? asset.name ?? '');
+        tr.style.cursor = 'pointer';
+        tr.addEventListener('click', (e: MouseEvent) => {
+          if ((e.target as HTMLElement).closest('button')) return;
+          this._openPreview(asset);
+        });
 
         const tdName = document.createElement('td');
         tdName.title = asset.path ?? '';
@@ -412,6 +418,231 @@ module.exports = Editor.Panel.define({
       for (const row of Array.from(rows)) {
         const btn = (row as HTMLTableRowElement).querySelector('button') as HTMLButtonElement | null;
         if (btn) btn.click();
+      }
+    },
+
+    _initPreview(this: any) {
+      this._previewAsset = null;
+      this._previewDebounceTimer = null;
+
+      this.$.previewClose?.addEventListener('click', () => this._closePreview());
+      this.$.previewBackdrop?.addEventListener('click', () => this._closePreview());
+      this.$.previewCancel?.addEventListener('click', () => this._closePreview());
+
+      document.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && this._previewAsset) this._closePreview();
+      });
+
+      const qSlider = this.$.previewQuality as HTMLInputElement;
+      const qVal    = this.$.previewQualityVal as HTMLSpanElement;
+      qSlider?.addEventListener('input', () => {
+        if (qVal) qVal.textContent = qSlider.value;
+        this._schedulePreviewUpdate();
+      });
+
+      this.$.previewFormat?.addEventListener('change', () => {
+        this._schedulePreviewUpdate();
+      });
+
+      this.$.previewApply?.addEventListener('click', () => this._applyPreview());
+    },
+
+    _schedulePreviewUpdate(this: any) {
+      if (this._previewDebounceTimer) clearTimeout(this._previewDebounceTimer);
+      this._previewDebounceTimer = setTimeout(() => {
+        this._previewDebounceTimer = null;
+        this._updatePreview();
+      }, 500);
+    },
+
+    async _openPreview(this: any, asset: any) {
+      this._previewAsset = asset;
+      const overlay = this.$.previewOverlay as HTMLElement;
+      if (!overlay) return;
+
+      const isAudio = /\.(mp3|ogg|wav|m4a)$/i.test(asset.name ?? '');
+
+      const title = this.$.previewTitle as HTMLElement;
+      if (title) title.textContent = 'Preview: ' + (asset.name ?? '\u2014');
+
+      const mainFormat  = (this.$.compressFormat as HTMLSelectElement)?.value ?? 'webp';
+      const mainQuality = (this.$.compressQuality as HTMLInputElement)?.value ?? '80';
+      const pFormat  = this.$.previewFormat as HTMLSelectElement;
+      const pQuality = this.$.previewQuality as HTMLInputElement;
+      const pQVal    = this.$.previewQualityVal as HTMLSpanElement;
+
+      if (pFormat) {
+        clearChildren(pFormat);
+        const options = isAudio
+          ? [['mp3', 'MP3'], ['ogg', 'OGG']]
+          : [['webp','WebP'],['jpeg','JPEG'],['png','PNG'],['avif','AVIF']];
+        for (const [val, label] of options) {
+          const opt = document.createElement('option');
+          opt.value = val;
+          opt.textContent = label;
+          pFormat.appendChild(opt);
+        }
+        pFormat.value = isAudio ? (mainFormat === 'ogg' ? 'ogg' : 'mp3') : mainFormat;
+      }
+      if (pQuality) pQuality.value = mainQuality;
+      if (pQVal) pQVal.textContent = mainQuality;
+
+      const origWrap = this.$.previewOrigWrap as HTMLElement;
+      const origMeta = this.$.previewOrigMeta as HTMLElement;
+      if (origWrap) clearChildren(origWrap);
+      if (origMeta) origMeta.textContent = 'Loading...';
+
+      overlay.style.display = 'flex';
+
+      try {
+        const origData = await Editor.Message.request('plbx-cocos-extension', 'get-asset-data-uri', asset.path);
+        if (origWrap) {
+          if (isAudio) {
+            const audio = document.createElement('audio');
+            audio.controls = true;
+            audio.src = origData.dataUri;
+            origWrap.appendChild(audio);
+          } else {
+            const img = document.createElement('img');
+            img.src = origData.dataUri;
+            origWrap.appendChild(img);
+          }
+        }
+
+        const origSize = origData.size ?? asset.sourceSize ?? asset.buildSize ?? 0;
+        if (!isAudio) {
+          const meta = await Editor.Message.request('plbx-cocos-extension', 'get-image-meta', asset.path);
+          if (origMeta) origMeta.textContent = meta.width + '\u00d7' + meta.height + ' ' + meta.format.toUpperCase() + '\n' + fmt(origSize);
+        } else {
+          if (origMeta) origMeta.textContent = fmt(origSize);
+        }
+      } catch (e: any) {
+        console.warn('[plbx] preview original load error:', e);
+        if (origMeta) origMeta.textContent = 'Failed to load';
+      }
+
+      this._updatePreview();
+    },
+
+    async _updatePreview(this: any) {
+      const asset = this._previewAsset;
+      if (!asset) return;
+
+      const isAudio = /\.(mp3|ogg|wav|m4a)$/i.test(asset.name ?? '');
+      const format  = (this.$.previewFormat as HTMLSelectElement)?.value ?? 'webp';
+      const quality = parseInt((this.$.previewQuality as HTMLInputElement)?.value ?? '80', 10);
+
+      const compWrap = this.$.previewCompWrap as HTMLElement;
+      const compMeta = this.$.previewCompMeta as HTMLElement;
+      const spinner  = this.$.previewSpinner as HTMLElement;
+
+      if (compWrap) {
+        Array.from(compWrap.children).forEach((c: any) => {
+          if (c !== spinner) c.remove();
+        });
+      }
+      if (spinner) spinner.style.display = '';
+      if (compMeta) compMeta.textContent = 'Compressing...';
+
+      try {
+        let result: any;
+        if (isAudio) {
+          result = await Editor.Message.request('plbx-cocos-extension', 'compress-audio-preview', asset.path, format, quality);
+        } else {
+          result = await Editor.Message.request('plbx-cocos-extension', 'compress-image-preview', asset.path, format, quality);
+        }
+
+        if (this._previewAsset !== asset) return;
+
+        if (spinner) spinner.style.display = 'none';
+
+        if (compWrap) {
+          if (isAudio) {
+            const audio = document.createElement('audio');
+            audio.controls = true;
+            audio.src = result.dataUri;
+            compWrap.appendChild(audio);
+          } else {
+            const img = document.createElement('img');
+            img.src = result.dataUri;
+            compWrap.appendChild(img);
+          }
+        }
+
+        const meta = result.metadata;
+        const origSize = asset.sourceSize ?? asset.buildSize ?? meta.inputSize ?? 0;
+        const compSize = meta.outputSize ?? 0;
+        const savings  = origSize > 0 ? ((origSize - compSize) / origSize * 100).toFixed(1) : '0';
+
+        if (!isAudio && meta.width) {
+          if (compMeta) compMeta.textContent = meta.width + '\u00d7' + meta.height + ' ' + format.toUpperCase() + '\n' + fmt(compSize) + ' (\u2212' + savings + '%)';
+        } else {
+          if (compMeta) compMeta.textContent = format.toUpperCase() + '\n' + fmt(compSize) + ' (\u2212' + savings + '%)';
+        }
+      } catch (e: any) {
+        if (spinner) spinner.style.display = 'none';
+        if (compMeta) compMeta.textContent = 'Error: ' + (e?.message ?? e);
+        console.warn('[plbx] preview compress error:', e);
+      }
+    },
+
+    _closePreview(this: any) {
+      this._previewAsset = null;
+      if (this._previewDebounceTimer) {
+        clearTimeout(this._previewDebounceTimer);
+        this._previewDebounceTimer = null;
+      }
+      const overlay = this.$.previewOverlay as HTMLElement;
+      if (overlay) overlay.style.display = 'none';
+
+      const origWrap = this.$.previewOrigWrap as HTMLElement;
+      const compWrap = this.$.previewCompWrap as HTMLElement;
+      if (origWrap) clearChildren(origWrap);
+      if (compWrap) {
+        const spinner = this.$.previewSpinner as HTMLElement;
+        Array.from(compWrap.children).forEach((c: any) => {
+          if (c !== spinner) c.remove();
+        });
+      }
+    },
+
+    async _applyPreview(this: any) {
+      const asset = this._previewAsset;
+      if (!asset) return;
+
+      const isAudio = /\.(mp3|ogg|wav|m4a)$/i.test(asset.name ?? '');
+      const format  = (this.$.previewFormat as HTMLSelectElement)?.value ?? 'webp';
+      const quality = parseInt((this.$.previewQuality as HTMLInputElement)?.value ?? '80', 10);
+
+      const applyBtn = this.$.previewApply as HTMLButtonElement;
+      if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = 'Applying...'; }
+
+      try {
+        let result: any;
+        if (isAudio) {
+          const audioFormat = format === 'mp3' || format === 'ogg' ? format : 'mp3';
+          result = await Editor.Message.request('plbx-cocos-extension', 'compress-audio', asset.path, audioFormat, quality);
+        } else {
+          result = await Editor.Message.request('plbx-cocos-extension', 'compress-image', asset.path, format, quality);
+        }
+
+        const rowId = 'compress-row-' + encodeURIComponent(asset.path ?? asset.name ?? '');
+        const tbody = this.$.compressTbody as HTMLElement;
+        const row = tbody?.querySelector('#' + CSS.escape(rowId)) as HTMLTableRowElement | null;
+        if (row) {
+          const cells = row.querySelectorAll('td');
+          const newSize = result?.outputSize ?? result?.size ?? 0;
+          const origSize = asset.sourceSize ?? asset.buildSize ?? 0;
+          if (cells[3]) cells[3].textContent = fmt(newSize);
+          if (cells[4]) cells[4].textContent = origSize ? pct(newSize, origSize) : '\u2014';
+          if (cells[5]) { clearChildren(cells[5]); cells[5].appendChild(makeBadge('badge-pass', 'done')); }
+        }
+
+        this._closePreview();
+      } catch (e: any) {
+        console.warn('[plbx] preview apply error:', e);
+      } finally {
+        if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'Apply'; }
       }
     },
 
