@@ -1,0 +1,205 @@
+import { NetworkConfig, OutputFormat } from './types';
+
+const MB5 = 5 * 1024 * 1024; // 5242880 bytes
+const MB4 = 4 * 1024 * 1024; // 4194304 bytes
+
+export const NETWORKS: Record<string, NetworkConfig> = {
+  applovin: {
+    id: 'applovin',
+    name: 'AppLovin',
+    format: 'html',
+    maxSize: MB5,
+    mraid: true,
+    inlineAssets: true,
+  },
+  unity: {
+    id: 'unity',
+    name: 'Unity Ads',
+    format: 'html',
+    maxSize: MB5,
+    mraid: true,
+    inlineAssets: true,
+  },
+  ironsource: {
+    id: 'ironsource',
+    name: 'ironSource',
+    format: 'html',
+    maxSize: MB5,
+    mraid: true,
+    inlineAssets: true,
+  },
+  adcolony: {
+    id: 'adcolony',
+    name: 'AdColony',
+    format: 'html',
+    maxSize: MB5,
+    mraid: true,
+    inlineAssets: true,
+  },
+  tapjoy: {
+    id: 'tapjoy',
+    name: 'Tapjoy',
+    format: 'html',
+    maxSize: MB5,
+    mraid: false,
+    inlineAssets: true,
+  },
+  appreciate: {
+    id: 'appreciate',
+    name: 'Appreciate',
+    format: 'html',
+    maxSize: MB5,
+    mraid: true,
+    inlineAssets: true,
+  },
+  chartboost: {
+    id: 'chartboost',
+    name: 'Chartboost',
+    format: 'html',
+    maxSize: MB5,
+    mraid: true,
+    inlineAssets: true,
+  },
+  liftoff: {
+    id: 'liftoff',
+    name: 'Liftoff',
+    format: 'html',
+    maxSize: MB5,
+    mraid: true,
+    inlineAssets: true,
+  },
+  smadex: {
+    id: 'smadex',
+    name: 'Smadex',
+    format: 'html',
+    maxSize: MB5,
+    mraid: false,
+    inlineAssets: true,
+  },
+  rubeex: {
+    id: 'rubeex',
+    name: 'Rubeex',
+    format: 'html',
+    maxSize: MB5,
+    mraid: false,
+    inlineAssets: true,
+  },
+  facebook: {
+    id: 'facebook',
+    name: 'Facebook/Meta',
+    format: 'html',
+    maxSize: MB5,
+    mraid: false,
+    inlineAssets: true,
+  },
+  moloco: {
+    id: 'moloco',
+    name: 'Moloco',
+    format: 'html',
+    maxSize: MB5,
+    mraid: false,
+    inlineAssets: true,
+  },
+  google: {
+    id: 'google',
+    name: 'Google Ads',
+    format: 'zip',
+    maxSize: MB5,
+    mraid: false,
+    sdkUrl: 'https://tpc.googlesyndication.com/pagead/gadgets/html5/api/exitapi.js',
+    inlineAssets: false,
+  },
+  pangle: {
+    id: 'pangle',
+    name: 'Pangle',
+    format: 'zip',
+    maxSize: MB4,
+    mraid: false,
+    sdkUrl: 'https://sf3-ttcdn-tos.pstatp.com/obj/union-fe-nc/playable/sdk/playable-sdk.js',
+    inlineAssets: false,
+  },
+  tiktok: {
+    id: 'tiktok',
+    name: 'TikTok',
+    format: 'zip',
+    maxSize: MB4,
+    mraid: false,
+    sdkUrl: 'https://sf1-ttcdn-tos.pstatp.com/obj/ttfe/union/playable/sdk/index.b5662ec443f458c8a87e.js',
+    zipConfig: { playable_orientation: 0 },
+    inlineAssets: false,
+  },
+  vungle: {
+    id: 'vungle',
+    name: 'Vungle',
+    format: 'zip',
+    maxSize: MB5,
+    mraid: false,
+    inlineAssets: false,
+  },
+  mytarget: {
+    id: 'mytarget',
+    name: 'MyTarget',
+    format: 'zip',
+    maxSize: MB5,
+    mraid: true,
+    inlineAssets: false,
+  },
+  mintegral: {
+    id: 'mintegral',
+    name: 'Mintegral',
+    format: 'zip',
+    maxSize: MB5,
+    mraid: false,
+    jsBundle: 'creative.js',
+    zipStructure: 'mintegral/',
+    inlineAssets: false,
+  },
+  adikteev: {
+    id: 'adikteev',
+    name: 'Adikteev',
+    format: 'zip',
+    maxSize: MB5,
+    mraid: true,
+    jsBundle: 'creative.js',
+    inlineAssets: false,
+  },
+  bigabid: {
+    id: 'bigabid',
+    name: 'Bigabid',
+    format: 'zip',
+    maxSize: MB5,
+    mraid: true,
+    jsBundle: 'main.js',
+    inlineAssets: false,
+  },
+  inmobi: {
+    id: 'inmobi',
+    name: 'inMobi',
+    format: 'zip',
+    maxSize: MB5,
+    mraid: true,
+    jsBundle: 'main.js',
+    inlineAssets: false,
+  },
+  snapchat: {
+    id: 'snapchat',
+    name: 'Snapchat',
+    format: 'zip',
+    maxSize: MB5,
+    mraid: false,
+    zipConfig: { orientation: 1 },
+    inlineAssets: false,
+  },
+};
+
+export function getNetwork(id: string): NetworkConfig | undefined {
+  return NETWORKS[id];
+}
+
+export function getNetworksByFormat(format: OutputFormat): NetworkConfig[] {
+  return Object.values(NETWORKS).filter(n => n.format === format);
+}
+
+export function getAllNetworks(): NetworkConfig[] {
+  return Object.values(NETWORKS);
+}
