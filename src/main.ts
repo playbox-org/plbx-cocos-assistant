@@ -98,9 +98,13 @@ export const methods: Record<string, (...args: any[]) => any> = {
 
   // === Packaging ===
   async packageNetworks(buildDir: string, outputDir: string, networkIds: string[], config: any) {
+    const { resolve } = require('path');
+    const projectRoot = Editor.Project.path || '';
+    const absBuildDir  = resolve(projectRoot, buildDir);
+    const absOutputDir = resolve(projectRoot, outputDir);
     return packageForNetworks({
-      buildDir,
-      outputDir,
+      buildDir: absBuildDir,
+      outputDir: absOutputDir,
       networks: networkIds,
       config,
       onProgress: (_id, _status, _msg) => {
