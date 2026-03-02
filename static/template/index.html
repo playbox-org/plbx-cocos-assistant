@@ -14,8 +14,6 @@
     <div id="content-build-report" class="tab-pane">
       <div class="toolbar">
         <button id="btn-analyze" class="btn">Analyze Project</button>
-        <button id="btn-sort-size" class="btn btn-secondary btn-small">Sort by Size</button>
-        <button id="btn-sort-name" class="btn btn-secondary btn-small">Sort by Name</button>
         <span id="scan-status" style="color:#777;font-size:12px;margin-left:8px;"></span>
       </div>
 
@@ -46,11 +44,11 @@
         <table class="data-table" id="report-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th class="col-type">Type</th>
-              <th class="col-size">Source Size</th>
-              <th class="col-size">Build Size</th>
-              <th class="col-type">Extension</th>
+              <th id="report-th-name" class="sortable-th" data-sort="name">Name <span class="sort-arrow"></span></th>
+              <th id="report-th-type" class="col-type sortable-th" data-sort="type">Type <span class="sort-arrow"></span></th>
+              <th id="report-th-source" class="col-size sortable-th" data-sort="sourceSize">Source Size <span class="sort-arrow"></span></th>
+              <th id="report-th-build" class="col-size sortable-th" data-sort="buildSize">Build Size <span class="sort-arrow"></span></th>
+              <th id="report-th-ext" class="col-type sortable-th" data-sort="extension">Extension <span class="sort-arrow"></span></th>
             </tr>
           </thead>
           <tbody id="report-tbody">
@@ -102,9 +100,9 @@
         <table class="data-table" id="compress-table">
           <thead>
             <tr>
-              <th>Asset</th>
-              <th class="col-type">Type</th>
-              <th class="col-size">Original</th>
+              <th id="compress-th-asset" class="sortable-th" data-sort="asset">Asset <span class="sort-arrow"></span></th>
+              <th id="compress-th-type" class="col-type sortable-th" data-sort="type">Type <span class="sort-arrow"></span></th>
+              <th id="compress-th-original" class="col-size sortable-th" data-sort="original">Original <span class="sort-arrow"></span></th>
               <th class="col-size">Compressed</th>
               <th class="col-size">Savings</th>
               <th>Status</th>
@@ -161,12 +159,19 @@
             <span class="form-label">Output Directory</span>
             <input type="text" id="pkg-output-dir" class="form-input" value="build/plbx-html" placeholder="build/plbx-html" />
           </div>
+          <div class="form-group">
+            <label class="toggle-label">
+              <input type="checkbox" id="pkg-auto-package" checked />
+              <span>Auto-package after build</span>
+            </label>
+          </div>
         </div>
       </div>
 
       <div class="toolbar" style="flex-shrink:0;">
         <button id="btn-build-all" class="btn">Build All</button>
         <button id="btn-open-output" class="btn btn-secondary">Open Output Folder</button>
+        <button id="btn-generate-adapter" class="btn btn-secondary">Generate plbx_html.ts</button>
         <span id="pkg-status" style="color:#777;font-size:12px;margin-left:8px;"></span>
       </div>
 
@@ -215,16 +220,18 @@
           <span class="form-label">Project</span>
           <select id="deploy-project" class="form-select">
             <option value="">— select project —</option>
+            <option value="__new__">+ Create new project</option>
           </select>
           <button id="btn-refresh-projects" class="btn btn-secondary btn-small">Refresh</button>
         </div>
-        <div class="form-row">
+        <div id="deploy-new-project-row" class="form-row" style="display:none;">
           <span class="form-label">Project Name</span>
           <input type="text" id="deploy-project-name" class="form-input" placeholder="my-game" />
         </div>
         <div class="form-row">
           <span class="form-label">Deployment Name</span>
-          <input type="text" id="deploy-name" class="form-input" placeholder="v1.0.0" />
+          <input type="text" id="deploy-name" class="form-input" placeholder="v1-0-0" />
+          <span id="deploy-name-hint" style="font-size:11px;color:#777;margin-left:6px;"></span>
         </div>
         <div class="form-row">
           <span class="form-label">Network Build</span>
@@ -237,8 +244,15 @@
           </select>
         </div>
         <div class="form-row">
+          <span class="form-label">Orientation</span>
+          <div class="radio-group">
+            <label class="radio-label"><input type="checkbox" name="deploy-orientation" value="portrait" checked /> Portrait</label>
+            <label class="radio-label"><input type="checkbox" name="deploy-orientation" value="landscape" checked /> Landscape</label>
+          </div>
+        </div>
+        <div class="form-row">
           <span class="form-label">Build Path</span>
-          <input type="text" id="deploy-build-path" class="form-input" placeholder="/path/to/packaged/output/..." />
+          <input type="text" id="deploy-build-path" class="form-input" value="build/plbx-html" placeholder="build/plbx-html" />
         </div>
         <div class="form-row" style="margin-bottom:0;">
           <button id="btn-deploy" class="btn" style="min-width:100px;">Deploy</button>

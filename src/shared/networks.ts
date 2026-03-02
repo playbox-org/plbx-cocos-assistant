@@ -4,6 +4,14 @@ const MB5 = 5 * 1024 * 1024; // 5242880 bytes
 const MB4 = 4 * 1024 * 1024; // 4194304 bytes
 
 export const NETWORKS: Record<string, NetworkConfig> = {
+  preview: {
+    id: 'preview',
+    name: 'Preview',
+    format: 'html',
+    maxSize: 10 * 1024 * 1024, // 10MB — no real limit for preview
+    mraid: false,
+    inlineAssets: true,
+  },
   applovin: {
     id: 'applovin',
     name: 'AppLovin',
@@ -197,8 +205,51 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     name: 'Snapchat',
     format: 'zip',
     maxSize: MB5,
-    mraid: false,
+    mraid: true,
     zipConfig: { orientation: 1 },
+    inlineAssets: false,
+  },
+  bigo: {
+    id: 'bigo',
+    name: 'Bigo Ads',
+    format: 'zip',
+    maxSize: MB5,
+    mraid: false,
+    sdkUrl: 'https://static-web.likeevideo.com/as/common-static/big-data/dsp-public/bgy-mraid-sdk.js',
+    zipConfig: { orientation: 0 },
+    inlineAssets: false,
+  },
+  gdt: {
+    id: 'gdt',
+    name: 'GDT (Tencent)',
+    format: 'zip',
+    maxSize: MB5,
+    mraid: false,
+    inlineAssets: false,
+  },
+  kwai: {
+    id: 'kwai',
+    name: 'Kwai',
+    format: 'zip',
+    maxSize: MB5,
+    mraid: false,
+    inlineAssets: false,
+  },
+  newsbreak: {
+    id: 'newsbreak',
+    name: 'NewsBreak',
+    format: 'html',
+    maxSize: MB5,
+    mraid: false,
+    inlineAssets: true,
+  },
+  yandex: {
+    id: 'yandex',
+    name: 'Yandex',
+    format: 'zip',
+    maxSize: MB5,
+    mraid: false,
+    jsBundle: 'res.js',
     inlineAssets: false,
   },
 };

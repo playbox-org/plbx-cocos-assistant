@@ -51,8 +51,6 @@ module.exports = Editor.Panel.define({
 
     // Build Report tab
     btnAnalyze:       '#btn-analyze',
-    btnSortSize:      '#btn-sort-size',
-    btnSortName:      '#btn-sort-name',
     scanStatus:       '#scan-status',
     reportSummary:    '#report-summary',
     reportTbody:      '#report-tbody',
@@ -71,6 +69,7 @@ module.exports = Editor.Panel.define({
     compressTbody:    '#compress-tbody',
 
     // Package tab
+    btnGenerateAdapter: '#btn-generate-adapter',
     networkGrid:      '#network-grid',
     btnBuildAll:      '#btn-build-all',
     btnOpenOutput:    '#btn-open-output',
@@ -80,6 +79,7 @@ module.exports = Editor.Panel.define({
     pkgBuildDir:      '#pkg-build-dir',
     pkgOutputDir:     '#pkg-output-dir',
     pkgResultsTbody:  '#pkg-results-tbody',
+    pkgAutoPackage:   '#pkg-auto-package',
 
     // Deploy tab
     deployToken:       '#deploy-token',
@@ -88,7 +88,9 @@ module.exports = Editor.Panel.define({
     deployProject:     '#deploy-project',
     btnRefreshProjects:'#btn-refresh-projects',
     deployProjectName: '#deploy-project-name',
+    deployNewProjectRow: '#deploy-new-project-row',
     deployName:        '#deploy-name',
+    deployNameHint:    '#deploy-name-hint',
     deployNetwork:     '#deploy-network',
     deployBuildPath:   '#deploy-build-path',
     btnDeploy:         '#btn-deploy',
@@ -154,11 +156,10 @@ module.exports = Editor.Panel.define({
   methods: {
     _initBuildReport(this: any) {
       const btnAnalyze  = this.$.btnAnalyze as HTMLButtonElement;
-      const btnSortSize = this.$.btnSortSize as HTMLButtonElement;
-      const btnSortName = this.$.btnSortName as HTMLButtonElement;
       const scanStatus  = this.$.scanStatus as HTMLSpanElement;
 
-      let sortKey: 'sourceSize' | 'buildSize' | 'name' = 'buildSize';
+      this._reportSortKey = 'buildSize';
+      this._reportSortAsc = false;
 
       btnAnalyze?.addEventListener('click', async () => {
         btnAnalyze.disabled = true;
@@ -166,7 +167,7 @@ module.exports = Editor.Panel.define({
         try {
           const report = await Editor.Message.request('plbx-cocos-extension', 'scan-assets');
           this._reportData = report;
-          this._renderReport(report, sortKey);
+          this._renderReport(report, this._reportSortKey);
           if (scanStatus) scanStatus.textContent = '';
           this._populateCompressTable(report);
         } catch (e: any) {
@@ -176,14 +177,28 @@ module.exports = Editor.Panel.define({
         }
       });
 
-      btnSortSize?.addEventListener('click', () => {
-        sortKey = 'buildSize';
-        if (this._reportData) this._renderReport(this._reportData, sortKey);
-      });
+      // Sortable column headers
+      const reportTable = this.$.reportTbody?.closest('table') as HTMLTableElement | null;
+      reportTable?.querySelectorAll('.sortable-th').forEach((th: Element) => {
+        th.addEventListener('click', () => {
+          const key = (th as HTMLElement).dataset.sort ?? 'name';
+          if (this._reportSortKey === key) {
+            this._reportSortAsc = !this._reportSortAsc;
+          } else {
+            this._reportSortKey = key;
+            this._reportSortAsc = key === 'name' || key === 'type' || key === 'extension';
+          }
+          reportTable!.querySelectorAll('.sortable-th').forEach((h: Element) => {
+            h.classList.remove('sort-active');
+            const arrow = h.querySelector('.sort-arrow');
+            if (arrow) arrow.textContent = '';
+          });
+          th.classList.add('sort-active');
+          const arrow = th.querySelector('.sort-arrow');
+          if (arrow) arrow.textContent = this._reportSortAsc ? '\u25B2' : '\u25BC';
 
-      btnSortName?.addEventListener('click', () => {
-        sortKey = 'name';
-        if (this._reportData) this._renderReport(this._reportData, sortKey);
+          if (this._reportData) this._renderReport(this._reportData, this._reportSortKey);
+        });
       });
     },
 
@@ -210,11 +225,23 @@ module.exports = Editor.Panel.define({
 
       const assets: any[] = report?.assets ?? [];
 
+      const asc = this._reportSortAsc ?? false;
       const sorted = [...assets].sort((a, b) => {
-        if (sortKey === 'name') return (a.name || '').localeCompare(b.name || '');
-        const av = sortKey === 'buildSize' ? (a.buildSize ?? a.sourceSize ?? 0) : (a.sourceSize ?? 0);
-        const bv = sortKey === 'buildSize' ? (b.buildSize ?? b.sourceSize ?? 0) : (b.sourceSize ?? 0);
-        return bv - av;
+        let cmp = 0;
+        if (sortKey === 'name') {
+          cmp = (a.name || '').localeCompare(b.name || '');
+        } else if (sortKey === 'type') {
+          cmp = (a.type || '').localeCompare(b.type || '');
+        } else if (sortKey === 'extension') {
+          const aExt = (a.name ?? '').split('.').pop() ?? '';
+          const bExt = (b.name ?? '').split('.').pop() ?? '';
+          cmp = aExt.localeCompare(bExt);
+        } else {
+          const av = sortKey === 'buildSize' ? (a.buildSize ?? a.sourceSize ?? 0) : (a.sourceSize ?? 0);
+          const bv = sortKey === 'buildSize' ? (b.buildSize ?? b.sourceSize ?? 0) : (b.sourceSize ?? 0);
+          cmp = av - bv;
+        }
+        return asc ? cmp : -cmp;
       });
 
       const totalSrc   = assets.reduce((s, a) => s + (a.sourceSize ?? 0), 0);
@@ -309,14 +336,75 @@ module.exports = Editor.Panel.define({
       btnCompressAll?.addEventListener('click', () => {
         this._compressAll();
       });
+
+      // Sortable column headers
+      const compressTable = this.$.compressTbody?.closest('table') as HTMLTableElement | null;
+      compressTable?.querySelectorAll('.sortable-th').forEach((th: Element) => {
+        th.addEventListener('click', () => {
+          const key = (th as HTMLElement).dataset.sort ?? 'name';
+          if (this._compressSortKey === key) {
+            this._compressSortAsc = !this._compressSortAsc;
+          } else {
+            this._compressSortKey = key;
+            this._compressSortAsc = true;
+          }
+          // Update arrow indicators
+          compressTable!.querySelectorAll('.sortable-th').forEach((h: Element) => {
+            h.classList.remove('sort-active');
+            const arrow = h.querySelector('.sort-arrow');
+            if (arrow) arrow.textContent = '';
+          });
+          th.classList.add('sort-active');
+          const arrow = th.querySelector('.sort-arrow');
+          if (arrow) arrow.textContent = this._compressSortAsc ? '\u25B2' : '\u25BC';
+
+          if (this._compressAssets) this._renderCompressRows(this._compressAssets);
+        });
+      });
     },
 
     _populateCompressTable(this: any, report: any) {
       const tbody = this.$.compressTbody;
       if (!tbody) return;
+
+      // Deduplicate by file path
+      const seen = new Set<string>();
       const assets: any[] = (report?.assets ?? []).filter((a: any) => {
         const name = (a.name ?? '').toLowerCase();
-        return /\.(png|jpg|jpeg|webp|avif|gif|mp3|ogg|wav|m4a)$/.test(name);
+        if (!/\.(png|jpg|jpeg|webp|avif|gif|mp3|ogg|wav|m4a)$/.test(name)) return false;
+        const key = a.file ?? a.path ?? a.name ?? '';
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      // Store for sorting
+      this._compressAssets = assets;
+      this._compressSortKey = this._compressSortKey || 'name';
+      this._compressSortAsc = this._compressSortAsc ?? true;
+
+      this._renderCompressRows(assets);
+    },
+
+    _renderCompressRows(this: any, assets: any[]) {
+      const tbody = this.$.compressTbody;
+      if (!tbody) return;
+
+      const sortKey = this._compressSortKey || 'name';
+      const asc = this._compressSortAsc ?? true;
+
+      const sorted = [...assets].sort((a, b) => {
+        let cmp = 0;
+        if (sortKey === 'name' || sortKey === 'asset') {
+          cmp = (a.name ?? '').localeCompare(b.name ?? '');
+        } else if (sortKey === 'type') {
+          const aType = /\.(mp3|ogg|wav|m4a)$/i.test(a.name ?? '') ? 'audio' : 'image';
+          const bType = /\.(mp3|ogg|wav|m4a)$/i.test(b.name ?? '') ? 'audio' : 'image';
+          cmp = aType.localeCompare(bType);
+        } else if (sortKey === 'original' || sortKey === 'size') {
+          cmp = (a.sourceSize ?? 0) - (b.sourceSize ?? 0);
+        }
+        return asc ? cmp : -cmp;
       });
 
       clearChildren(tbody);
@@ -698,12 +786,37 @@ module.exports = Editor.Panel.define({
       Editor.Message.request('plbx-cocos-extension', 'get-settings').then((settings: any) => {
         const iosInput     = this.$.pkgStoreIos as HTMLInputElement;
         const androidInput = this.$.pkgStoreAndroid as HTMLInputElement;
+        const buildDirInput = this.$.pkgBuildDir as HTMLInputElement;
+        const outputDirInput = this.$.pkgOutputDir as HTMLInputElement;
+        const autoPackageCb = this.$.pkgAutoPackage as HTMLInputElement;
+
         if (iosInput)     iosInput.value     = settings?.storeUrlIos ?? '';
         if (androidInput) androidInput.value = settings?.storeUrlAndroid ?? '';
+        if (buildDirInput && settings?.buildDir) buildDirInput.value = settings.buildDir;
+        if (outputDirInput && settings?.outputDir) outputDirInput.value = settings.outputDir;
+        if (autoPackageCb) autoPackageCb.checked = settings?.autoPackage !== false;
+
         const ori = settings?.orientation ?? 'portrait';
         const radioEl = (this.$.contentPackage as HTMLElement | null)?.querySelector(`input[name="orientation"][value="${ori}"]`) as HTMLInputElement | null;
         if (radioEl) radioEl.checked = true;
+
+        // Restore selected networks
+        if (settings?.selectedNetworks?.length) {
+          const cbs = (this.$.networkGrid as HTMLElement | null)?.querySelectorAll('input[name="network"]');
+          cbs?.forEach((cb: any) => {
+            const input = cb as HTMLInputElement;
+            input.checked = settings.selectedNetworks.includes(input.value);
+            input.closest('label')?.classList.toggle('checked', input.checked);
+          });
+        }
       }).catch((e: any) => { console.warn('[plbx]', e); });
+
+      // Save auto-package toggle on change
+      (this.$.pkgAutoPackage as HTMLInputElement)?.addEventListener('change', () => {
+        const checked = (this.$.pkgAutoPackage as HTMLInputElement)?.checked ?? true;
+        Editor.Message.request('plbx-cocos-extension', 'save-settings', { autoPackage: checked })
+          .catch((e: any) => { console.warn('[plbx]', e); });
+      });
 
       btnBuildAll?.addEventListener('click', async () => {
         const buildDir  = (this.$.pkgBuildDir as HTMLInputElement)?.value.trim() ?? '';
@@ -725,6 +838,8 @@ module.exports = Editor.Panel.define({
           storeUrlIos: storeIos,
           storeUrlAndroid: storeAnd,
           orientation,
+          buildDir,
+          outputDir,
         }).catch((e: any) => { console.warn('[plbx]', e); });
 
         btnBuildAll.disabled = true;
@@ -732,7 +847,8 @@ module.exports = Editor.Panel.define({
 
         const config = { storeUrlIos: storeIos, storeUrlAndroid: storeAnd, orientation };
         try {
-          const results = await Editor.Message.request('plbx-cocos-extension', 'package-networks', buildDir, outputDir, selected, config);
+          const response = await Editor.Message.request('plbx-cocos-extension', 'package-networks', buildDir, outputDir, selected, config);
+          const results = Array.isArray(response) ? response : response?.results ?? [];
           this._renderPackageResults(results);
           if (pkgStatus) pkgStatus.textContent = 'Build complete';
         } catch (e: any) {
@@ -742,10 +858,31 @@ module.exports = Editor.Panel.define({
         }
       });
 
-      btnOpenOutput?.addEventListener('click', () => {
+      btnOpenOutput?.addEventListener('click', async () => {
         const outputDir = (this.$.pkgOutputDir as HTMLInputElement)?.value.trim() ?? '';
-        if (outputDir) {
-          Editor.Message.send('shell', 'open-file', outputDir);
+        if (!outputDir) return;
+        try {
+          await Editor.Message.request('plbx-cocos-extension', 'open-folder', outputDir);
+        } catch (e: any) {
+          if (pkgStatus) pkgStatus.textContent = 'Error: ' + (e?.message ?? e);
+        }
+      });
+
+      const btnGenAdapter = this.$.btnGenerateAdapter as HTMLButtonElement;
+      btnGenAdapter?.addEventListener('click', async () => {
+        btnGenAdapter.disabled = true;
+        if (pkgStatus) pkgStatus.textContent = '';
+        try {
+          const result = await Editor.Message.request('plbx-cocos-extension', 'generate-adapter');
+          if (result.created) {
+            if (pkgStatus) pkgStatus.textContent = 'Created: ' + result.path.split('/').slice(-3).join('/');
+          } else {
+            if (pkgStatus) pkgStatus.textContent = 'Already exists: ' + result.path.split('/').slice(-3).join('/');
+          }
+        } catch (e: any) {
+          if (pkgStatus) pkgStatus.textContent = 'Error: ' + (e?.message ?? e);
+        } finally {
+          btnGenAdapter.disabled = false;
         }
       });
     },
@@ -765,10 +902,11 @@ module.exports = Editor.Panel.define({
         return;
       }
 
-      const maxSize = Math.max(...results.map(r => r.size ?? 0), 1);
+      const maxSize = Math.max(...results.map(r => r.outputSize ?? r.size ?? 0), 1);
 
       for (const r of results) {
         const tr = document.createElement('tr');
+        const fileSize = r.outputSize ?? r.size ?? 0;
 
         const tdNet = document.createElement('td');
         tdNet.textContent = r.networkName ?? r.network ?? r.id ?? '—';
@@ -778,12 +916,13 @@ module.exports = Editor.Panel.define({
 
         const tdSize = document.createElement('td');
         tdSize.className = 'col-size size-bar-cell';
-        tdSize.appendChild(document.createTextNode(fmt(r.size)));
+        tdSize.appendChild(document.createTextNode(fmt(fileSize)));
         const barBg = document.createElement('div');
         barBg.className = 'size-bar-bg';
         const barFill = document.createElement('div');
-        barFill.className = 'size-bar-fill' + (r.overLimit ? ' over-limit' : '');
-        barFill.style.width = Math.round(((r.size ?? 0) / maxSize) * 100) + '%';
+        const overLimit = !r.withinLimit || fileSize > (r.maxSize ?? Infinity);
+        barFill.className = 'size-bar-fill' + (overLimit ? ' over-limit' : '');
+        barFill.style.width = Math.round((fileSize / maxSize) * 100) + '%';
         barBg.appendChild(barFill);
         tdSize.appendChild(barBg);
 
@@ -796,7 +935,7 @@ module.exports = Editor.Panel.define({
           const b = makeBadge('badge-fail', 'error');
           b.title = r.error;
           tdStatus.appendChild(b);
-        } else if (r.overLimit) {
+        } else if (overLimit) {
           tdStatus.appendChild(makeBadge('badge-warn', 'over limit'));
         } else {
           tdStatus.appendChild(makeBadge('badge-pass', 'pass'));
@@ -818,7 +957,9 @@ module.exports = Editor.Panel.define({
       const projectSel       = this.$.deployProject as HTMLSelectElement;
       const btnRefresh       = this.$.btnRefreshProjects as HTMLButtonElement;
       const projectNameInput = this.$.deployProjectName as HTMLInputElement;
+      const newProjectRow    = this.$.deployNewProjectRow as HTMLDivElement;
       const deployNameInput  = this.$.deployName as HTMLInputElement;
+      const deployNameHint   = this.$.deployNameHint as HTMLSpanElement;
       const networkSel       = this.$.deployNetwork as HTMLSelectElement;
       const buildPathInput   = this.$.deployBuildPath as HTMLInputElement;
       const btnDeploy        = this.$.btnDeploy as HTMLButtonElement;
@@ -846,6 +987,23 @@ module.exports = Editor.Panel.define({
         }
       }).catch((e: any) => { console.warn('[plbx]', e); });
 
+      // Show/hide new project name field
+      projectSel?.addEventListener('change', () => {
+        if (newProjectRow) {
+          newProjectRow.style.display = projectSel.value === '__new__' ? '' : 'none';
+        }
+      });
+
+      // Validate deployment name: no dots, URL-safe
+      deployNameInput?.addEventListener('input', () => {
+        const val = deployNameInput.value;
+        if (/[.]/.test(val)) {
+          deployNameInput.value = val.replace(/\./g, '-');
+          if (deployNameHint) deployNameHint.textContent = 'Dots replaced with dashes (URL slug)';
+          setTimeout(() => { if (deployNameHint) deployNameHint.textContent = ''; }, 2000);
+        }
+      });
+
       btnSaveToken?.addEventListener('click', async () => {
         const token = tokenInput?.value.trim();
         if (!token) return;
@@ -857,7 +1015,7 @@ module.exports = Editor.Panel.define({
         try {
           const user = await Editor.Message.request('plbx-cocos-extension', 'plbx-login', token);
           if (loginStatus) {
-            loginStatus.textContent = 'Connected as ' + (user?.email ?? user?.name ?? 'user');
+            loginStatus.textContent = 'Connected as ' + (user?.organizations?.[0]?.name ?? user?.userId ?? 'user');
             loginStatus.className = 'login-status connected';
           }
           this._loadProjects(projectSel);
@@ -873,19 +1031,52 @@ module.exports = Editor.Panel.define({
 
       btnRefresh?.addEventListener('click', () => this._loadProjects(projectSel));
 
+      // Check build existence and update deploy button state
+      const checkDeployBuild = async () => {
+        const buildPath = buildPathInput?.value.trim() ?? '';
+        const network = networkSel?.value ?? '';
+        if (!buildPath || !network) {
+          if (btnDeploy) { btnDeploy.disabled = true; btnDeploy.title = 'Select network and build path'; }
+          if (deployStatus) deployStatus.textContent = 'Select network and build path';
+          return;
+        }
+        const fullPath = buildPath + '/' + network;
+        try {
+          const exists = await Editor.Message.request('plbx-cocos-extension', 'check-path-exists', fullPath);
+          if (btnDeploy) { btnDeploy.disabled = !exists; btnDeploy.title = exists ? '' : 'Build not found'; }
+          if (deployStatus) deployStatus.textContent = exists ? '' : `Build not found: ${fullPath} — run Package first`;
+        } catch {
+          if (btnDeploy) btnDeploy.disabled = false;
+          if (deployStatus) deployStatus.textContent = '';
+        }
+      };
+
+      networkSel?.addEventListener('change', checkDeployBuild);
+      buildPathInput?.addEventListener('change', checkDeployBuild);
+      // Initial check after settings load
+      setTimeout(checkDeployBuild, 500);
+
       btnDeploy?.addEventListener('click', async () => {
         const projectId   = projectSel?.value;
         const name        = deployNameInput?.value.trim();
         const buildPath   = buildPathInput?.value.trim();
         const network     = networkSel?.value;
         const projectName = projectNameInput?.value.trim();
+        const orientations = Array.from(
+          (this.$.contentDeploy as HTMLElement | null)?.querySelectorAll('input[name="deploy-orientation"]:checked') ?? []
+        ).map((cb: any) => (cb as HTMLInputElement).value);
 
-        if (!projectId) { if (deployStatus) deployStatus.textContent = 'Select a project';        return; }
+        if (!projectId || projectId === '__new__' && !projectName) {
+          if (deployStatus) deployStatus.textContent = projectId === '__new__' ? 'Enter project name' : 'Select a project';
+          return;
+        }
         if (!name)      { if (deployStatus) deployStatus.textContent = 'Enter a deployment name'; return; }
         if (!buildPath) { if (deployStatus) deployStatus.textContent = 'Enter build path';        return; }
+        if (!orientations.length) { if (deployStatus) deployStatus.textContent = 'Select at least one orientation'; return; }
 
         await Editor.Message.request('plbx-cocos-extension', 'save-settings', {
           deploymentName: name,
+          deployProjectId: projectId === '__new__' ? '' : projectId,
           defaultDeployNetwork: network,
           projectName,
         }).catch((e: any) => { console.warn('[plbx]', e); });
@@ -894,21 +1085,42 @@ module.exports = Editor.Panel.define({
         if (deployStatus) deployStatus.textContent = 'Deploying…';
         if (resultDiv) resultDiv.style.display = 'none';
 
+        // Poll deploy progress from main process every 500ms
+        const progressTimer = setInterval(async () => {
+          try {
+            const p = await Editor.Message.request('plbx-cocos-extension', 'get-deploy-progress');
+            if (!p || !deployStatus) return;
+            if (p.stage === 'uploading') {
+              deployStatus.textContent = `Uploading ${p.detail}…`;
+            } else if (p.stage === 'finalizing') {
+              deployStatus.textContent = 'Finalizing…';
+            }
+          } catch {}
+        }, 500);
+
         try {
+          const networkBuildPath = buildPath + '/' + network;
           const result = await Editor.Message.request('plbx-cocos-extension', 'deploy', {
-            projectId,
+            projectId: projectId === '__new__' ? undefined : projectId,
+            projectName: projectId === '__new__' ? projectName : undefined,
             name,
-            entryPoint: 'index.html',
-            files: [], // TODO: populate with actual file descriptors from buildPath
-            buildPath,
+            buildPath: networkBuildPath,
+            orientations,
           });
-          const url = result?.url ?? result?.deploymentUrl ?? '';
-          if (resultUrl) resultUrl.textContent = url || 'Deployed successfully';
+          const url = result?.publicUrl ?? result?.shareUrl ?? '';
+          if (resultUrl) {
+            resultUrl.textContent = url || 'Deployed successfully';
+            if (url) {
+              resultUrl.style.cursor = 'pointer';
+              resultUrl.onclick = () => { window.open(url, '_blank'); };
+            }
+          }
           if (resultDiv) resultDiv.style.display = 'block';
           if (deployStatus) deployStatus.textContent = 'Done';
         } catch (e: any) {
           if (deployStatus) deployStatus.textContent = 'Error: ' + (e?.message ?? e);
         } finally {
+          clearInterval(progressTimer);
           if (btnDeploy) btnDeploy.disabled = false;
         }
       });
@@ -925,7 +1137,7 @@ module.exports = Editor.Panel.define({
       try {
         const user = await Editor.Message.request('plbx-cocos-extension', 'plbx-login', token);
         if (statusEl) {
-          statusEl.textContent = 'Connected as ' + (user?.email ?? user?.name ?? 'user');
+          statusEl.textContent = 'Connected as ' + (user?.organizations?.[0]?.name ?? user?.userId ?? 'user');
           statusEl.className = 'login-status connected';
         }
         this._loadProjects(projectSel);
@@ -941,15 +1153,28 @@ module.exports = Editor.Panel.define({
       if (!selectEl) return;
       try {
         const projects = await Editor.Message.request('plbx-cocos-extension', 'plbx-list-projects');
+        // Keep first option (placeholder) and clear the rest
         while (selectEl.options.length > 1) selectEl.remove(1);
-        for (const p of projects ?? []) {
+        const list = Array.isArray(projects) ? projects : projects?.projects ?? projects?.data ?? [];
+        for (const p of list) {
           const opt = document.createElement('option');
           opt.value       = p.id ?? p.projectId ?? '';
           opt.textContent = p.name ?? p.id ?? '—';
           selectEl.appendChild(opt);
         }
-      } catch {
-        // silent — user may not be logged in yet
+        // Add "Create new" option at end
+        const newOpt = document.createElement('option');
+        newOpt.value = '__new__';
+        newOpt.textContent = '+ Create new project';
+        selectEl.appendChild(newOpt);
+
+        // Restore saved project selection
+        const settings = await Editor.Message.request('plbx-cocos-extension', 'get-settings').catch(() => null);
+        if (settings?.deployProjectId) {
+          selectEl.value = settings.deployProjectId;
+        }
+      } catch (e: any) {
+        console.error('[plbx] loadProjects error:', e?.message ?? e);
       }
     },
   },

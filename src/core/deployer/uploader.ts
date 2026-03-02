@@ -1,5 +1,11 @@
 import { readFileSync } from 'fs';
-import { UploadProgress } from './types';
+
+interface UploadProgress {
+  file: string;
+  loaded: number;
+  total: number;
+  percentage: number;
+}
 
 export async function uploadFile(
   filePath: string,

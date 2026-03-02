@@ -1,6 +1,6 @@
 import { HtmlBuilder } from '../html-builder';
 import { NetworkConfig, PackageConfig } from '../../../shared/types';
-import { BaseAdapter } from './base';
+import { BaseAdapter, googleBridge } from './base';
 
 /**
  * Google Ads adapter.
@@ -13,8 +13,11 @@ export class GoogleAdapter extends BaseAdapter {
     super(networkId, networkConfig);
   }
 
+  protected getPlbxBridge(_config: PackageConfig): string {
+    return googleBridge();
+  }
+
   transform(builder: HtmlBuilder, config: PackageConfig): void {
-    // BaseAdapter handles sdkUrl injection (ExitAPI)
     super.transform(builder, config);
 
     const isLandscape = config.orientation === 'landscape';

@@ -27,8 +27,8 @@
   "contributions": {
     "menu": [
       {
-        "path": "i18n:menu.panel/Playbox",
-        "label": "i18n:plbx-cocos-extension.open-panel",
+        "path": "i18n:menu.panel",
+        "label": "Playbox",
         "message": "open-panel"
       }
     ],
@@ -41,6 +41,11 @@
       "on-build-finished": {
         "methods": [
           "onBuildFinished"
+        ]
+      },
+      "on-auto-package-done": {
+        "methods": [
+          "onAutoPackageDone"
         ]
       },
       "scene:ready": {
@@ -116,6 +121,26 @@
       "plbx-list-projects": {
         "methods": [
           "plbxListProjects"
+        ]
+      },
+      "generate-adapter": {
+        "methods": [
+          "generateAdapter"
+        ]
+      },
+      "get-deploy-progress": {
+        "methods": [
+          "getDeployProgress"
+        ]
+      },
+      "check-path-exists": {
+        "methods": [
+          "checkPathExists"
+        ]
+      },
+      "open-folder": {
+        "methods": [
+          "openFolder"
         ]
       },
       "get-settings": {

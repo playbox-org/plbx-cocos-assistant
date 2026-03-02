@@ -10,40 +10,89 @@ export interface Project {
 }
 
 export interface CreateDeploymentRequest {
-  projectId: string;
+  projectId?: string;
+  projectSlug?: string;
   name: string;
-  entryPoint: string;  // e.g. 'index.html'
-  orientation?: 'portrait' | 'landscape';
+  visibility: 'private' | 'public';
+  entryFile?: string;
+  orientationLock?: 'portrait' | 'landscape';
   files: DeploymentFile[];
 }
 
 export interface DeploymentFile {
-  path: string;        // relative path in deployment
+  path: string;
   size: number;
-  contentType: string;
+  mimeType: string;
 }
 
 export interface CreateDeploymentResponse {
-  deploymentId: string;
-  uploadUrls: Record<string, string>; // path -> pre-signed S3 URL
+  success: boolean;
+  data?: {
+    deploymentId: string;
+    s3Path: string;
+    uploadUrls: Array<{
+      path: string;
+      uploadUrl: string;
+    }>;
+  };
+  error?: string;
 }
 
 export interface CompleteDeploymentResponse {
-  deploymentId: string;
-  url: string;
-  shareUrl?: string;
+  success: boolean;
+  data?: {
+    publicUrl: string;
+    accessToken?: string;
+    shareUrl: string;
+    warnings?: string[];
+  };
+  error?: string;
 }
 
-export interface DeployResult {
-  deploymentId: string;
-  url: string;
-  projectName: string;
-  timestamp: number;
+export interface WhoAmIResponse {
+  success: boolean;
+  data?: {
+    userId: string;
+    organizationId: string | null;
+    scopes: string[] | null;
+    organizations: Array<{
+      id: string;
+      name: string;
+      slug: string;
+    }>;
+  };
+  error?: string;
 }
 
-export interface UploadProgress {
-  file: string;
-  loaded: number;
-  total: number;
-  percentage: number;
+export interface ListProjectsResponse {
+  success: boolean;
+  data?: {
+    organization: {
+      id: string;
+      name: string;
+      slug: string;
+    };
+    projects: Array<{
+      id: string;
+      name: string;
+      slug: string;
+      description: string | null;
+      type: string;
+      status: string;
+    }>;
+  };
+  error?: string;
+}
+
+export interface CreateProjectResponse {
+  success: boolean;
+  data?: {
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    type: string;
+    status: string;
+  };
+  error?: string;
 }

@@ -4,20 +4,28 @@ export interface ProjectSettings {
   selectedNetworks: string[];
   projectName: string;
   deploymentName: string;
+  deployProjectId: string;
   defaultDeployNetwork: string;
   storeUrlIos: string;
   storeUrlAndroid: string;
   orientation: 'portrait' | 'landscape' | 'auto';
+  autoPackage: boolean;
+  buildDir: string;
+  outputDir: string;
 }
 
 const DEFAULT_SETTINGS: ProjectSettings = {
   selectedNetworks: ['ironsource', 'applovin', 'google', 'facebook', 'unity'],
   projectName: '',  // will default to project folder name
   deploymentName: '',
+  deployProjectId: '',
   defaultDeployNetwork: 'ironsource',
   storeUrlIos: '',
   storeUrlAndroid: '',
   orientation: 'portrait',
+  autoPackage: true,
+  buildDir: 'build/web-mobile',
+  outputDir: 'build/plbx-html',
 };
 
 /** Get project-scoped settings */

@@ -334,7 +334,7 @@ describe('panel null safety', () => {
 
   it('should use optional chaining for event handlers', () => {
     expect(srcCode).toContain('btnAnalyze?.addEventListener');
-    expect(srcCode).toContain('btnSortSize?.addEventListener');
+    expect(srcCode).toContain('btnCompressAll?.addEventListener');
     expect(srcCode).toContain('btnBuildAll?.addEventListener');
     expect(srcCode).toContain('btnDeploy?.addEventListener');
   });

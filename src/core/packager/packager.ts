@@ -1,4 +1,4 @@
-import { readFileSync, mkdirSync, existsSync, writeFileSync, cpSync, rmSync, readdirSync } from 'fs';
+import { readFileSync, mkdirSync, existsSync, writeFileSync, cpSync, rmSync, readdirSync, statSync } from 'fs';
 import { join, relative, extname } from 'path';
 import { HtmlBuilder } from './html-builder';
 import { getAdapter } from './network-adapters';
@@ -73,7 +73,7 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
 
           outputPath = join(networkOutDir, `index${formatSuffix}.html`);
           writeFileSync(outputPath, finalHtml);
-          outputSize = Buffer.byteLength(finalHtml, 'utf-8');
+          outputSize = statSync(outputPath).size;
         } else {
           // ZIP — copy build dir + transformed HTML + extras
           options.onProgress?.(networkId, 'processing', `Building ZIP...`);

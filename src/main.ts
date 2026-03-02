@@ -12,9 +12,11 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 
 let lastBuildResult: any = null;
+let _deployProgress: any = null;
 
 export const load = function () {
   console.log('[plbx] Extension loaded');
+  Editor.Panel.open('plbx-cocos-extension');
 };
 
 export const unload = function () {
@@ -30,6 +32,13 @@ export const methods: Record<string, (...args: any[]) => any> = {
     // Store build result for later use
     if (args[0]) lastBuildResult = args[0];
     Editor.Panel.open('plbx-cocos-extension');
+  },
+
+  onAutoPackageDone(result: any) {
+    // Forward auto-package results to panel for display
+    Editor.Message.send('plbx-cocos-extension', 'on-build-finished', {
+      autoPackageResult: result,
+    });
   },
 
   onSceneReady() {},
@@ -121,7 +130,18 @@ export const methods: Record<string, (...args: any[]) => any> = {
   },
 
   // === Deploy ===
-  async deploy(config: { projectId: string; name: string; entryPoint: string; files: any[]; buildPath: string }) {
+  getDeployProgress() {
+    return _deployProgress;
+  },
+
+  async deploy(config: {
+    projectId?: string; projectName?: string;
+    name: string; buildPath: string;
+    orientations?: string[];
+  }) {
+    _deployProgress = null;
+    const { resolve, relative, extname } = require('path');
+    const { readdirSync, statSync, readFileSync } = require('fs');
     const token = await getGlobalToken();
     if (!token) throw new Error('PLBX API token not set');
 
@@ -130,26 +150,90 @@ export const methods: Record<string, (...args: any[]) => any> = {
       apiKey: token,
     });
 
-    // TODO: config.files is always passed as [] from the panel (see default.ts deploy call).
-    // The API expects a list of DeploymentFile descriptors to generate uploadUrls.
-    // With an empty list the API likely returns no uploadUrls and no files are uploaded.
-    // Fix: scan buildPath for files and populate this list before calling createDeployment.
-    const deployment = await client.createDeployment({
-      projectId: config.projectId,
-      name: config.name,
-      entryPoint: config.entryPoint,
-      files: config.files,
-    });
+    let projectId = config.projectId;
 
-    // Upload files
-    for (const [filePath, url] of Object.entries(deployment.uploadUrls)) {
-      const fullPath = join(config.buildPath, filePath);
-      if (existsSync(fullPath)) {
-        await uploadFile(fullPath, url as string, 'application/octet-stream');
+    // Create new project if needed
+    if (!projectId && config.projectName) {
+      const project = await client.createProject(config.projectName);
+      projectId = project.id;
+    }
+    if (!projectId) throw new Error('No project selected');
+
+    // Scan build directory for files
+    const projectRoot = Editor.Project.path || '';
+    const absBuildPath = resolve(projectRoot, config.buildPath);
+
+    const MIME_MAP: Record<string, string> = {
+      '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
+      '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml',
+      '.webp': 'image/webp', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg',
+      '.wav': 'audio/wav', '.woff': 'font/woff', '.woff2': 'font/woff2',
+    };
+
+    function scanDir(dir: string): Array<{ path: string; absolutePath: string; size: number; mimeType: string }> {
+      const result: any[] = [];
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          result.push(...scanDir(full));
+        } else {
+          const ext = extname(entry.name).toLowerCase();
+          result.push({
+            path: relative(absBuildPath, full).replace(/\\/g, '/'),
+            absolutePath: full,
+            size: statSync(full).size,
+            mimeType: MIME_MAP[ext] || 'application/octet-stream',
+          });
+        }
       }
+      return result;
     }
 
-    const result = await client.completeDeployment(deployment.deploymentId);
+    if (!existsSync(absBuildPath)) throw new Error(`Build path not found: ${absBuildPath}`);
+    const files = scanDir(absBuildPath);
+    if (!files.length) throw new Error('No files found in build path');
+
+    // Determine orientationLock from selected orientations
+    let orientationLock: 'portrait' | 'landscape' | undefined;
+    if (config.orientations?.length === 1) {
+      orientationLock = config.orientations[0] as any;
+    }
+    // Both selected or none = no lock (auto)
+
+    const deployment = await client.createDeployment({
+      projectId,
+      name: config.name,
+      visibility: 'public',
+      entryFile: 'index.html',
+      orientationLock,
+      files: files.map(f => ({ path: f.path, size: f.size, mimeType: f.mimeType })),
+    });
+
+    // Upload files with progress
+    let uploadedBytes = 0;
+    let uploadedCount = 0;
+    const totalBytes = files.reduce((s, f) => s + f.size, 0);
+    const totalCount = files.length;
+
+    const sendProgress = (stage: string, detail?: string) => {
+      _deployProgress = { stage, uploadedCount, totalCount, uploadedBytes, totalBytes, detail };
+    };
+
+    sendProgress('uploading', `0/${totalCount} files`);
+
+    for (const file of files) {
+      const uploadInfo = deployment.uploadUrls.find(u => u.path === file.path);
+      if (!uploadInfo) continue;
+      await uploadFile(file.absolutePath, uploadInfo.uploadUrl, file.mimeType);
+      uploadedBytes += file.size;
+      uploadedCount++;
+      sendProgress('uploading', `${uploadedCount}/${totalCount} files`);
+    }
+
+    sendProgress('finalizing');
+    const result = await client.completeDeployment(deployment.deploymentId, uploadedBytes);
+    sendProgress('done');
     return result;
   },
 
@@ -172,6 +256,42 @@ export const methods: Record<string, (...args: any[]) => any> = {
     return client.listProjects();
   },
 
+  // === Code Generation ===
+  async generateAdapter() {
+    const { resolve, dirname } = require('path');
+    const { existsSync, mkdirSync, writeFileSync } = require('fs');
+    const projectRoot = Editor.Project.path || '';
+    const filePath = resolve(projectRoot, 'assets/Scripts/plbx_html/plbx_html_playable.ts');
+
+    if (existsSync(filePath)) {
+      return { created: false, path: filePath, message: 'File already exists' };
+    }
+
+    mkdirSync(dirname(filePath), { recursive: true });
+    writeFileSync(filePath, PLBX_ADAPTER_TEMPLATE);
+    return { created: true, path: filePath, message: 'Created successfully' };
+  },
+
+  // === Utilities ===
+  async checkPathExists(relativePath: string) {
+    const { resolve } = require('path');
+    const { existsSync } = require('fs');
+    const projectRoot = Editor.Project.path || '';
+    return existsSync(resolve(projectRoot, relativePath));
+  },
+
+  async openFolder(folderPath: string) {
+    const { resolve } = require('path');
+    const { existsSync } = require('fs');
+    const projectRoot = Editor.Project.path || '';
+    const absPath = resolve(projectRoot, folderPath);
+    if (!existsSync(absPath)) {
+      throw new Error(`Folder not found: ${absPath}`);
+    }
+    const { shell } = require('electron');
+    shell.openPath(absPath);
+  },
+
   // === Settings ===
   async getSettings() {
     return getProjectSettings();
@@ -189,3 +309,71 @@ export const methods: Record<string, (...args: any[]) => any> = {
     return saveGlobalToken(token);
   },
 };
+
+const PLBX_ADAPTER_TEMPLATE = `/**
+ * plbx_html playable adapter
+ * Generated by Playbox extension.
+ *
+ * Usage:
+ *   import plbx from './plbx_html/plbx_html_playable';
+ *   plbx.download();       // redirect to store
+ *   plbx.game_end();       // notify ad network that gameplay ended
+ *   plbx.is_audio();       // check if audio is allowed
+ */
+export class plbx_html_playable {
+
+    download() {
+        console.log("[plbx] download");
+        //@ts-ignore
+        if (window.plbx_html) { plbx_html.download(); }
+        //@ts-ignore
+        else if (window.super_html) { super_html.download(); }
+    }
+
+    game_end() {
+        console.log("[plbx] game_end");
+        //@ts-ignore
+        if (window.plbx_html) { plbx_html.game_end(); }
+        //@ts-ignore
+        else if (window.super_html) { super_html.game_end(); }
+    }
+
+    is_audio(): boolean {
+        //@ts-ignore
+        if (window.plbx_html && plbx_html.is_audio) {
+            //@ts-ignore
+            return plbx_html.is_audio();
+        }
+        //@ts-ignore
+        if (window.super_html && super_html.is_audio) {
+            //@ts-ignore
+            return super_html.is_audio();
+        }
+        return true;
+    }
+
+    is_hide_download(): boolean {
+        //@ts-ignore
+        if (window.plbx_html && plbx_html.is_hide_download) {
+            //@ts-ignore
+            return plbx_html.is_hide_download();
+        }
+        return false;
+    }
+
+    set_google_play_url(url: string) {
+        //@ts-ignore
+        if (window.plbx_html) { plbx_html.google_play_url = url; }
+        //@ts-ignore
+        if (window.super_html) { super_html.google_play_url = url; }
+    }
+
+    set_app_store_url(url: string) {
+        //@ts-ignore
+        if (window.plbx_html) { plbx_html.appstore_url = url; }
+        //@ts-ignore
+        if (window.super_html) { super_html.appstore_url = url; }
+    }
+}
+export default new plbx_html_playable();
+`;

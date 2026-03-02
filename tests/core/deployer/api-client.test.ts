@@ -20,11 +20,20 @@ describe('PlayboxApiClient', () => {
   it('should send auth header on whoami', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ email: 'test@plbx.ai', name: 'Test User' }),
+      json: async () => ({
+        success: true,
+        data: {
+          userId: 'user-123',
+          organizationId: null,
+          scopes: null,
+          organizations: [{ id: 'org-1', name: 'Test Org', slug: 'test-org' }],
+        },
+      }),
     });
 
     const result = await client.whoami();
-    expect(result.email).toBe('test@plbx.ai');
+    expect(result.userId).toBe('user-123');
+    expect(result.organizations[0].name).toBe('Test Org');
     expect(mockFetch).toHaveBeenCalledWith(
       'https://app.plbx.ai/api/cli/whoami',
       expect.objectContaining({
@@ -43,7 +52,13 @@ describe('PlayboxApiClient', () => {
   it('should list projects', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => [{ id: '1', name: 'My Project', slug: 'my-project' }],
+      json: async () => ({
+        success: true,
+        data: {
+          organization: { id: 'org-1', name: 'Test Org', slug: 'test-org' },
+          projects: [{ id: '1', name: 'My Project', slug: 'my-project', description: null, type: 'playable_ad', status: 'draft' }],
+        },
+      }),
     });
 
     const projects = await client.listProjects();
@@ -55,32 +70,57 @@ describe('PlayboxApiClient', () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
-        deploymentId: 'dep-123',
-        uploadUrls: { 'index.html': 'https://s3.amazonaws.com/presigned-url' },
+        success: true,
+        data: {
+          deploymentId: 'dep-123',
+          s3Path: 'uploads/dep-123',
+          uploadUrls: [
+            { path: 'index.html', uploadUrl: 'https://s3.amazonaws.com/presigned-url' },
+          ],
+        },
       }),
     });
 
     const result = await client.createDeployment({
       projectId: '1',
       name: 'test-deploy',
-      entryPoint: 'index.html',
-      files: [{ path: 'index.html', size: 1000, contentType: 'text/html' }],
+      visibility: 'public',
+      entryFile: 'index.html',
+      files: [{ path: 'index.html', size: 1000, mimeType: 'text/html' }],
     });
 
     expect(result.deploymentId).toBe('dep-123');
-    expect(result.uploadUrls['index.html']).toBeDefined();
+    expect(result.uploadUrls[0].uploadUrl).toBe('https://s3.amazonaws.com/presigned-url');
   });
 
   it('should complete deployment and get URL', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
-        deploymentId: 'dep-123',
-        url: 'https://play.plbx.ai/dep-123',
+        success: true,
+        data: {
+          publicUrl: 'https://play.plbx.ai/org/project/dep-123',
+          shareUrl: 'https://play.plbx.ai/share/dep-123',
+        },
       }),
     });
 
-    const result = await client.completeDeployment('dep-123');
-    expect(result.url).toBe('https://play.plbx.ai/dep-123');
+    const result = await client.completeDeployment('dep-123', 5000);
+    expect(result.publicUrl).toBe('https://play.plbx.ai/org/project/dep-123');
+    expect(result.shareUrl).toBe('https://play.plbx.ai/share/dep-123');
+  });
+
+  it('should create a project', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: { id: 'proj-1', name: 'New Project', slug: 'new-project', description: null, type: 'playable_ad', status: 'draft' },
+      }),
+    });
+
+    const result = await client.createProject('New Project');
+    expect(result.id).toBe('proj-1');
+    expect(result.name).toBe('New Project');
   });
 });

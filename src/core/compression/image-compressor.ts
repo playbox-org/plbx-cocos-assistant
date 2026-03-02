@@ -1,5 +1,5 @@
 import sharp from 'sharp';
-import { statSync } from 'fs';
+import { statSync, renameSync } from 'fs';
 import { join, basename, extname, dirname } from 'path';
 import { CompressionOptions, CompressionResult, ImageMetadata } from './types';
 
@@ -15,6 +15,10 @@ export async function compressImage(
   const outputFilename = `${inputBasename}${outputExt}`;
   const outputDirectory = outputDir ?? dirname(inputPath);
   const outputPath = join(outputDirectory, outputFilename);
+
+  // sharp cannot write to the same file it reads — use a temp file then rename
+  const sameFile = outputPath === inputPath;
+  const writePath = sameFile ? outputPath + '.tmp' : outputPath;
 
   let pipeline = sharp(inputPath);
 
@@ -42,7 +46,8 @@ export async function compressImage(
       break;
   }
 
-  await pipeline.toFile(outputPath);
+  await pipeline.toFile(writePath);
+  if (sameFile) renameSync(writePath, outputPath);
 
   const outputSize = statSync(outputPath).size;
   const savings = ((inputSize - outputSize) / inputSize) * 100;
