@@ -5,7 +5,7 @@ export class HtmlBuilder {
   private $: cheerio.CheerioAPI;
 
   constructor(html: string) {
-    this.$ = cheerio.load(html, { decodeEntities: false });
+    this.$ = cheerio.load(html, { decodeEntities: false } as any);
   }
 
   /** Get all <script> tags with src attribute */

@@ -139,6 +139,7 @@
   },
   "devDependencies": {
     "@cocos/creator-types": "3.8.7",
+    "@types/clean-css": "^4.2.11",
     "@types/node": "^25.3.3",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"
