@@ -182,14 +182,30 @@ function patchAPIs() {
 
   // 1. Patch XMLHttpRequest
   var OriginalXHR = window.XMLHttpRequest;
+  var _rtDesc = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'responseType');
   window.XMLHttpRequest = function() {
     var xhr = new OriginalXHR();
     var originalOpen = xhr.open.bind(xhr);
     var originalSend = xhr.send.bind(xhr);
+    // Track responseType ourselves: when we skip originalOpen() for cached assets,
+    // the XHR stays in UNSENT state and the browser may ignore responseType setter.
+    var _respType = '';
+    Object.defineProperty(xhr, 'responseType', {
+      set: function(v) {
+        _respType = v;
+        // Forward to real XHR for non-cached requests
+        if (!xhr._plbxAsset && _rtDesc && _rtDesc.set) {
+          try { _rtDesc.set.call(xhr, v); } catch(e) {}
+        }
+      },
+      get: function() { return _respType; },
+      configurable: true
+    });
 
     xhr.open = function(method, url, async, user, password) {
       xhr._plbxUrl = url;
       xhr._plbxAsset = _findAsset(url);
+      _respType = '';
       if (!xhr._plbxAsset) {
         originalOpen(method, url, async !== false, user, password);
       }
@@ -203,7 +219,7 @@ function patchAPIs() {
       var asset = xhr._plbxAsset;
       var response;
       try {
-        switch (xhr.responseType) {
+        switch (_respType) {
           case 'json':
             if (asset.binary) {
               response = JSON.parse(atob(asset.data));

@@ -123,6 +123,11 @@ function getCriticalErrors(result: Awaited<ReturnType<typeof verifyHtmlInBrowser
     if (err.text.includes('program:') && err.text.includes('not found')) {
       critical.push(`Shader: ${err.text}`);
     }
+    // RangeError in typed array creation indicates corrupted binary data
+    // (e.g. text string returned instead of ArrayBuffer for .bin files)
+    if (err.text.includes('Invalid typed array length') || err.text.includes('RangeError')) {
+      critical.push(`BinaryCorrupt: ${err.text}`);
+    }
   }
 
   return critical;
