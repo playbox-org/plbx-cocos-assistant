@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body>
+  <div class="panel-root">
+    <div class="tab-header">
+      <button id="tab-build-report" class="tab-btn active">Build Report</button>
+      <button id="tab-compress"     class="tab-btn">Compress</button>
+      <button id="tab-package"      class="tab-btn">Package</button>
+      <button id="tab-deploy"       class="tab-btn">Deploy</button>
+    </div>
+
+    <div class="tab-content">
+      <div id="content-build-report" class="tab-pane">
+        <h2 class="pane-title">Build Report</h2>
+        <p class="pane-placeholder">Build report data will appear here after a build completes.</p>
+      </div>
+
+      <div id="content-compress" class="tab-pane" style="display:none;">
+        <h2 class="pane-title">Compress</h2>
+        <p class="pane-placeholder">Image and asset compression settings will appear here.</p>
+      </div>
+
+      <div id="content-package" class="tab-pane" style="display:none;">
+        <h2 class="pane-title">Package</h2>
+        <p class="pane-placeholder">ZIP packaging and bundling options will appear here.</p>
+      </div>
+
+      <div id="content-deploy" class="tab-pane" style="display:none;">
+        <h2 class="pane-title">Deploy</h2>
+        <p class="pane-placeholder">Deployment configuration and upload controls will appear here.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
