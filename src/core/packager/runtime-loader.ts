@@ -279,19 +279,25 @@ function patchAPIs() {
       Object.defineProperty(xhr, 'readyState', { get: function() { return 4; } });
       Object.defineProperty(xhr, 'status', { get: function() { return 200; } });
       Object.defineProperty(xhr, 'statusText', { get: function() { return 'OK'; } });
-      Object.defineProperty(xhr, 'response', { get: function() { return response; } });
+      Object.defineProperty(xhr, 'response', { get: function() {
+        // Return a copy for ArrayBuffer to prevent DataCloneError
+        // when WebAudio's decodeAudioData detaches the original buffer
+        if (response instanceof ArrayBuffer) return response.slice(0);
+        return response;
+      } });
       Object.defineProperty(xhr, 'responseText', {
         get: function() { return typeof response === 'string' ? response : JSON.stringify(response); }
       });
 
-      if (typeof xhr.onreadystatechange === 'function') {
-        xhr.onreadystatechange();
-      }
-      if (typeof xhr.onload === 'function') {
-        xhr.onload();
-      }
-      var loadEvent = new Event('load');
-      xhr.dispatchEvent(loadEvent);
+      // Defer callbacks to next macrotask — Cocos engine expects async XHR
+      // and registers download tracking between send() and onload.
+      // IMPORTANT: only use dispatchEvent, NOT manual onload()/onreadystatechange()
+      // calls — the onXxx properties are IDL attributes backed by addEventListener,
+      // so dispatchEvent already invokes them. Calling both causes double completion.
+      setTimeout(function() {
+        xhr.dispatchEvent(new Event('readystatechange'));
+        xhr.dispatchEvent(new Event('load'));
+      }, 0);
     };
 
     return xhr;
