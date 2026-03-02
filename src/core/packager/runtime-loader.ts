@@ -53,7 +53,11 @@ function generateUnpackCode(options: RuntimeLoaderOptions): string {
   var DEBUG = ${debug};
   if (DEBUG) console.time('[plbx] unpack');
 
+  // Text files: stored as strings in __res
+  // Binary files: stored as base64 in __bin
+  // JS files: also referenced from __js for script execution
   window.__res = window.__res || {};
+  window.__bin = {};
   window.__js = {};
 
   if (!window.JSZip) {
@@ -66,7 +70,7 @@ function generateUnpackCode(options: RuntimeLoaderOptions): string {
   var zip = new JSZip();
   var pending = 0;
 
-  // Text file extensions — extract as string; everything else as base64
+  // Text file extensions — extract as string; everything else as base64 into __bin
   var TEXT_EXTS = {'.js':1,'.json':1,'.css':1,'.html':1,'.txt':1,'.xml':1,'.svg':1,'.glsl':1,'.chunk':1,'.effect':1,'.mtl':1};
   function isText(name) {
     var dot = name.lastIndexOf('.');
@@ -79,9 +83,13 @@ function generateUnpackCode(options: RuntimeLoaderOptions): string {
       if (files[path].dir) continue;
       pending++;
       (function(filePath) {
-        var mode = isText(filePath) ? 'string' : 'base64';
-        z.file(filePath).async(mode).then(function(content) {
-          window.__res[filePath] = content;
+        var text = isText(filePath);
+        z.file(filePath).async(text ? 'string' : 'base64').then(function(content) {
+          if (text) {
+            window.__res[filePath] = content;
+          } else {
+            window.__bin[filePath] = content;
+          }
           pending--;
           if (pending === 0) {
             if (DEBUG) console.timeEnd('[plbx] unpack');
@@ -91,7 +99,6 @@ function generateUnpackCode(options: RuntimeLoaderOptions): string {
       })(path);
     }
     if (pending === 0) {
-      // Empty zip
       onUnpackComplete();
     }
   }).catch(function(err) {
@@ -108,6 +115,7 @@ function generateUnpackCode(options: RuntimeLoaderOptions): string {
     }
     // Free the base64 ZIP string to save memory
     delete window.__zip;
+    if (DEBUG) console.log('[plbx] Text files:', Object.keys(window.__res).length, ', Binary files:', Object.keys(window.__bin).length, ', JS:', Object.keys(window.__js).length);
     patchAPIs();
     bootCocos();
   }
@@ -128,29 +136,32 @@ function generatePatchCode(options: RuntimeLoaderOptions): string {
   return `
 var DEBUG = ${debug};
 
-function _findInRes(url) {
-  if (!url) return null;
-  // Exact match first
-  if (window.__res[url]) return window.__res[url];
-  // Suffix match (Cocos uses relative paths)
-  for (var key in window.__res) {
-    if (url.endsWith(key) || key.endsWith(url)) return window.__res[key];
-    // Handle query strings: url might be "path/file.json?v=123"
-    var cleanUrl = url.split('?')[0];
-    if (cleanUrl.endsWith(key) || key.endsWith(cleanUrl)) return window.__res[key];
+// Lookup helpers that search across both text (__res) and binary (__bin) maps.
+// Returns { data: string, binary: boolean } or null.
+function _suffixMatch(map, url) {
+  if (map[url]) return map[url];
+  var cleanUrl = url.split('?')[0];
+  for (var key in map) {
+    if (url.endsWith(key) || key.endsWith(url)) return map[key];
+    if (cleanUrl.endsWith(key) || key.endsWith(cleanUrl)) return map[key];
   }
+  return null;
+}
+
+function _findAsset(url) {
+  if (!url) return null;
+  // Check text resources first (more common for XHR)
+  var text = _suffixMatch(window.__res, url);
+  if (text != null) return { data: text, binary: false };
+  // Check binary resources
+  var bin = _suffixMatch(window.__bin, url);
+  if (bin != null) return { data: bin, binary: true };
   return null;
 }
 
 function _findInJs(url) {
   if (!url) return null;
-  if (window.__js[url]) return window.__js[url];
-  for (var key in window.__js) {
-    if (url.endsWith(key) || key.endsWith(url)) return window.__js[key];
-    var cleanUrl = url.split('?')[0];
-    if (cleanUrl.endsWith(key) || key.endsWith(cleanUrl)) return window.__js[key];
-  }
-  return null;
+  return _suffixMatch(window.__js, url);
 }
 
 function _base64ToArrayBuffer(base64) {
@@ -163,44 +174,7 @@ function _base64ToArrayBuffer(base64) {
 }
 
 function _stringToArrayBuffer(str) {
-  var encoder = new TextEncoder();
-  return encoder.encode(str).buffer;
-}
-
-// Detect if a cached value is base64 (binary) or plain text.
-// Text files (JSON, JS, CSS) are stored as plain strings.
-// Binary files (PNG, BIN, MP3) are stored as base64.
-function _isBase64(cached) {
-  // Quick heuristic: text files will contain common text characters
-  // base64 only contains A-Za-z0-9+/= and has no whitespace at start
-  if (cached.length === 0) return false;
-  var c = cached.charCodeAt(0);
-  // JSON starts with { or [, JS/CSS with various text chars
-  if (c === 123 || c === 91 || c === 60 || c === 47 || c === 10 || c === 13 || c === 32) return false;
-  // Try a quick check: if first 100 chars are all base64-valid, treat as base64
-  var b64chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-  var check = Math.min(cached.length, 100);
-  for (var i = 0; i < check; i++) {
-    if (b64chars.indexOf(cached.charAt(i)) === -1) return false;
-  }
-  return true;
-}
-
-function _cachedToArrayBuffer(cached) {
-  if (_isBase64(cached)) {
-    return _base64ToArrayBuffer(cached);
-  }
-  return _stringToArrayBuffer(cached);
-}
-
-function _cachedToBlob(cached) {
-  if (_isBase64(cached)) {
-    var binaryString = atob(cached);
-    var arr = new Uint8Array(binaryString.length);
-    for (var i = 0; i < binaryString.length; i++) arr[i] = binaryString.charCodeAt(i);
-    return new Blob([arr]);
-  }
-  return new Blob([cached]);
+  return new TextEncoder().encode(str).buffer;
 }
 
 function patchAPIs() {
@@ -215,53 +189,58 @@ function patchAPIs() {
 
     xhr.open = function(method, url, async, user, password) {
       xhr._plbxUrl = url;
-      xhr._plbxCached = _findInRes(url);
-      if (!xhr._plbxCached) {
+      xhr._plbxAsset = _findAsset(url);
+      if (!xhr._plbxAsset) {
         originalOpen(method, url, async !== false, user, password);
       }
     };
 
     xhr.send = function(body) {
-      if (!xhr._plbxCached) {
+      if (!xhr._plbxAsset) {
         originalSend(body);
         return;
       }
-      // Serve from memory
-      // cached can be a plain string (text files) or base64 (binary files)
-      var cached = xhr._plbxCached;
+      var asset = xhr._plbxAsset;
       var response;
       try {
         switch (xhr.responseType) {
           case 'json':
-            // cached might be JSON string or base64-encoded JSON
-            if (_isBase64(cached)) {
-              response = JSON.parse(atob(cached));
+            if (asset.binary) {
+              response = JSON.parse(atob(asset.data));
             } else {
-              response = JSON.parse(cached);
+              response = JSON.parse(asset.data);
             }
             break;
           case 'arraybuffer':
-            response = _cachedToArrayBuffer(cached);
+            if (asset.binary) {
+              response = _base64ToArrayBuffer(asset.data);
+            } else {
+              response = _stringToArrayBuffer(asset.data);
+            }
             break;
           case 'blob':
-            response = _cachedToBlob(cached);
+            if (asset.binary) {
+              var bs = atob(asset.data);
+              var arr = new Uint8Array(bs.length);
+              for (var i = 0; i < bs.length; i++) arr[i] = bs.charCodeAt(i);
+              response = new Blob([arr]);
+            } else {
+              response = new Blob([asset.data]);
+            }
             break;
           case 'text':
           case '':
           default:
-            // If binary (base64) was requested as text, decode it
-            if (_isBase64(cached) && xhr.responseType === '') {
-              // Default responseType '' means text, but cached might be base64
-              // In most cases Cocos uses explicit types, so return as-is
-              response = cached;
+            if (asset.binary) {
+              response = atob(asset.data);
             } else {
-              response = cached;
+              response = asset.data;
             }
             break;
         }
       } catch(e) {
-        if (DEBUG) console.warn('[plbx] XHR response conversion error for ' + xhr._plbxUrl + ':', e);
-        response = cached;
+        if (DEBUG) console.warn('[plbx] XHR error for ' + xhr._plbxUrl + ':', e);
+        response = asset.data;
       }
 
       Object.defineProperty(xhr, 'readyState', { get: function() { return 4; } });
@@ -317,13 +296,14 @@ function patchAPIs() {
     if (origSrcDesc) {
       Object.defineProperty(img, 'src', {
         set: function(url) {
-          var cached = _findInRes(url);
-          if (cached) {
-            // Binary images are stored as base64, convert to data URI
-            if (cached.indexOf('data:') === 0) {
-              origSrcDesc.set.call(img, cached);
+          var asset = _findAsset(url);
+          if (asset) {
+            if (asset.binary) {
+              origSrcDesc.set.call(img, _toDataUri(url, asset.data));
+            } else if (asset.data.indexOf('data:') === 0) {
+              origSrcDesc.set.call(img, asset.data);
             } else {
-              origSrcDesc.set.call(img, _toDataUri(url, cached));
+              origSrcDesc.set.call(img, asset.data);
             }
           } else {
             origSrcDesc.set.call(img, url);
@@ -419,10 +399,10 @@ function bootCocos() {
       return;
     }
     function loadFont(url, opts, cb) {
-      var data = _findInRes(url);
-      if (!data) { if (cb) cb(); return; }
+      var asset = _findAsset(url);
+      if (!asset) { if (cb) cb(); return; }
       var family = url.replace(/[.\\\\/\\ "']/g, '');
-      var fontUri = data.indexOf('data:') === 0 ? data : _toDataUri(url, data);
+      var fontUri = asset.binary ? _toDataUri(url, asset.data) : asset.data;
       try {
         var face = new FontFace(family, 'url(' + fontUri + ')');
         document.fonts.add(face);

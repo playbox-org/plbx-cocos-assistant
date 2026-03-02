@@ -51,9 +51,10 @@ describe('generateRuntimeLoader', () => {
     expect(code).toContain('DEBUG = false');
   });
 
-  it('should contain _findInRes helper with suffix matching', () => {
+  it('should contain _findAsset helper with suffix matching', () => {
     const code = generateRuntimeLoader();
-    expect(code).toContain('_findInRes');
+    expect(code).toContain('_findAsset');
+    expect(code).toContain('_suffixMatch');
     expect(code).toContain('endsWith');
   });
 
@@ -90,10 +91,12 @@ describe('binary vs text file handling', () => {
     expect(code).toContain("'.effect':1");
   });
 
-  it('should use isText() to choose extraction mode', () => {
+  it('should store binary files in __bin and text files in __res', () => {
     const code = generateRuntimeLoader();
-    // Binary files extracted as base64, text as string
-    expect(code).toContain("isText(filePath) ? 'string' : 'base64'");
+    // Binary files go to __bin, text to __res
+    expect(code).toContain('window.__bin');
+    expect(code).toContain('window.__res');
+    expect(code).toContain("text ? 'string' : 'base64'");
   });
 
   it('should contain MIME type map for data URI generation', () => {
@@ -120,74 +123,74 @@ describe('binary vs text file handling', () => {
     expect(code).toContain("'data:' + _getMime(url) + ';base64,' + base64");
   });
 
-  it('should convert base64 to data URI for Image src patch', () => {
+  it('should convert binary base64 to data URI for Image src patch', () => {
     const code = generateRuntimeLoader();
-    // Image patch should detect if cached value is already a data URI or raw base64
-    expect(code).toContain("cached.indexOf('data:') === 0");
-    expect(code).toContain('_toDataUri(url, cached)');
+    // Image patch uses _findAsset and checks asset.binary for data URI conversion
+    expect(code).toContain('_findAsset(url)');
+    expect(code).toContain('asset.binary');
+    expect(code).toContain('_toDataUri(url, asset.data)');
   });
 
-  it('should convert base64 to data URI for font loading', () => {
+  it('should convert binary base64 to data URI for font loading', () => {
     const code = generateRuntimeLoader();
-    // Font loader should build data URIs from base64
-    expect(code).toContain("data.indexOf('data:') === 0");
-    expect(code).toContain('_toDataUri(url, data)');
+    // Font loader uses _findAsset and checks binary flag
+    expect(code).toContain('asset.binary ? _toDataUri(url, asset.data)');
   });
 
-  it('should handle arraybuffer responseType for both text and binary content', () => {
+  it('should use asset.binary flag for arraybuffer XHR responses', () => {
     const code = generateRuntimeLoader();
-    // Must use _cachedToArrayBuffer which auto-detects text vs base64
-    expect(code).toContain('_cachedToArrayBuffer(cached)');
-    // Must have both converters
-    expect(code).toContain('_base64ToArrayBuffer');
-    expect(code).toContain('_stringToArrayBuffer');
+    // Deterministic: binary → _base64ToArrayBuffer, text → _stringToArrayBuffer
+    expect(code).toContain('_base64ToArrayBuffer(asset.data)');
+    expect(code).toContain('_stringToArrayBuffer(asset.data)');
     expect(code).toContain('TextEncoder');
   });
 
-  it('should handle blob responseType for both text and binary content', () => {
+  it('should use asset.binary flag for blob XHR responses', () => {
     const code = generateRuntimeLoader();
-    expect(code).toContain('_cachedToBlob(cached)');
+    expect(code).toContain('new Blob([arr])');
+    expect(code).toContain('new Blob([asset.data])');
   });
 
-  it('should detect base64 vs text content via _isBase64 heuristic', () => {
+  it('should use _findAsset returning { data, binary } for deterministic type handling', () => {
     const code = generateRuntimeLoader();
-    expect(code).toContain('_isBase64');
-    // Must detect JSON (starts with { or [) as NOT base64
-    expect(code).toContain('c === 123'); // {
-    expect(code).toContain('c === 91');  // [
+    // No heuristic — _findAsset knows if data is from __res (text) or __bin (binary)
+    expect(code).toContain('{ data: text, binary: false }');
+    expect(code).toContain('{ data: bin, binary: true }');
+    // No _isBase64 heuristic
+    expect(code).not.toContain('_isBase64');
   });
 
-  it('should handle JSON responseType for both text and base64 content', () => {
+  it('should use asset.binary for JSON responseType', () => {
     const code = generateRuntimeLoader();
-    // JSON requested as 'json' responseType: might be plain string or base64
-    expect(code).toContain("_isBase64(cached)");
-    expect(code).toContain('JSON.parse(atob(cached))');
-    expect(code).toContain('JSON.parse(cached)');
+    // Binary JSON → atob then parse; text JSON → parse directly
+    expect(code).toContain('JSON.parse(atob(asset.data))');
+    expect(code).toContain('JSON.parse(asset.data)');
   });
 });
 
 describe('generateFullHtml binary handling', () => {
-  it('should produce HTML where isText classifies effect.bin as binary', () => {
+  it('should separate binary files into __bin and text into __res', () => {
     const html = generateFullHtml({
       originalHtml: '<!DOCTYPE html><html><head></head><body></body></html>',
       zipBase64: 'UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA==',
     });
-    // The generated HTML must contain isText and TEXT_EXTS
-    // so that binary files like effect.bin get base64 extraction
+    expect(html).toContain('window.__bin');
+    expect(html).toContain('window.__res');
     expect(html).toContain('TEXT_EXTS');
-    expect(html).toContain("isText(filePath) ? 'string' : 'base64'");
-    // .bin should NOT be in TEXT_EXTS (it's binary)
+    // .bin should NOT be in TEXT_EXTS (it's binary → goes to __bin)
     expect(html).not.toContain("'.bin':1");
   });
 
-  it('should produce HTML with _getMime for arraybuffer XHR responses', () => {
+  it('should use _findAsset for deterministic binary/text lookup', () => {
     const html = generateFullHtml({
       originalHtml: '<!DOCTYPE html><html><head></head><body></body></html>',
       zipBase64: 'UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA==',
     });
-    expect(html).toContain('_getMime');
+    expect(html).toContain('_findAsset');
     expect(html).toContain('_toDataUri');
     expect(html).toContain('_base64ToArrayBuffer');
+    // Must NOT contain unreliable _isBase64 heuristic
+    expect(html).not.toContain('_isBase64');
   });
 });
 
