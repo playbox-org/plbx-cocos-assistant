@@ -147,8 +147,8 @@ describe('binary vs text file handling', () => {
 
   it('should use asset.binary flag for blob XHR responses', () => {
     const code = generateRuntimeLoader();
-    expect(code).toContain('new Blob([arr])');
-    expect(code).toContain('new Blob([asset.data])');
+    expect(code).toContain('new Blob([arr], { type: mime })');
+    expect(code).toContain('new Blob([asset.data], { type: mime })');
   });
 
   it('should use _findAsset returning { data, binary } for deterministic type handling', () => {

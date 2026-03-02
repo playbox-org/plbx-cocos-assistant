@@ -207,6 +207,8 @@ function patchAPIs() {
     // Track responseType ourselves: when we skip originalOpen() for cached assets,
     // the XHR stays in UNSENT state and the browser may ignore responseType setter.
     var _respType = '';
+    var _sendTimer = null;
+    var _aborted = false;
     Object.defineProperty(xhr, 'responseType', {
       set: function(v) {
         _respType = v;
@@ -223,8 +225,20 @@ function patchAPIs() {
       xhr._plbxUrl = url;
       xhr._plbxAsset = _findAsset(url);
       _respType = '';
+      _aborted = false;
+      if (_sendTimer) { clearTimeout(_sendTimer); _sendTimer = null; }
       if (!xhr._plbxAsset) {
         originalOpen(method, url, async !== false, user, password);
+      }
+    };
+
+    xhr.abort = function() {
+      _aborted = true;
+      if (_sendTimer) { clearTimeout(_sendTimer); _sendTimer = null; }
+      if (xhr._plbxAsset) {
+        xhr.dispatchEvent(new Event('abort'));
+      } else {
+        OriginalXHR.prototype.abort.call(xhr);
       }
     };
 
@@ -252,13 +266,14 @@ function patchAPIs() {
             }
             break;
           case 'blob':
+            var mime = _getMime(xhr._plbxUrl);
             if (asset.binary) {
               var bs = atob(asset.data);
               var arr = new Uint8Array(bs.length);
               for (var i = 0; i < bs.length; i++) arr[i] = bs.charCodeAt(i);
-              response = new Blob([arr]);
+              response = new Blob([arr], { type: mime });
             } else {
-              response = new Blob([asset.data]);
+              response = new Blob([asset.data], { type: mime });
             }
             break;
           case 'text':
@@ -276,26 +291,46 @@ function patchAPIs() {
         response = asset.data;
       }
 
-      Object.defineProperty(xhr, 'readyState', { get: function() { return 4; } });
-      Object.defineProperty(xhr, 'status', { get: function() { return 200; } });
-      Object.defineProperty(xhr, 'statusText', { get: function() { return 'OK'; } });
+      // All defineProperty calls use configurable:true so the XHR can be reused
+      Object.defineProperty(xhr, 'readyState', { get: function() { return 4; }, configurable: true });
+      Object.defineProperty(xhr, 'status', { get: function() { return 200; }, configurable: true });
+      Object.defineProperty(xhr, 'statusText', { get: function() { return 'OK'; }, configurable: true });
       Object.defineProperty(xhr, 'response', { get: function() {
         // Return a copy for ArrayBuffer to prevent DataCloneError
         // when WebAudio's decodeAudioData detaches the original buffer
         if (response instanceof ArrayBuffer) return response.slice(0);
         return response;
-      } });
+      }, configurable: true });
       Object.defineProperty(xhr, 'responseText', {
-        get: function() { return typeof response === 'string' ? response : JSON.stringify(response); }
+        get: function() { return typeof response === 'string' ? response : JSON.stringify(response); },
+        configurable: true
       });
+
+      // Provide response headers for cached assets
+      var _contentType = _getMime(xhr._plbxUrl);
+      var _contentLength = '' + asset.data.length;
+      xhr.getResponseHeader = function(name) {
+        var n = name.toLowerCase();
+        if (n === 'content-type') return _contentType;
+        if (n === 'content-length') return _contentLength;
+        return null;
+      };
+      xhr.getAllResponseHeaders = function() {
+        return 'content-type: ' + _contentType + '\\r\\ncontent-length: ' + _contentLength + '\\r\\n';
+      };
 
       // Defer callbacks to next macrotask — Cocos engine expects async XHR
       // and registers download tracking between send() and onload.
       // IMPORTANT: only use dispatchEvent, NOT manual onload()/onreadystatechange()
       // calls — the onXxx properties are IDL attributes backed by addEventListener,
       // so dispatchEvent already invokes them. Calling both causes double completion.
-      setTimeout(function() {
+      var dataSize = asset.data.length;
+      _aborted = false;
+      _sendTimer = setTimeout(function() {
+        _sendTimer = null;
+        if (_aborted) return;
         xhr.dispatchEvent(new Event('readystatechange'));
+        xhr.dispatchEvent(new ProgressEvent('progress', { lengthComputable: true, loaded: dataSize, total: dataSize }));
         xhr.dispatchEvent(new Event('load'));
       }, 0);
     };
