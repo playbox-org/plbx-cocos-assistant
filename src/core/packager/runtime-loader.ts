@@ -66,13 +66,21 @@ function generateUnpackCode(options: RuntimeLoaderOptions): string {
   var zip = new JSZip();
   var pending = 0;
 
+  // Text file extensions — extract as string; everything else as base64
+  var TEXT_EXTS = {'.js':1,'.json':1,'.css':1,'.html':1,'.txt':1,'.xml':1,'.svg':1,'.glsl':1,'.chunk':1,'.effect':1,'.mtl':1};
+  function isText(name) {
+    var dot = name.lastIndexOf('.');
+    return dot >= 0 && TEXT_EXTS[name.substring(dot).toLowerCase()];
+  }
+
   zip.loadAsync(window.__zip, { base64: true }).then(function(z) {
     var files = z.files;
     for (var path in files) {
       if (files[path].dir) continue;
       pending++;
       (function(filePath) {
-        z.file(filePath).async('string').then(function(content) {
+        var mode = isText(filePath) ? 'string' : 'base64';
+        z.file(filePath).async(mode).then(function(content) {
           window.__res[filePath] = content;
           pending--;
           if (pending === 0) {
@@ -231,6 +239,23 @@ function patchAPIs() {
   window.XMLHttpRequest.OPENED = 1;
   window.XMLHttpRequest.UNSENT = 0;
 
+  // MIME types for data URIs (binary files stored as base64)
+  var MIME = {'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif',
+    '.webp':'image/webp','.avif':'image/avif','.svg':'image/svg+xml',
+    '.mp3':'audio/mpeg','.ogg':'audio/ogg','.wav':'audio/wav',
+    '.mp4':'video/mp4','.webm':'video/webm',
+    '.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf',
+    '.bin':'application/octet-stream','.cconb':'application/octet-stream'};
+  function _getMime(url) {
+    var dot = url.lastIndexOf('.');
+    var q = url.indexOf('?', dot);
+    var ext = q > 0 ? url.substring(dot, q) : url.substring(dot);
+    return MIME[ext.toLowerCase()] || 'application/octet-stream';
+  }
+  function _toDataUri(url, base64) {
+    return 'data:' + _getMime(url) + ';base64,' + base64;
+  }
+
   // 2. Patch Image
   var OriginalImage = window.Image;
   window.Image = function(width, height) {
@@ -242,7 +267,12 @@ function patchAPIs() {
         set: function(url) {
           var cached = _findInRes(url);
           if (cached) {
-            origSrcDesc.set.call(img, cached);
+            // Binary images are stored as base64, convert to data URI
+            if (cached.indexOf('data:') === 0) {
+              origSrcDesc.set.call(img, cached);
+            } else {
+              origSrcDesc.set.call(img, _toDataUri(url, cached));
+            }
           } else {
             origSrcDesc.set.call(img, url);
           }
@@ -340,8 +370,9 @@ function bootCocos() {
       var data = _findInRes(url);
       if (!data) { if (cb) cb(); return; }
       var family = url.replace(/[.\\\\/\\ "']/g, '');
+      var fontUri = data.indexOf('data:') === 0 ? data : _toDataUri(url, data);
       try {
-        var face = new FontFace(family, 'url(' + data + ')');
+        var face = new FontFace(family, 'url(' + fontUri + ')');
         document.fonts.add(face);
         face.load().then(
           function() { if (cb) cb(null, family); },
