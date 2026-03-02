@@ -34,61 +34,99 @@
     ],
     "messages": {
       "open-panel": {
-        "methods": ["openPanel"]
+        "methods": [
+          "openPanel"
+        ]
       },
       "on-build-finished": {
-        "methods": ["onBuildFinished"]
+        "methods": [
+          "onBuildFinished"
+        ]
       },
       "scene:ready": {
-        "methods": ["onSceneReady"]
+        "methods": [
+          "onSceneReady"
+        ]
       },
       "scan-assets": {
-        "methods": ["scanAssets"]
+        "methods": [
+          "scanAssets"
+        ]
       },
       "get-last-build-result": {
-        "methods": ["getLastBuildResult"]
+        "methods": [
+          "getLastBuildResult"
+        ]
       },
       "compress-image": {
-        "methods": ["compressImageAsset"]
+        "methods": [
+          "compressImageAsset"
+        ]
       },
       "compress-image-preview": {
-        "methods": ["compressImagePreview"]
+        "methods": [
+          "compressImagePreview"
+        ]
       },
       "get-image-meta": {
-        "methods": ["getImageMeta"]
+        "methods": [
+          "getImageMeta"
+        ]
       },
       "check-ffmpeg": {
-        "methods": ["checkFfmpeg"]
+        "methods": [
+          "checkFfmpeg"
+        ]
       },
       "compress-audio": {
-        "methods": ["compressAudioAsset"]
+        "methods": [
+          "compressAudioAsset"
+        ]
       },
       "package-networks": {
-        "methods": ["packageNetworks"]
+        "methods": [
+          "packageNetworks"
+        ]
       },
       "get-networks": {
-        "methods": ["getNetworks"]
+        "methods": [
+          "getNetworks"
+        ]
       },
       "deploy": {
-        "methods": ["deploy"]
+        "methods": [
+          "deploy"
+        ]
       },
       "plbx-login": {
-        "methods": ["plbxLogin"]
+        "methods": [
+          "plbxLogin"
+        ]
       },
       "plbx-list-projects": {
-        "methods": ["plbxListProjects"]
+        "methods": [
+          "plbxListProjects"
+        ]
       },
       "get-settings": {
-        "methods": ["getSettings"]
+        "methods": [
+          "getSettings"
+        ]
       },
       "save-settings": {
-        "methods": ["saveSettings"]
+        "methods": [
+          "saveSettings"
+        ]
       },
       "get-token": {
-        "methods": ["getToken"]
+        "methods": [
+          "getToken"
+        ]
       },
       "save-token": {
-        "methods": ["saveToken"]
+        "methods": [
+          "saveToken"
+        ]
       }
     },
     "builder": "./dist/builder"

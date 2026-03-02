@@ -1,3 +1,11 @@
 node_modules/
 dist/
 .DS_Store
+
+# Test fixtures — large binary build files (generate locally)
+tests/fixtures/spades-build/web-mobile/
+tests/fixtures/spades-build/super-html-ref/
+tests/fixtures/spades-build/output/
+tests/fixtures/pack-output/
+tests/fixtures/mock-build/
+tests/fixtures/integration-output/

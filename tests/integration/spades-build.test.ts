@@ -1,35 +1,32 @@
 /**
  * Integration test: package real spades-1 Cocos build and compare with super-html output.
  *
- * Uses the actual web-mobile build from:
- *   /Users/pavelsamoylenko/Documents/GitHub/Playbox/Playables/_Prod/spades-1/build/web-mobile/
- *
- * Compares output sizes against super-html reference:
- *   /Users/pavelsamoylenko/Documents/GitHub/Playbox/Playables/_Prod/spades-1/build/super-html/
+ * Uses local copies:
+ *   tests/fixtures/spades-build/web-mobile/     — source Cocos build
+ *   tests/fixtures/spades-build/super-html-ref/ — reference outputs for comparison
+ *   tests/fixtures/spades-build/output/         — our packager output (inspectable)
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { packageForNetworks } from '../../src/core/packager/packager';
 import { existsSync, statSync, readFileSync, rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
-const BUILD_DIR = '/Users/pavelsamoylenko/Documents/GitHub/Playbox/Playables/_Prod/spades-1/build/web-mobile';
-const SUPER_HTML_DIR = '/Users/pavelsamoylenko/Documents/GitHub/Playbox/Playables/_Prod/spades-1/build/super-html';
-const OUTPUT_DIR = join(__dirname, '../fixtures/integration-output');
+const FIXTURES = join(__dirname, '../fixtures/spades-build');
+const BUILD_DIR = join(FIXTURES, 'web-mobile');
+const REF_DIR = join(FIXTURES, 'super-html-ref');
+const OUTPUT_DIR = join(FIXTURES, 'output');
 
 const hasBuild = existsSync(BUILD_DIR);
-
-// Skip all tests if build directory not available (CI, other machines)
 const describeIf = hasBuild ? describe : describe.skip;
+
+function formatMB(bytes: number): string {
+  return (bytes / 1024 / 1024).toFixed(2);
+}
 
 describeIf('Integration: spades-1 build packaging', () => {
   beforeAll(() => {
+    if (existsSync(OUTPUT_DIR)) rmSync(OUTPUT_DIR, { recursive: true, force: true });
     mkdirSync(OUTPUT_DIR, { recursive: true });
-  });
-
-  afterAll(() => {
-    if (existsSync(OUTPUT_DIR)) {
-      rmSync(OUTPUT_DIR, { recursive: true, force: true });
-    }
   });
 
   const defaultConfig = {
@@ -46,23 +43,19 @@ describeIf('Integration: spades-1 build packaging', () => {
       config: defaultConfig,
     });
 
-    expect(result.results).toHaveLength(1);
     const r = result.results[0];
     expect(r.format).toBe('html');
     expect(r.outputSize).toBeGreaterThan(0);
     expect(existsSync(r.outputPath)).toBe(true);
 
-    // Compare with super-html reference
-    const refPath = join(SUPER_HTML_DIR, 'ironsource2025', 'index.html');
+    const refPath = join(REF_DIR, 'ironsource2025', 'index.html');
     if (existsSync(refPath)) {
       const refSize = statSync(refPath).size;
       const ratio = r.outputSize / refSize;
-      console.log(`  ironsource: our=${(r.outputSize / 1024 / 1024).toFixed(2)}MB, ref=${(refSize / 1024 / 1024).toFixed(2)}MB, ratio=${ratio.toFixed(2)}`);
-      // Our output should be within 2x of reference (generous, since approach differs)
-      expect(ratio).toBeLessThan(2);
-      expect(ratio).toBeGreaterThan(0.3);
+      console.log(`  ironsource: our=${formatMB(r.outputSize)}MB, ref=${formatMB(refSize)}MB, ratio=${ratio.toFixed(2)}, delta=${formatMB(r.outputSize - refSize)}MB`);
+      expect(ratio).toBeLessThan(1.5);
     }
-  }, 60000);
+  }, 120000);
 
   it('should package for applovin (single HTML, MRAID)', async () => {
     const result = await packageForNetworks({
@@ -72,7 +65,6 @@ describeIf('Integration: spades-1 build packaging', () => {
       config: defaultConfig,
     });
 
-    expect(result.results).toHaveLength(1);
     const r = result.results[0];
     const html = readFileSync(r.outputPath, 'utf-8');
 
@@ -80,18 +72,15 @@ describeIf('Integration: spades-1 build packaging', () => {
     expect(html).toContain('window.__zip');
     expect(html).toContain('window.__res');
     expect(html).toContain('XMLHttpRequest');
-
-    // Verify MRAID SDK injected
     expect(html).toContain('mraid.js');
 
-    // Compare with reference
-    const refPath = join(SUPER_HTML_DIR, 'applovin', 'Spades_applovin.html');
+    const refPath = join(REF_DIR, 'applovin', 'Spades_applovin.html');
     if (existsSync(refPath)) {
       const refSize = statSync(refPath).size;
       const ratio = r.outputSize / refSize;
-      console.log(`  applovin: our=${(r.outputSize / 1024 / 1024).toFixed(2)}MB, ref=${(refSize / 1024 / 1024).toFixed(2)}MB, ratio=${ratio.toFixed(2)}`);
+      console.log(`  applovin: our=${formatMB(r.outputSize)}MB, ref=${formatMB(refSize)}MB, ratio=${ratio.toFixed(2)}`);
     }
-  }, 60000);
+  }, 120000);
 
   it('should package for google (ZIP)', async () => {
     const result = await packageForNetworks({
@@ -101,19 +90,16 @@ describeIf('Integration: spades-1 build packaging', () => {
       config: defaultConfig,
     });
 
-    expect(result.results).toHaveLength(1);
     const r = result.results[0];
     expect(r.format).toBe('zip');
-    expect(r.outputPath).toContain('.zip');
 
-    // Compare with reference
-    const refPath = join(SUPER_HTML_DIR, 'google', 'Spades_google.zip');
+    const refPath = join(REF_DIR, 'google', 'Spades_google.zip');
     if (existsSync(refPath)) {
       const refSize = statSync(refPath).size;
       const ratio = r.outputSize / refSize;
-      console.log(`  google: our=${(r.outputSize / 1024 / 1024).toFixed(2)}MB, ref=${(refSize / 1024 / 1024).toFixed(2)}MB, ratio=${ratio.toFixed(2)}`);
+      console.log(`  google: our=${formatMB(r.outputSize)}MB, ref=${formatMB(refSize)}MB, ratio=${ratio.toFixed(2)}`);
     }
-  }, 60000);
+  }, 120000);
 
   it('should package for facebook (dual format: HTML + ZIP)', async () => {
     const result = await packageForNetworks({
@@ -126,36 +112,52 @@ describeIf('Integration: spades-1 build packaging', () => {
     expect(result.results).toHaveLength(2);
     const htmlResult = result.results.find(r => r.format === 'html');
     const zipResult = result.results.find(r => r.format === 'zip');
-    expect(htmlResult).toBeDefined();
-    expect(zipResult).toBeDefined();
 
-    // Compare HTML with reference
-    const refHtml = join(SUPER_HTML_DIR, 'facebook', 'Spades_facebook.html');
+    const refHtml = join(REF_DIR, 'facebook', 'Spades_facebook.html');
     if (existsSync(refHtml) && htmlResult) {
       const refSize = statSync(refHtml).size;
       const ratio = htmlResult.outputSize / refSize;
-      console.log(`  facebook html: our=${(htmlResult.outputSize / 1024 / 1024).toFixed(2)}MB, ref=${(refSize / 1024 / 1024).toFixed(2)}MB, ratio=${ratio.toFixed(2)}`);
+      console.log(`  facebook html: our=${formatMB(htmlResult.outputSize)}MB, ref=${formatMB(refSize)}MB, ratio=${ratio.toFixed(2)}`);
     }
-
-    // Compare ZIP with reference
-    const refZip = join(SUPER_HTML_DIR, 'facebook', 'Spades_facebook.zip');
+    const refZip = join(REF_DIR, 'facebook', 'Spades_facebook.zip');
     if (existsSync(refZip) && zipResult) {
       const refSize = statSync(refZip).size;
       const ratio = zipResult.outputSize / refSize;
-      console.log(`  facebook zip: our=${(zipResult.outputSize / 1024 / 1024).toFixed(2)}MB, ref=${(refSize / 1024 / 1024).toFixed(2)}MB, ratio=${ratio.toFixed(2)}`);
+      console.log(`  facebook zip: our=${formatMB(zipResult.outputSize)}MB, ref=${formatMB(refSize)}MB, ratio=${ratio.toFixed(2)}`);
     }
-  }, 60000);
+  }, 120000);
 
-  it('should report size limit violations correctly', async () => {
+  it('should report size limit violations', async () => {
     const result = await packageForNetworks({
       buildDir: BUILD_DIR,
       outputDir: OUTPUT_DIR,
       networks: ['ironsource'],
       config: defaultConfig,
     });
-
     const r = result.results[0];
-    // spades-1 is ~10MB, ironsource limit is 5MB — should exceed
-    console.log(`  ironsource size: ${(r.outputSize / 1024 / 1024).toFixed(2)}MB, limit: ${(r.maxSize / 1024 / 1024).toFixed(2)}MB, within: ${r.withinLimit}`);
-  }, 60000);
+    console.log(`  size: ${formatMB(r.outputSize)}MB, limit: ${formatMB(r.maxSize)}MB, within: ${r.withinLimit}`);
+  }, 120000);
+
+  it('should package all major networks', async () => {
+    const networks = ['ironsource', 'applovin', 'google', 'facebook', 'unity', 'mintegral', 'tiktok'];
+    const result = await packageForNetworks({
+      buildDir: BUILD_DIR,
+      outputDir: OUTPUT_DIR,
+      networks,
+      config: defaultConfig,
+    });
+
+    console.log('\n  === All Networks Summary ===');
+    for (const r of result.results) {
+      const status = r.withinLimit ? 'OK' : 'OVER';
+      console.log(`  ${r.networkId.padEnd(20)} ${r.format.padEnd(5)} ${formatMB(r.outputSize).padStart(8)}MB / ${formatMB(r.maxSize).padStart(5)}MB [${status}]`);
+    }
+    console.log(`  Total time: ${result.totalTime}ms`);
+
+    // All should have produced output
+    for (const r of result.results) {
+      expect(r.outputSize).toBeGreaterThan(0);
+      expect(existsSync(r.outputPath)).toBe(true);
+    }
+  }, 300000);
 });

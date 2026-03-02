@@ -43,11 +43,16 @@ export function bufferToDataUri(buffer: Buffer, mimeType: string): string {
 
 /**
  * Pack a directory into a ZIP buffer.
- * Recursively adds all files.
+ * Recursively adds all files, with optional extension exclusion.
  */
-export async function packDirectoryToZip(dirPath: string, basePath?: string): Promise<Buffer> {
+export async function packDirectoryToZip(
+  dirPath: string,
+  basePath?: string,
+  options?: { excludeExtensions?: string[] },
+): Promise<Buffer> {
   const zip = new JSZip();
   const base = basePath || dirPath;
+  const excludeExts = new Set(options?.excludeExtensions?.map(e => e.startsWith('.') ? e : `.${e}`) || []);
 
   function addDir(currentPath: string) {
     const entries = readdirSync(currentPath, { withFileTypes: true });
@@ -56,6 +61,9 @@ export async function packDirectoryToZip(dirPath: string, basePath?: string): Pr
       if (entry.isDirectory()) {
         addDir(fullPath);
       } else {
+        if (excludeExts.size > 0 && excludeExts.has(extname(entry.name).toLowerCase())) {
+          continue;
+        }
         const relativePath = relative(base, fullPath);
         zip.file(relativePath, readFileSync(fullPath));
       }

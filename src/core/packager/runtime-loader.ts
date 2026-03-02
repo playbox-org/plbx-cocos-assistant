@@ -351,10 +351,12 @@ export function generateFullHtml(params: {
   zipBase64: string;
   /** Pre-extracted JS modules as path->content map (optional, for faster loading) */
   jsModules?: Record<string, string>;
+  /** Minified CSS to inject as inline <style> */
+  cssContent?: string;
   /** Runtime loader options */
   loaderOptions?: RuntimeLoaderOptions;
 }): string {
-  const { originalHtml, zipBase64, jsModules, loaderOptions = {} } = params;
+  const { originalHtml, zipBase64, jsModules, cssContent, loaderOptions = {} } = params;
 
   const jszipRuntime = getJSZipRuntime();
   const runtimeLoader = generateRuntimeLoader(loaderOptions);
@@ -369,13 +371,18 @@ export function generateFullHtml(params: {
     injection += '<script>window.__res = {};</script>\n';
   }
 
-  // 2. ZIP data
+  // 2. Inline CSS (minified)
+  if (cssContent) {
+    injection += '<style>' + cssContent + '</style>\n';
+  }
+
+  // 3. ZIP data (non-JS/CSS assets)
   injection += '<script>window.__zip = "' + zipBase64 + '";</script>\n';
 
-  // 3. JSZip library
+  // 4. JSZip library
   injection += '<script>' + jszipRuntime + '</script>\n';
 
-  // 4. Runtime loader (patches + unpack + boot)
+  // 5. Runtime loader (patches + unpack + boot)
   injection += '<script>' + runtimeLoader + '</script>\n';
 
   // Inject into <head> as first children

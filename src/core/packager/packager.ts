@@ -1,5 +1,5 @@
-import { readFileSync, mkdirSync, existsSync, writeFileSync, cpSync, rmSync, readdirSync, statSync } from 'fs';
-import { join, basename, relative, extname } from 'path';
+import { readFileSync, mkdirSync, existsSync, writeFileSync, cpSync, rmSync, readdirSync } from 'fs';
+import { join, relative, extname } from 'path';
 import { HtmlBuilder } from './html-builder';
 import { getAdapter } from './network-adapters';
 import { buildZip } from './zip-builder';
@@ -8,6 +8,7 @@ import { PackageResult, OutputFormat } from '../../shared/types';
 import { PackagerOptions, PackagerResult } from './types';
 import { packDirectoryToZip } from './asset-inliner';
 import { generateFullHtml } from './runtime-loader';
+import CleanCSS from 'clean-css';
 
 export async function packageForNetworks(options: PackagerOptions): Promise<PackagerResult> {
   const startTime = Date.now();
@@ -49,19 +50,24 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
         let outputSize: number;
 
         if (format === 'html') {
-          // Single HTML — pack all assets into ZIP, embed with runtime loader
+          // Single HTML — pack ALL assets into ZIP (like super-html), embed with runtime loader
+          // JS compressed inside ZIP is much more efficient than storing as raw JSON strings
           options.onProgress?.(networkId, 'processing', `Building ${format.toUpperCase()}...`);
 
-          const zipBuffer = await packDirectoryToZip(options.buildDir);
+          // Pack everything except index.html (already in the HTML wrapper) and CSS (inlined)
+          const zipBuffer = await packDirectoryToZip(
+            options.buildDir, undefined,
+            { excludeExtensions: ['.css', '.html'] },
+          );
           const zipBase64 = zipBuffer.toString('base64');
 
-          // Extract JS files for pre-population (faster loading)
-          const jsModules = extractJsModules(options.buildDir);
+          // Extract and minify CSS for inline injection
+          const cssContent = extractAndMinifyCss(options.buildDir);
 
           const finalHtml = generateFullHtml({
             originalHtml: builder.toHtml(),
             zipBase64,
-            jsModules,
+            cssContent,
           });
 
           outputPath = join(networkOutDir, `index${formatSuffix}.html`);
@@ -136,11 +142,11 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
 }
 
 /**
- * Extract JS module contents from a build directory for pre-populating window.__res.
- * This allows the runtime loader to execute JS modules without waiting for ZIP unpack.
+ * Extract and minify all CSS files from build directory.
+ * Returns concatenated minified CSS string for inline injection.
  */
-function extractJsModules(buildDir: string): Record<string, string> {
-  const modules: Record<string, string> = {};
+function extractAndMinifyCss(buildDir: string): string {
+  const cssFiles: string[] = [];
 
   function scanDir(dir: string) {
     const entries = readdirSync(dir, { withFileTypes: true });
@@ -148,13 +154,17 @@ function extractJsModules(buildDir: string): Record<string, string> {
       const fullPath = join(dir, entry.name);
       if (entry.isDirectory()) {
         scanDir(fullPath);
-      } else if (extname(entry.name) === '.js') {
-        const relPath = relative(buildDir, fullPath);
-        modules[relPath] = readFileSync(fullPath, 'utf-8');
+      } else if (extname(entry.name) === '.css') {
+        cssFiles.push(readFileSync(fullPath, 'utf-8'));
       }
     }
   }
 
   scanDir(buildDir);
-  return modules;
+
+  if (cssFiles.length === 0) return '';
+
+  const combined = cssFiles.join('\n');
+  const minified = new CleanCSS({ level: 2 }).minify(combined);
+  return minified.styles || combined;
 }
