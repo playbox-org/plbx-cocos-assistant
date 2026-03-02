@@ -14,6 +14,7 @@ export interface NetworkConfig {
   zipStructure?: string;     // custom path inside ZIP (e.g. 'mintegral/')
   metaTags?: Record<string, string>; // meta tags to inject
   inlineAssets: boolean;     // whether to inline all assets into HTML
+  dualFormat?: boolean;      // whether the network supports both html and zip output
 }
 
 export interface PackageConfig {

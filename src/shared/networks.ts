@@ -91,6 +91,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     maxSize: MB5,
     mraid: false,
     inlineAssets: true,
+    dualFormat: true,
   },
   moloco: {
     id: 'moloco',
@@ -99,6 +100,16 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     maxSize: MB5,
     mraid: false,
     inlineAssets: true,
+    dualFormat: true,
+  },
+  nefta: {
+    id: 'nefta',
+    name: 'Nefta',
+    format: 'html',
+    maxSize: 5 * 1024 * 1024,
+    mraid: false,
+    inlineAssets: true,
+    dualFormat: true,
   },
   google: {
     id: 'google',
