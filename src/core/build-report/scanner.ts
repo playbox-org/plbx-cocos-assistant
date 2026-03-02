@@ -84,7 +84,7 @@ export async function scanAssets(
 /** Create a query function that wraps Cocos Editor.Message.request */
 export function createEditorQueryFn(editorMessage: any): QueryAssetsFn {
   return async (type?: string) => {
-    const options = type ? { ccType: type } : {};
+    const options = type ? { type } : {};
     return editorMessage.request('asset-db', 'query-assets', options);
   };
 }
