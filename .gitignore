@@ -6,6 +6,11 @@ dist/
 tests/fixtures/spades-build/web-mobile/
 tests/fixtures/spades-build/super-html-ref/
 tests/fixtures/spades-build/output/
+tests/fixtures/spades-build/pack-output/
+tests/fixtures/roadside-build/web-mobile/
+tests/fixtures/roadside-build/super-html-ref/
+tests/fixtures/roadside-build/output/
+tests/fixtures/roadside-build/pack-output/
 tests/fixtures/pack-output/
 tests/fixtures/mock-build/
 tests/fixtures/integration-output/

@@ -4,7 +4,7 @@
  *
  * Requires:
  *   - Playwright + Chromium: npx playwright install chromium
- *   - Real build fixtures: tests/fixtures/spades-build/web-mobile/
+ *   - Real build fixtures: tests/fixtures/<project>-build/web-mobile/
  *
  * Skipped automatically when fixtures are missing.
  */
@@ -13,13 +13,6 @@ import { chromium, Browser, Page } from 'playwright';
 import { packageForNetworks } from '../../src/core/packager/packager';
 import { existsSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
-
-const FIXTURES = join(__dirname, '../fixtures/spades-build');
-const BUILD_DIR = join(FIXTURES, 'web-mobile');
-const OUTPUT_DIR = join(FIXTURES, 'pack-output');
-
-const hasBuild = existsSync(BUILD_DIR);
-const describeIf = hasBuild ? describe : describe.skip;
 
 // Known external resources that are expected to fail (provided by ad SDKs at runtime)
 const IGNORED_URLS = ['mraid.js', 'favicon'];
@@ -31,238 +24,178 @@ interface BrowserLog {
 
 interface NetworkError {
   url: string;
-  status?: number;
 }
 
-describeIf('Browser verification: packaged HTML files', () => {
-  let browser: Browser;
+/**
+ * Open a local HTML file in headless browser, wait for Cocos boot,
+ * and collect all console errors and network failures.
+ */
+async function verifyHtmlInBrowser(browser: Browser, htmlPath: string, timeoutMs = 10000): Promise<{
+  errors: BrowserLog[];
+  networkErrors: NetworkError[];
+  uncaughtExceptions: string[];
+}> {
+  const page: Page = await browser.newPage();
+  const errors: BrowserLog[] = [];
+  const networkErrors: NetworkError[] = [];
+  const uncaughtExceptions: string[] = [];
 
-  beforeAll(async () => {
-    if (existsSync(OUTPUT_DIR)) rmSync(OUTPUT_DIR, { recursive: true, force: true });
-    mkdirSync(OUTPUT_DIR, { recursive: true });
-    browser = await chromium.launch({ headless: true });
-  }, 30000);
-
-  afterAll(async () => {
-    if (browser) await browser.close();
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') {
+      const location = msg.location();
+      const locStr = location.url ? ` [${location.url}]` : '';
+      errors.push({ type: 'error', text: msg.text() + locStr });
+    }
   });
 
-  const defaultConfig = {
-    storeUrlIos: 'https://apps.apple.com/app/spades',
-    storeUrlAndroid: 'https://play.google.com/store/apps/details?id=com.playbox.spades',
-    orientation: 'portrait' as const,
-  };
+  page.on('pageerror', (err) => {
+    uncaughtExceptions.push(err.message);
+  });
 
-  /**
-   * Open a local HTML file in headless browser, wait for Cocos boot,
-   * and collect all console errors and network failures.
-   */
-  async function verifyHtmlInBrowser(htmlPath: string, timeoutMs = 10000): Promise<{
-    errors: BrowserLog[];
-    networkErrors: NetworkError[];
-    uncaughtExceptions: string[];
-  }> {
-    const page: Page = await browser.newPage();
-    const errors: BrowserLog[] = [];
-    const networkErrors: NetworkError[] = [];
-    const uncaughtExceptions: string[] = [];
-
-    // Collect console errors (include location for debugging)
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') {
-        const location = msg.location();
-        const locStr = location.url ? ` [${location.url}]` : '';
-        errors.push({ type: 'error', text: msg.text() + locStr });
-      }
-    });
-
-    // Collect uncaught exceptions
-    page.on('pageerror', (err) => {
-      uncaughtExceptions.push(err.message);
-    });
-
-    // Collect network failures (but ignore known SDK resources)
-    page.on('requestfailed', (request) => {
-      const url = request.url();
-      const isIgnored = IGNORED_URLS.some(ignored => url.includes(ignored));
-      if (!isIgnored) {
-        networkErrors.push({
-          url,
-          status: request.failure()?.errorText ? undefined : undefined,
-        });
-      }
-    });
-
-    // Open the local HTML file
-    const fileUrl = `file://${htmlPath}`;
-    await page.goto(fileUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
-
-    // Wait for ZIP unpack + boot to complete
-    // The runtime loader sets window.__res after unpack
-    try {
-      await page.waitForFunction(
-        () => (window as any).__res && Object.keys((window as any).__res).length > 0,
-        { timeout: timeoutMs },
-      );
-    } catch {
-      // If __res is never set, the unpack failed — that's a test failure
+  page.on('requestfailed', (request) => {
+    const url = request.url();
+    const isIgnored = IGNORED_URLS.some(ignored => url.includes(ignored));
+    if (!isIgnored) {
+      networkErrors.push({ url });
     }
+  });
 
-    // Give a bit more time for Cocos engine initialization
-    await page.waitForTimeout(2000);
+  await page.goto(`file://${htmlPath}`, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
 
-    await page.close();
-
-    return { errors, networkErrors, uncaughtExceptions };
+  try {
+    await page.waitForFunction(
+      () => (window as any).__res && Object.keys((window as any).__res).length > 0,
+      { timeout: timeoutMs },
+    );
+  } catch {
+    // unpack failed — will show up as test failure via critical errors
   }
 
-  /**
-   * Filter out noise: only keep critical errors related to missing resources,
-   * undefined references, or network failures.
-   */
-  function getCriticalErrors(result: Awaited<ReturnType<typeof verifyHtmlInBrowser>>) {
-    const critical: string[] = [];
+  // Allow time for Cocos engine initialization
+  await page.waitForTimeout(2000);
+  await page.close();
 
-    // Network errors are always critical (except ignored ones — already filtered)
-    for (const ne of result.networkErrors) {
-      critical.push(`Network error: ${ne.url}`);
+  return { errors, networkErrors, uncaughtExceptions };
+}
+
+/**
+ * Filter out noise: only keep critical errors related to missing resources,
+ * undefined references, broken asset loading, or shader failures.
+ */
+function getCriticalErrors(result: Awaited<ReturnType<typeof verifyHtmlInBrowser>>) {
+  const critical: string[] = [];
+
+  // Network errors are always critical (ignored ones already filtered)
+  for (const ne of result.networkErrors) {
+    critical.push(`Network error: ${ne.url}`);
+  }
+
+  // Uncaught exceptions
+  for (const ex of result.uncaughtExceptions) {
+    // Ignore WebGL/canvas/audio errors (expected in headless without GPU/audio)
+    if (ex.includes('WebGL') || ex.includes('canvas') || ex.includes('GPU')) continue;
+    if (ex.includes('AudioContext') || ex.includes('GamepadEvent')) continue;
+    critical.push(`Uncaught: ${ex}`);
+
+    // Specific: broken binary asset loading
+    if (ex.includes('Cannot read properties of') && ex.includes("reading 'length'")) {
+      critical.push(`AssetLoad: ${ex}`);
     }
-
-    // Uncaught exceptions are critical
-    for (const ex of result.uncaughtExceptions) {
-      // Ignore WebGL/canvas errors (expected in headless without GPU)
-      if (ex.includes('WebGL') || ex.includes('canvas') || ex.includes('GPU')) continue;
-      // Ignore Cocos engine warnings about features not available in headless
-      if (ex.includes('AudioContext') || ex.includes('GamepadEvent')) continue;
-      critical.push(`Uncaught: ${ex}`);
+    // Specific: shader init failure from corrupted effect.bin
+    if (ex.includes('Cannot read properties of null') && ex.includes("reading 'blocks'")) {
+      critical.push(`ShaderInit: ${ex}`);
     }
+  }
 
-    // Console errors about missing files
-    for (const err of result.errors) {
-      if (err.text.includes('ERR_FILE_NOT_FOUND') || err.text.includes('net::ERR_')) {
-        // Check if it's an ignored URL
-        const isIgnored = IGNORED_URLS.some(ignored => err.text.includes(ignored));
-        if (!isIgnored) {
-          critical.push(`Console: ${err.text}`);
-        }
-      }
-      // "X is not defined" errors indicate missing scripts
-      if (err.text.match(/\b\w+\s+is not defined\b/) && !err.text.includes('[plbx]')) {
+  for (const err of result.errors) {
+    // Network file-not-found errors
+    if (err.text.includes('ERR_FILE_NOT_FOUND') || err.text.includes('net::ERR_')) {
+      const isIgnored = IGNORED_URLS.some(ignored => err.text.includes(ignored));
+      if (!isIgnored) {
         critical.push(`Console: ${err.text}`);
       }
-      // Shader program errors indicate binary files (effect.bin) loaded incorrectly
-      if (err.text.includes('program:') && err.text.includes('not found')) {
-        critical.push(`Shader: ${err.text}`);
-      }
     }
-
-    // Uncaught TypeError in engine code indicates broken asset loading
-    // (e.g. binary files extracted as corrupted strings)
-    for (const ex of result.uncaughtExceptions) {
-      if (ex.includes('Cannot read properties of') && ex.includes("reading 'length'")) {
-        critical.push(`AssetLoad: ${ex}`);
-      }
-      if (ex.includes('Cannot read properties of null') && ex.includes("reading 'blocks'")) {
-        critical.push(`ShaderInit: ${ex}`);
-      }
+    // "X is not defined" errors indicate missing scripts
+    if (err.text.match(/\b\w+\s+is not defined\b/) && !err.text.includes('[plbx]')) {
+      critical.push(`Console: ${err.text}`);
     }
-
-    return critical;
+    // Shader program errors indicate binary effect.bin loaded incorrectly
+    if (err.text.includes('program:') && err.text.includes('not found')) {
+      critical.push(`Shader: ${err.text}`);
+    }
   }
 
-  it('ironsource HTML should load without critical errors', async () => {
-    const result = await packageForNetworks({
-      buildDir: BUILD_DIR,
-      outputDir: OUTPUT_DIR,
-      networks: ['ironsource'],
-      config: defaultConfig,
+  return critical;
+}
+
+// ─── Test Projects ───────────────────────────────────────────────────────────
+
+const PROJECTS = [
+  {
+    name: 'spades',
+    fixtureDir: join(__dirname, '../fixtures/spades-build'),
+    config: {
+      storeUrlIos: 'https://apps.apple.com/app/spades',
+      storeUrlAndroid: 'https://play.google.com/store/apps/details?id=com.playbox.spades',
+      orientation: 'portrait' as const,
+    },
+  },
+  {
+    name: 'roadside',
+    fixtureDir: join(__dirname, '../fixtures/roadside-build'),
+    config: {
+      storeUrlIos: 'https://apps.apple.com/app/roadside',
+      storeUrlAndroid: 'https://play.google.com/store/apps/details?id=com.playbox.roadside',
+      orientation: 'landscape' as const,
+    },
+  },
+];
+
+const HTML_NETWORKS = ['ironsource', 'applovin', 'unity', 'facebook'] as const;
+
+for (const project of PROJECTS) {
+  const buildDir = join(project.fixtureDir, 'web-mobile');
+  const outputDir = join(project.fixtureDir, 'pack-output');
+  const hasBuild = existsSync(buildDir);
+  const describeIf = hasBuild ? describe : describe.skip;
+
+  describeIf(`Browser verification: ${project.name}`, () => {
+    let browser: Browser;
+
+    beforeAll(async () => {
+      if (existsSync(outputDir)) rmSync(outputDir, { recursive: true, force: true });
+      mkdirSync(outputDir, { recursive: true });
+      browser = await chromium.launch({ headless: true });
+    }, 30000);
+
+    afterAll(async () => {
+      if (browser) await browser.close();
     });
 
-    const r = result.results[0];
-    expect(r.format).toBe('html');
-    expect(existsSync(r.outputPath)).toBe(true);
+    for (const networkId of HTML_NETWORKS) {
+      it(`${networkId} HTML should load without critical errors`, async () => {
+        const result = await packageForNetworks({
+          buildDir,
+          outputDir,
+          networks: [networkId],
+          config: project.config,
+        });
 
-    const browserResult = await verifyHtmlInBrowser(r.outputPath, 15000);
-    const critical = getCriticalErrors(browserResult);
+        const htmlResult = result.results.find(r => r.format === 'html');
+        expect(htmlResult).toBeDefined();
+        expect(existsSync(htmlResult!.outputPath)).toBe(true);
 
-    if (critical.length > 0) {
-      console.log('\n  ironsource critical errors:');
-      critical.forEach(e => console.log('    -', e));
+        const browserResult = await verifyHtmlInBrowser(browser, htmlResult!.outputPath, 15000);
+        const critical = getCriticalErrors(browserResult);
+
+        if (critical.length > 0) {
+          console.log(`\n  ${project.name}/${networkId} critical errors:`);
+          critical.forEach(e => console.log('    -', e));
+        }
+        console.log(`  ${project.name}/${networkId}: ${browserResult.errors.length} console, ${browserResult.networkErrors.length} network, ${browserResult.uncaughtExceptions.length} exceptions, ${critical.length} critical`);
+
+        expect(critical).toEqual([]);
+      }, 120000);
     }
-    console.log(`  ironsource: ${browserResult.errors.length} console errors, ${browserResult.networkErrors.length} network errors, ${browserResult.uncaughtExceptions.length} exceptions, ${critical.length} critical`);
-
-    expect(critical).toEqual([]);
-  }, 120000);
-
-  it('applovin HTML should load without critical errors', async () => {
-    const result = await packageForNetworks({
-      buildDir: BUILD_DIR,
-      outputDir: OUTPUT_DIR,
-      networks: ['applovin'],
-      config: defaultConfig,
-    });
-
-    const r = result.results[0];
-    expect(r.format).toBe('html');
-    expect(existsSync(r.outputPath)).toBe(true);
-
-    const browserResult = await verifyHtmlInBrowser(r.outputPath, 15000);
-    const critical = getCriticalErrors(browserResult);
-
-    if (critical.length > 0) {
-      console.log('\n  applovin critical errors:');
-      critical.forEach(e => console.log('    -', e));
-    }
-    console.log(`  applovin: ${browserResult.errors.length} console errors, ${browserResult.networkErrors.length} network errors, ${browserResult.uncaughtExceptions.length} exceptions, ${critical.length} critical`);
-
-    expect(critical).toEqual([]);
-  }, 120000);
-
-  it('unity HTML should load without critical errors', async () => {
-    const result = await packageForNetworks({
-      buildDir: BUILD_DIR,
-      outputDir: OUTPUT_DIR,
-      networks: ['unity'],
-      config: defaultConfig,
-    });
-
-    const r = result.results[0];
-    expect(r.format).toBe('html');
-    expect(existsSync(r.outputPath)).toBe(true);
-
-    const browserResult = await verifyHtmlInBrowser(r.outputPath, 15000);
-    const critical = getCriticalErrors(browserResult);
-
-    if (critical.length > 0) {
-      console.log('\n  unity critical errors:');
-      critical.forEach(e => console.log('    -', e));
-    }
-    console.log(`  unity: ${browserResult.errors.length} console errors, ${browserResult.networkErrors.length} network errors, ${browserResult.uncaughtExceptions.length} exceptions, ${critical.length} critical`);
-
-    expect(critical).toEqual([]);
-  }, 120000);
-
-  it('facebook dual-format HTML should load without critical errors', async () => {
-    const result = await packageForNetworks({
-      buildDir: BUILD_DIR,
-      outputDir: OUTPUT_DIR,
-      networks: ['facebook'],
-      config: defaultConfig,
-    });
-
-    const htmlResult = result.results.find(r => r.format === 'html');
-    expect(htmlResult).toBeDefined();
-    expect(existsSync(htmlResult!.outputPath)).toBe(true);
-
-    const browserResult = await verifyHtmlInBrowser(htmlResult!.outputPath, 15000);
-    const critical = getCriticalErrors(browserResult);
-
-    if (critical.length > 0) {
-      console.log('\n  facebook HTML critical errors:');
-      critical.forEach(e => console.log('    -', e));
-    }
-    console.log(`  facebook: ${browserResult.errors.length} console errors, ${browserResult.networkErrors.length} network errors, ${browserResult.uncaughtExceptions.length} exceptions, ${critical.length} critical`);
-
-    expect(critical).toEqual([]);
-  }, 120000);
-});
+  });
+}
