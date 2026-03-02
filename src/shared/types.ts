@@ -29,6 +29,7 @@ export interface AssetReportItem {
   uuid: string;
   name: string;
   path: string;
+  file: string;      // absolute disk path
   type: string;
   sourceSize: number;
   buildSize: number;

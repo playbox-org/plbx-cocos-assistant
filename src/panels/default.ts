@@ -401,9 +401,9 @@ module.exports = Editor.Panel.define({
         let result: any;
         if (isAudio) {
           const audioFormat = format === 'mp3' || format === 'ogg' ? format : 'mp3';
-          result = await Editor.Message.request('plbx-cocos-extension', 'compress-audio', asset.path, audioFormat, quality);
+          result = await Editor.Message.request('plbx-cocos-extension', 'compress-audio', asset.file, audioFormat, quality);
         } else {
-          result = await Editor.Message.request('plbx-cocos-extension', 'compress-image', asset.path, format, quality);
+          result = await Editor.Message.request('plbx-cocos-extension', 'compress-image', asset.file, format, quality);
         }
         const newSize  = result?.outputSize ?? result?.size ?? 0;
         const origSize = asset.sourceSize ?? asset.buildSize ?? 0;
@@ -505,7 +505,7 @@ module.exports = Editor.Panel.define({
       overlay.style.display = 'flex';
 
       try {
-        const origData = await Editor.Message.request('plbx-cocos-extension', 'get-asset-data-uri', asset.path);
+        const origData = await Editor.Message.request('plbx-cocos-extension', 'get-asset-data-uri', asset.file);
         if (origWrap) {
           if (isAudio) {
             const audio = document.createElement('audio');
@@ -521,7 +521,7 @@ module.exports = Editor.Panel.define({
 
         const origSize = origData.size ?? asset.sourceSize ?? asset.buildSize ?? 0;
         if (!isAudio) {
-          const meta = await Editor.Message.request('plbx-cocos-extension', 'get-image-meta', asset.path);
+          const meta = await Editor.Message.request('plbx-cocos-extension', 'get-image-meta', asset.file);
           if (origMeta) origMeta.textContent = meta.width + '\u00d7' + meta.height + ' ' + meta.format.toUpperCase() + '\n' + fmt(origSize);
         } else {
           if (origMeta) origMeta.textContent = fmt(origSize);
@@ -557,9 +557,9 @@ module.exports = Editor.Panel.define({
       try {
         let result: any;
         if (isAudio) {
-          result = await Editor.Message.request('plbx-cocos-extension', 'compress-audio-preview', asset.path, format, quality);
+          result = await Editor.Message.request('plbx-cocos-extension', 'compress-audio-preview', asset.file, format, quality);
         } else {
-          result = await Editor.Message.request('plbx-cocos-extension', 'compress-image-preview', asset.path, format, quality);
+          result = await Editor.Message.request('plbx-cocos-extension', 'compress-image-preview', asset.file, format, quality);
         }
 
         if (this._previewAsset !== asset) return;
@@ -631,9 +631,9 @@ module.exports = Editor.Panel.define({
         let result: any;
         if (isAudio) {
           const audioFormat = format === 'mp3' || format === 'ogg' ? format : 'mp3';
-          result = await Editor.Message.request('plbx-cocos-extension', 'compress-audio', asset.path, audioFormat, quality);
+          result = await Editor.Message.request('plbx-cocos-extension', 'compress-audio', asset.file, audioFormat, quality);
         } else {
-          result = await Editor.Message.request('plbx-cocos-extension', 'compress-image', asset.path, format, quality);
+          result = await Editor.Message.request('plbx-cocos-extension', 'compress-image', asset.file, format, quality);
         }
 
         const rowId = 'compress-row-' + encodeURIComponent(asset.path ?? asset.name ?? '');

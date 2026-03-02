@@ -60,6 +60,7 @@ export async function scanAssets(
         uuid: item.uuid,
         name: item.name,
         path: item.path,
+        file: item.file,
         type: item.type,
         sourceSize,
         buildSize,
