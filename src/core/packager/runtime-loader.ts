@@ -162,6 +162,47 @@ function _base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
+function _stringToArrayBuffer(str) {
+  var encoder = new TextEncoder();
+  return encoder.encode(str).buffer;
+}
+
+// Detect if a cached value is base64 (binary) or plain text.
+// Text files (JSON, JS, CSS) are stored as plain strings.
+// Binary files (PNG, BIN, MP3) are stored as base64.
+function _isBase64(cached) {
+  // Quick heuristic: text files will contain common text characters
+  // base64 only contains A-Za-z0-9+/= and has no whitespace at start
+  if (cached.length === 0) return false;
+  var c = cached.charCodeAt(0);
+  // JSON starts with { or [, JS/CSS with various text chars
+  if (c === 123 || c === 91 || c === 60 || c === 47 || c === 10 || c === 13 || c === 32) return false;
+  // Try a quick check: if first 100 chars are all base64-valid, treat as base64
+  var b64chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  var check = Math.min(cached.length, 100);
+  for (var i = 0; i < check; i++) {
+    if (b64chars.indexOf(cached.charAt(i)) === -1) return false;
+  }
+  return true;
+}
+
+function _cachedToArrayBuffer(cached) {
+  if (_isBase64(cached)) {
+    return _base64ToArrayBuffer(cached);
+  }
+  return _stringToArrayBuffer(cached);
+}
+
+function _cachedToBlob(cached) {
+  if (_isBase64(cached)) {
+    var binaryString = atob(cached);
+    var arr = new Uint8Array(binaryString.length);
+    for (var i = 0; i < binaryString.length; i++) arr[i] = binaryString.charCodeAt(i);
+    return new Blob([arr]);
+  }
+  return new Blob([cached]);
+}
+
 function patchAPIs() {
   if (DEBUG) console.log('[plbx] Patching browser APIs');
 
@@ -186,29 +227,40 @@ function patchAPIs() {
         return;
       }
       // Serve from memory
+      // cached can be a plain string (text files) or base64 (binary files)
       var cached = xhr._plbxCached;
       var response;
       try {
         switch (xhr.responseType) {
           case 'json':
-            response = JSON.parse(cached);
+            // cached might be JSON string or base64-encoded JSON
+            if (_isBase64(cached)) {
+              response = JSON.parse(atob(cached));
+            } else {
+              response = JSON.parse(cached);
+            }
             break;
           case 'arraybuffer':
-            response = _base64ToArrayBuffer(cached);
+            response = _cachedToArrayBuffer(cached);
             break;
           case 'blob':
-            var bytes = atob(cached);
-            var arr = new Uint8Array(bytes.length);
-            for (var i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-            response = new Blob([arr]);
+            response = _cachedToBlob(cached);
             break;
           case 'text':
           case '':
           default:
-            response = cached;
+            // If binary (base64) was requested as text, decode it
+            if (_isBase64(cached) && xhr.responseType === '') {
+              // Default responseType '' means text, but cached might be base64
+              // In most cases Cocos uses explicit types, so return as-is
+              response = cached;
+            } else {
+              response = cached;
+            }
             break;
         }
       } catch(e) {
+        if (DEBUG) console.warn('[plbx] XHR response conversion error for ' + xhr._plbxUrl + ':', e);
         response = cached;
       }
 

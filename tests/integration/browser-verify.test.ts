@@ -150,6 +150,21 @@ describeIf('Browser verification: packaged HTML files', () => {
       if (err.text.match(/\b\w+\s+is not defined\b/) && !err.text.includes('[plbx]')) {
         critical.push(`Console: ${err.text}`);
       }
+      // Shader program errors indicate binary files (effect.bin) loaded incorrectly
+      if (err.text.includes('program:') && err.text.includes('not found')) {
+        critical.push(`Shader: ${err.text}`);
+      }
+    }
+
+    // Uncaught TypeError in engine code indicates broken asset loading
+    // (e.g. binary files extracted as corrupted strings)
+    for (const ex of result.uncaughtExceptions) {
+      if (ex.includes('Cannot read properties of') && ex.includes("reading 'length'")) {
+        critical.push(`AssetLoad: ${ex}`);
+      }
+      if (ex.includes('Cannot read properties of null') && ex.includes("reading 'blocks'")) {
+        critical.push(`ShaderInit: ${ex}`);
+      }
     }
 
     return critical;
