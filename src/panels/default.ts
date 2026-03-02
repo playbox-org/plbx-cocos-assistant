@@ -198,6 +198,16 @@ module.exports = Editor.Panel.define({
 
       if (!summary || !tbody || !countEl || !srcEl || !buildEl || !imgEl || !audioEl) return;
 
+      // Deduplicate by path
+      const seen = new Set<string>();
+      const dedupedAssets = (report?.assets ?? []).filter((a: any) => {
+        const key = a.path ?? a.name ?? '';
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      report = { ...report, assets: dedupedAssets };
+
       const assets: any[] = report?.assets ?? [];
 
       const sorted = [...assets].sort((a, b) => {
