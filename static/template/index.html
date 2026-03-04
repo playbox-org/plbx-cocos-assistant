@@ -125,16 +125,31 @@
 
     <!-- ===================== PACKAGE ===================== -->
     <div id="content-package" class="tab-pane" style="display:none;">
-      <div style="display:flex;gap:16px;flex-shrink:0;flex-wrap:wrap;margin-bottom:10px;">
-        <!-- Network Grid -->
-        <div style="flex:1;min-width:300px;">
-          <div class="section-header">Networks</div>
-          <div id="network-grid" class="network-grid"></div>
-        </div>
 
-        <!-- Package Options -->
-        <div style="min-width:240px;max-width:320px;">
-          <div class="section-header">Options</div>
+      <!-- ── Networks ── -->
+      <div class="pkg-section" style="flex-shrink:0;">
+        <div class="pkg-section-bar">
+          <span class="section-header" style="margin:0;border:none;padding:0;">Networks</span>
+          <div class="pkg-net-actions">
+            <button class="btn-chip" data-net-action="all">All</button>
+            <button class="btn-chip" data-net-action="none">None</button>
+            <button class="btn-chip" data-net-action="html">HTML</button>
+            <button class="btn-chip" data-net-action="zip">ZIP</button>
+          </div>
+        </div>
+        <div id="network-grid" class="network-grid network-grid-compact"></div>
+        <div id="network-more-wrap" class="pkg-more-wrap" style="display:none;">
+          <button id="btn-toggle-more-nets" class="btn-more-toggle">More networks <span class="more-arrow">&#9662;</span></button>
+          <div id="network-grid-more" class="network-grid network-grid-compact" style="display:none;"></div>
+        </div>
+      </div>
+
+      <!-- ── Settings row: two columns ── -->
+      <div class="pkg-settings-row" style="flex-shrink:0;">
+
+        <!-- Left: Build Settings -->
+        <div class="pkg-settings-col">
+          <div class="section-header">Build Settings</div>
           <div class="form-group">
             <span class="form-label">Orientation</span>
             <div class="radio-group">
@@ -151,6 +166,11 @@
             <span class="form-label">Android Store URL</span>
             <input type="text" id="pkg-store-android" class="form-input" placeholder="https://play.google.com/..." />
           </div>
+        </div>
+
+        <!-- Right: Output Settings -->
+        <div class="pkg-settings-col">
+          <div class="section-header">Output</div>
           <div class="form-group">
             <span class="form-label">Build Directory</span>
             <input type="text" id="pkg-build-dir" class="form-input" value="build/web-mobile" placeholder="build/web-mobile" />
@@ -160,6 +180,25 @@
             <input type="text" id="pkg-output-dir" class="form-input" value="build/plbx-html" placeholder="build/plbx-html" />
           </div>
           <div class="form-group">
+            <span class="form-label">Output Naming</span>
+            <div style="display:flex;gap:6px;">
+              <select id="pkg-template-preset" class="form-select" style="max-width:100px;">
+                <option value="standard">Standard</option>
+                <option value="flat">Flat</option>
+                <option value="custom">Custom</option>
+              </select>
+              <input type="text" id="pkg-output-template" class="form-input" value="{networkId}/index.{ext}" placeholder="{networkId}/index.{ext}" />
+            </div>
+            <div id="pkg-template-preview" class="pkg-hint">Preview: applovin/index.html</div>
+            <div id="pkg-template-vars" class="pkg-var-chips">
+              <span class="var-chip" data-var="networkId">{networkId}</span>
+              <span class="var-chip" data-var="network">{network}</span>
+              <span class="var-chip" data-var="ext">{ext}</span>
+              <span class="var-chip" data-var="format">{format}</span>
+            </div>
+          </div>
+          <div id="pkg-user-vars-container"></div>
+          <div class="form-group">
             <label class="toggle-label">
               <input type="checkbox" id="pkg-auto-package" checked />
               <span>Auto-package after build</span>
@@ -168,6 +207,7 @@
         </div>
       </div>
 
+      <!-- ── Actions ── -->
       <div class="toolbar" style="flex-shrink:0;">
         <button id="btn-build-all" class="btn">Build All</button>
         <button id="btn-open-output" class="btn btn-secondary">Open Output Folder</button>
@@ -175,6 +215,7 @@
         <span id="pkg-status" style="color:#777;font-size:12px;margin-left:8px;"></span>
       </div>
 
+      <!-- ── Results ── -->
       <div class="data-table-wrap">
         <table class="data-table" id="pkg-results-table">
           <thead>

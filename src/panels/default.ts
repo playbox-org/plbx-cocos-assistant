@@ -71,6 +71,9 @@ module.exports = Editor.Panel.define({
     // Package tab
     btnGenerateAdapter: '#btn-generate-adapter',
     networkGrid:      '#network-grid',
+    networkGridMore:  '#network-grid-more',
+    networkMoreWrap:  '#network-more-wrap',
+    btnToggleMoreNets:'#btn-toggle-more-nets',
     btnBuildAll:      '#btn-build-all',
     btnOpenOutput:    '#btn-open-output',
     pkgStatus:        '#pkg-status',
@@ -80,6 +83,11 @@ module.exports = Editor.Panel.define({
     pkgOutputDir:     '#pkg-output-dir',
     pkgResultsTbody:  '#pkg-results-tbody',
     pkgAutoPackage:   '#pkg-auto-package',
+    pkgTemplatePreset:'#pkg-template-preset',
+    pkgOutputTemplate:'#pkg-output-template',
+    pkgTemplatePreview:'#pkg-template-preview',
+    pkgTemplateVars:  '#pkg-template-vars',
+    pkgUserVarsContainer:'#pkg-user-vars-container',
 
     // Deploy tab
     deployToken:       '#deploy-token',
@@ -745,44 +753,194 @@ module.exports = Editor.Panel.define({
     },
 
     _initPackage(this: any) {
-      const grid          = this.$.networkGrid;
+      const grid          = this.$.networkGrid as HTMLElement | null;
+      const gridMore      = this.$.networkGridMore as HTMLElement | null;
+      const moreWrap      = this.$.networkMoreWrap as HTMLElement | null;
+      const btnToggleMore = this.$.btnToggleMoreNets as HTMLButtonElement | null;
       const btnBuildAll   = this.$.btnBuildAll as HTMLButtonElement;
       const btnOpenOutput = this.$.btnOpenOutput as HTMLButtonElement;
       const pkgStatus     = this.$.pkgStatus as HTMLSpanElement;
+      const templatePreset = this.$.pkgTemplatePreset as HTMLSelectElement | null;
+      const templateInput  = this.$.pkgOutputTemplate as HTMLInputElement | null;
+      const templatePreview = this.$.pkgTemplatePreview as HTMLElement | null;
+      const templateVarsEl  = this.$.pkgTemplateVars as HTMLElement | null;
+      const userVarsContainer = this.$.pkgUserVarsContainer as HTMLElement | null;
 
       if (!grid) return;
 
+      // Primary networks shown by default (sorted alphabetically)
+      const PRIMARY_NETS = ['applovin', 'facebook', 'google', 'ironsource', 'unity'];
+      const SYSTEM_VARS = ['network', 'networkId', 'format', 'ext'];
+      const TEMPLATE_PRESETS: Record<string, string> = {
+        standard: '{networkId}/index.{ext}',
+        flat: '{networkId}.{ext}',
+      };
+
+      // --- Helper: create a network checkbox label ---
+      const createNetLabel = (net: any, defaultChecked: string[]) => {
+        const label = document.createElement('label');
+        label.className = 'network-check-label';
+        label.dataset.networkId = net.id;
+        label.dataset.format = net.format ?? '';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.name = 'network';
+        cb.value = net.id;
+        cb.checked = defaultChecked.includes(net.id);
+        if (cb.checked) label.classList.add('checked');
+        cb.addEventListener('change', () => label.classList.toggle('checked', cb.checked));
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = net.name ?? net.id;
+
+        const fmtTag = document.createElement('span');
+        fmtTag.className = 'network-format-tag';
+        fmtTag.textContent = net.format ?? '';
+
+        label.appendChild(cb);
+        label.appendChild(nameSpan);
+        label.appendChild(fmtTag);
+        return label;
+      };
+
+      // --- Load networks: sort by name, split primary/more ---
       Editor.Message.request('plbx-cocos-extension', 'get-networks').then((networks: any[]) => {
+        const sorted = [...networks].sort((a: any, b: any) =>
+          (a.name ?? a.id).localeCompare(b.name ?? b.id),
+        );
+
+        const primary = sorted.filter((n: any) => PRIMARY_NETS.includes(n.id));
+        const more = sorted.filter((n: any) => !PRIMARY_NETS.includes(n.id));
+
         clearChildren(grid);
-        for (const net of networks) {
-          const label = document.createElement('label');
-          label.className = 'network-check-label';
+        for (const net of primary) {
+          grid.appendChild(createNetLabel(net, PRIMARY_NETS));
+        }
 
-          const cb = document.createElement('input');
-          cb.type    = 'checkbox';
-          cb.name    = 'network';
-          cb.value   = net.id;
-          cb.checked = ['ironsource', 'applovin', 'google', 'facebook', 'unity'].includes(net.id);
-          if (cb.checked) label.classList.add('checked');
-          cb.addEventListener('change', () => label.classList.toggle('checked', cb.checked));
-
-          const nameSpan = document.createElement('span');
-          nameSpan.textContent = net.name ?? net.id;
-
-          const fmtTag = document.createElement('span');
-          fmtTag.className = 'network-format-tag';
-          fmtTag.textContent = net.format ?? '';
-
-          label.appendChild(cb);
-          label.appendChild(nameSpan);
-          label.appendChild(fmtTag);
-          grid.appendChild(label);
+        if (gridMore && moreWrap && more.length > 0) {
+          moreWrap.style.display = '';
+          clearChildren(gridMore);
+          for (const net of more) {
+            gridMore.appendChild(createNetLabel(net, PRIMARY_NETS));
+          }
         }
       }).catch((e: any) => {
         console.warn('[plbx]', e);
         if (pkgStatus) pkgStatus.textContent = 'Could not load networks';
       });
 
+      // --- More networks toggle ---
+      btnToggleMore?.addEventListener('click', () => {
+        const moreGrid = this.$.networkGridMore as HTMLElement | null;
+        if (!moreGrid) return;
+        const isHidden = moreGrid.style.display === 'none';
+        moreGrid.style.display = isHidden ? '' : 'none';
+        const arrow = btnToggleMore.querySelector('.more-arrow');
+        arrow?.classList.toggle('expanded', isHidden);
+      });
+
+      // --- Network filter actions (All/None/HTML/ZIP) ---
+      const contentPkg = this.$.contentPackage as HTMLElement | null;
+      contentPkg?.querySelectorAll('[data-net-action]').forEach((btn: any) => {
+        btn.addEventListener('click', () => {
+          const action = btn.dataset.netAction;
+          const allCbs = contentPkg.querySelectorAll('input[name="network"]');
+          allCbs.forEach((cb: any) => {
+            const input = cb as HTMLInputElement;
+            const label = input.closest('label') as HTMLElement | null;
+            const fmt = label?.dataset.format ?? '';
+            if (action === 'all') input.checked = true;
+            else if (action === 'none') input.checked = false;
+            else if (action === 'html') input.checked = fmt === 'html';
+            else if (action === 'zip') input.checked = fmt === 'zip';
+            label?.classList.toggle('checked', input.checked);
+          });
+          // Expand "more" section if filter was applied
+          const moreGrid = this.$.networkGridMore as HTMLElement | null;
+          if (moreGrid && action !== 'none') {
+            moreGrid.style.display = '';
+            const arrow = btnToggleMore?.querySelector('.more-arrow');
+            arrow?.classList.add('expanded');
+          }
+        });
+      });
+
+      // --- Output Naming: template logic ---
+      const updateTemplatePreview = () => {
+        if (!templateInput || !templatePreview) return;
+        const tmpl = templateInput.value || '{networkId}/index.{ext}';
+        const preview = tmpl
+          .replace(/\{networkId\}/g, 'applovin')
+          .replace(/\{network\}/g, 'AppLovin')
+          .replace(/\{format\}/g, 'html')
+          .replace(/\{ext\}/g, 'html');
+        templatePreview.textContent = 'Preview: ' + preview;
+
+        // Detect user variables
+        const allVars = (tmpl.match(/\{(\w+)\}/g) || []).map((v: string) => v.slice(1, -1));
+        const userVars = [...new Set(allVars)].filter((v: string) => !SYSTEM_VARS.includes(v));
+        if (userVarsContainer) {
+          clearChildren(userVarsContainer);
+          for (const varName of userVars) {
+            const group = document.createElement('div');
+            group.className = 'form-group';
+            const label = document.createElement('span');
+            label.className = 'form-label';
+            label.textContent = varName;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'form-input';
+            input.dataset.templateVar = varName;
+            input.placeholder = `Value for {${varName}}`;
+            group.appendChild(label);
+            group.appendChild(input);
+            userVarsContainer.appendChild(group);
+          }
+        }
+      };
+
+      templatePreset?.addEventListener('change', () => {
+        const val = templatePreset.value;
+        if (val !== 'custom' && templateInput) {
+          templateInput.value = TEMPLATE_PRESETS[val] || TEMPLATE_PRESETS.standard;
+          updateTemplatePreview();
+        }
+      });
+
+      templateInput?.addEventListener('input', () => {
+        // Auto-switch to Custom if user edits
+        if (templatePreset) {
+          const val = templateInput?.value ?? '';
+          const matchesPreset = Object.entries(TEMPLATE_PRESETS).find(([, v]) => v === val);
+          templatePreset.value = matchesPreset ? matchesPreset[0] : 'custom';
+        }
+        updateTemplatePreview();
+      });
+
+      // Variable chip click → insert at cursor
+      templateVarsEl?.querySelectorAll('.var-chip').forEach((chip: any) => {
+        chip.addEventListener('click', () => {
+          if (!templateInput) return;
+          const varName = chip.dataset.var;
+          const token = `{${varName}}`;
+          const pos = templateInput.selectionStart ?? templateInput.value.length;
+          const before = templateInput.value.slice(0, pos);
+          const after = templateInput.value.slice(pos);
+          templateInput.value = before + token + after;
+          templateInput.focus();
+          templateInput.setSelectionRange(pos + token.length, pos + token.length);
+          if (templatePreset) {
+            const matchesPreset = Object.entries(TEMPLATE_PRESETS).find(([, v]) => v === templateInput.value);
+            templatePreset.value = matchesPreset ? matchesPreset[0] : 'custom';
+          }
+          updateTemplatePreview();
+        });
+      });
+
+      updateTemplatePreview();
+
+      // --- Restore settings ---
       Editor.Message.request('plbx-cocos-extension', 'get-settings').then((settings: any) => {
         const iosInput     = this.$.pkgStoreIos as HTMLInputElement;
         const androidInput = this.$.pkgStoreAndroid as HTMLInputElement;
@@ -800,10 +958,28 @@ module.exports = Editor.Panel.define({
         const radioEl = (this.$.contentPackage as HTMLElement | null)?.querySelector(`input[name="orientation"][value="${ori}"]`) as HTMLInputElement | null;
         if (radioEl) radioEl.checked = true;
 
+        // Restore output template
+        if (settings?.outputTemplate && templateInput) {
+          templateInput.value = settings.outputTemplate;
+          if (templatePreset) {
+            const matchesPreset = Object.entries(TEMPLATE_PRESETS).find(([, v]) => v === settings.outputTemplate);
+            templatePreset.value = matchesPreset ? matchesPreset[0] : 'custom';
+          }
+          updateTemplatePreview();
+        }
+
+        // Restore template variables
+        if (settings?.templateVariables && userVarsContainer) {
+          for (const [k, v] of Object.entries(settings.templateVariables)) {
+            const input = userVarsContainer.querySelector(`input[data-template-var="${k}"]`) as HTMLInputElement | null;
+            if (input) input.value = v as string;
+          }
+        }
+
         // Restore selected networks
         if (settings?.selectedNetworks?.length) {
-          const cbs = (this.$.networkGrid as HTMLElement | null)?.querySelectorAll('input[name="network"]');
-          cbs?.forEach((cb: any) => {
+          const allCbs = contentPkg?.querySelectorAll('input[name="network"]');
+          allCbs?.forEach((cb: any) => {
             const input = cb as HTMLInputElement;
             input.checked = settings.selectedNetworks.includes(input.value);
             input.closest('label')?.classList.toggle('checked', input.checked);
@@ -818,15 +994,27 @@ module.exports = Editor.Panel.define({
           .catch((e: any) => { console.warn('[plbx]', e); });
       });
 
+      // --- Build All ---
       btnBuildAll?.addEventListener('click', async () => {
         const buildDir  = (this.$.pkgBuildDir as HTMLInputElement)?.value.trim() ?? '';
         const outputDir = (this.$.pkgOutputDir as HTMLInputElement)?.value.trim() ?? '';
         const storeIos  = (this.$.pkgStoreIos as HTMLInputElement)?.value.trim() ?? '';
         const storeAnd  = (this.$.pkgStoreAndroid as HTMLInputElement)?.value.trim() ?? '';
         const orientation = (((this.$.contentPackage as HTMLElement | null)?.querySelector('input[name="orientation"]:checked') as HTMLInputElement | null)?.value ?? 'portrait') as any;
+        const outputTemplate = templateInput?.value.trim() || '{networkId}/index.{ext}';
 
+        // Collect user-defined template variables
+        const templateVariables: Record<string, string> = {};
+        userVarsContainer?.querySelectorAll('input[data-template-var]').forEach((inp: any) => {
+          const el = inp as HTMLInputElement;
+          if (el.dataset.templateVar && el.value.trim()) {
+            templateVariables[el.dataset.templateVar] = el.value.trim();
+          }
+        });
+
+        // Gather selected from both grids
         const selected = Array.from(
-          (this.$.networkGrid as HTMLElement | null)?.querySelectorAll('input[name="network"]:checked') ?? []
+          contentPkg?.querySelectorAll('input[name="network"]:checked') ?? []
         ).map((cb: any) => (cb as HTMLInputElement).value);
 
         if (!buildDir)        { if (pkgStatus) pkgStatus.textContent = 'Set build directory first';    return; }
@@ -840,6 +1028,8 @@ module.exports = Editor.Panel.define({
           orientation,
           buildDir,
           outputDir,
+          outputTemplate,
+          templateVariables,
         }).catch((e: any) => { console.warn('[plbx]', e); });
 
         btnBuildAll.disabled = true;
@@ -847,7 +1037,10 @@ module.exports = Editor.Panel.define({
 
         const config = { storeUrlIos: storeIos, storeUrlAndroid: storeAnd, orientation };
         try {
-          const response = await Editor.Message.request('plbx-cocos-extension', 'package-networks', buildDir, outputDir, selected, config);
+          const response = await Editor.Message.request(
+            'plbx-cocos-extension', 'package-networks',
+            buildDir, outputDir, selected, config, outputTemplate, templateVariables,
+          );
           const results = Array.isArray(response) ? response : response?.results ?? [];
           this._renderPackageResults(results);
           if (pkgStatus) pkgStatus.textContent = 'Build complete';
