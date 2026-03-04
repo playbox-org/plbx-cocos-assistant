@@ -106,7 +106,14 @@ export const methods: Record<string, (...args: any[]) => any> = {
   },
 
   // === Packaging ===
-  async packageNetworks(buildDir: string, outputDir: string, networkIds: string[], config: any) {
+  async packageNetworks(
+    buildDir: string,
+    outputDir: string,
+    networkIds: string[],
+    config: any,
+    outputTemplate?: string,
+    templateVariables?: Record<string, string>,
+  ) {
     const { resolve } = require('path');
     const projectRoot = Editor.Project.path || '';
     const absBuildDir  = resolve(projectRoot, buildDir);
@@ -116,6 +123,8 @@ export const methods: Record<string, (...args: any[]) => any> = {
       outputDir: absOutputDir,
       networks: networkIds,
       config,
+      outputTemplate,
+      templateVariables,
       onProgress: (_id, _status, _msg) => {
         // TODO: 'package-progress' message has no registered listener in the extension.
         // Panel does not handle this message type, so sending it is a no-op.

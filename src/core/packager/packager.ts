@@ -1,5 +1,5 @@
 import { readFileSync, mkdirSync, existsSync, writeFileSync, cpSync, rmSync, readdirSync, statSync } from 'fs';
-import { join, relative, extname } from 'path';
+import { join, relative, extname, dirname } from 'path';
 import { HtmlBuilder } from './html-builder';
 import { getAdapter } from './network-adapters';
 import { buildZip } from './zip-builder';
@@ -8,6 +8,7 @@ import { PackageResult, OutputFormat } from '../../shared/types';
 import { PackagerOptions, PackagerResult } from './types';
 import { packDirectoryToZip } from './asset-inliner';
 import { generateFullHtml } from './runtime-loader';
+import { resolveTemplate } from './template-resolver';
 import CleanCSS from 'clean-css';
 
 export async function packageForNetworks(options: PackagerOptions): Promise<PackagerResult> {
@@ -31,8 +32,6 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
       }
 
       const adapter = getAdapter(networkId);
-      const networkOutDir = join(options.outputDir, networkId);
-      mkdirSync(networkOutDir, { recursive: true });
 
       // Clone HTML and apply network adapter
       const builder = new HtmlBuilder(baseHtml);
@@ -48,6 +47,18 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
         const formatSuffix = formats.length > 1 ? `-${format}` : '';
         let outputPath: string;
         let outputSize: number;
+
+        // Resolve output path from template
+        const template = options.outputTemplate || '{networkId}/index.{ext}';
+        const resolved = resolveTemplate(template, {
+          network: network.name,
+          networkId: network.id,
+          format,
+          ext: format,
+          ...options.templateVariables,
+        });
+        outputPath = join(options.outputDir, resolved);
+        mkdirSync(dirname(outputPath), { recursive: true });
 
         if (format === 'html') {
           // Single HTML — pack ALL assets into ZIP (like super-html), embed with runtime loader
@@ -71,20 +82,18 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
             buildDir: options.buildDir,
           });
 
-          outputPath = join(networkOutDir, `index${formatSuffix}.html`);
           writeFileSync(outputPath, finalHtml);
           outputSize = statSync(outputPath).size;
         } else {
           // ZIP — copy build dir + transformed HTML + extras
           options.onProgress?.(networkId, 'processing', `Building ZIP...`);
 
-          const tempDir = join(networkOutDir, '_temp');
+          const tempDir = join(dirname(outputPath), `_temp_${networkId}`);
           mkdirSync(tempDir, { recursive: true });
 
           cpSync(options.buildDir, tempDir, { recursive: true });
           writeFileSync(join(tempDir, 'index.html'), builder.toHtml());
 
-          const zipPath = join(networkOutDir, `${networkId}${formatSuffix}.zip`);
           const extraFiles: Array<{ zipPath: string; content: string }> = [];
 
           const zipConfig = adapter.getZipConfig(options.config);
@@ -97,7 +106,7 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
 
           const zipResult = await buildZip({
             sourceDir: tempDir,
-            outputPath: zipPath,
+            outputPath,
             prefix: network.zipStructure || '',
             jsBundleName: adapter.getJsBundleName() || undefined,
             extraFiles,
