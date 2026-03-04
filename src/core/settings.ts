@@ -12,6 +12,8 @@ export interface ProjectSettings {
   autoPackage: boolean;
   buildDir: string;
   outputDir: string;
+  outputTemplate: string;
+  templateVariables: Record<string, string>;
 }
 
 const DEFAULT_SETTINGS: ProjectSettings = {
@@ -26,6 +28,8 @@ const DEFAULT_SETTINGS: ProjectSettings = {
   autoPackage: true,
   buildDir: 'build/web-mobile',
   outputDir: 'build/plbx-html',
+  outputTemplate: '{networkId}/index.{ext}',
+  templateVariables: {},
 };
 
 /** Get project-scoped settings */
