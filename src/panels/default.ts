@@ -870,11 +870,21 @@ module.exports = Editor.Panel.define({
       const updateTemplatePreview = () => {
         if (!templateInput || !templatePreview) return;
         const tmpl = templateInput.value || '{networkId}/index.{ext}';
-        const preview = tmpl
-          .replace(/\{networkId\}/g, 'applovin')
-          .replace(/\{network\}/g, 'AppLovin')
-          .replace(/\{format\}/g, 'html')
-          .replace(/\{ext\}/g, 'html');
+        // Case-aware preview: lowercase var → lowercase value, Uppercase → Capitalized, ALL CAPS → UPPERCASE
+        const previewVars: Record<string, Record<string, string>> = {
+          network:   { lower: 'applovin', cap: 'Applovin', upper: 'APPLOVIN' },
+          networkId: { lower: 'applovin', cap: 'Applovin', upper: 'APPLOVIN' },
+          format:    { lower: 'html',     cap: 'Html',     upper: 'HTML' },
+          ext:       { lower: 'html',     cap: 'Html',     upper: 'HTML' },
+        };
+        const preview = tmpl.replace(/\{(\w+)\}/g, (_m: string, key: string) => {
+          const ctxKey = key[0].toLowerCase() + key.slice(1);
+          const vals = previewVars[ctxKey];
+          if (!vals) return `{${key}}`;
+          if (key === key.toUpperCase() && key.length > 1) return vals.upper;
+          if (key[0] === key[0].toUpperCase() && key[0] !== key[0].toLowerCase()) return vals.cap;
+          return vals.lower;
+        });
         templatePreview.textContent = 'Preview: ' + preview;
 
         // Detect user variables

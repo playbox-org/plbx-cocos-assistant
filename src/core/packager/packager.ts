@@ -51,7 +51,7 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
         // Resolve output path from template
         const template = options.outputTemplate || '{networkId}/index.{ext}';
         const resolved = resolveTemplate(template, {
-          network: network.name,
+          network: network.id,
           networkId: network.id,
           format,
           ext: format,

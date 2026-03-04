@@ -8,7 +8,7 @@ import {
 } from '../../../src/core/packager/template-resolver';
 
 const baseCtx: TemplateContext = {
-  network: 'AppLovin',
+  network: 'applovin',
   networkId: 'applovin',
   format: 'html',
   ext: 'html',
@@ -40,13 +40,41 @@ describe('resolveTemplate', () => {
     expect(resolveTemplate(defaultTemplate, zipCtx)).toBe('applovin/index.zip');
   });
 
-  it('resolves {network} (display name) correctly', () => {
-    expect(resolveTemplate('{network}.{ext}', baseCtx)).toBe('AppLovin.html');
+  // --- Case convention tests ---
+  it('{network} (lowercase) → lowercase value', () => {
+    expect(resolveTemplate('{network}.{ext}', baseCtx)).toBe('applovin.html');
+  });
+
+  it('{Network} (capitalized) → Capitalized value', () => {
+    expect(resolveTemplate('{Network}.{ext}', baseCtx)).toBe('Applovin.html');
+  });
+
+  it('{NETWORK} (all caps) → UPPERCASE value', () => {
+    expect(resolveTemplate('{NETWORK}.{ext}', baseCtx)).toBe('APPLOVIN.html');
+  });
+
+  it('{NetworkId} (capitalized) → Capitalized value', () => {
+    expect(resolveTemplate('{NetworkId}/index.{ext}', baseCtx)).toBe('Applovin/index.html');
+  });
+
+  it('{EXT} (all caps) → HTML uppercase', () => {
+    expect(resolveTemplate('{networkId}.{EXT}', baseCtx)).toBe('applovin.HTML');
+  });
+
+  it('mixed casing in one template', () => {
+    const ctx: TemplateContext = { ...baseCtx, network: 'ironsource', networkId: 'ironsource' };
+    expect(resolveTemplate('{networkId}/TRM_{Network}.{ext}', ctx))
+      .toBe('ironsource/TRM_Ironsource.html');
+  });
+
+  it('user-defined vars also support casing', () => {
+    const ctx: TemplateContext = { ...baseCtx, project: 'myGame' };
+    expect(resolveTemplate('{Project}_{network}.{ext}', ctx)).toBe('Mygame_applovin.html');
   });
 });
 
 describe('extractVariables', () => {
-  it('extracts all tokens', () => {
+  it('extracts all tokens (normalized to lowercase context keys)', () => {
     expect(extractVariables('{networkId}/{version}/index.{ext}')).toEqual([
       'networkId',
       'version',
@@ -56,6 +84,10 @@ describe('extractVariables', () => {
 
   it('deduplicates repeated tokens', () => {
     expect(extractVariables('{ext}.{ext}')).toEqual(['ext']);
+  });
+
+  it('normalizes casing: {Network} and {network} are the same var', () => {
+    expect(extractVariables('{Network}/{network}.{ext}')).toEqual(['network', 'ext']);
   });
 
   it('returns empty array for no tokens', () => {
@@ -70,6 +102,10 @@ describe('getUserVariables', () => {
 
   it('returns empty when only system vars present', () => {
     expect(getUserVariables('{networkId}/index.{ext}')).toEqual([]);
+  });
+
+  it('filters system vars even when capitalized', () => {
+    expect(getUserVariables('{Network}/{Version}.{EXT}')).toEqual(['version']);
   });
 });
 

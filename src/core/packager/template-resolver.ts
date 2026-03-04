@@ -5,6 +5,13 @@
  *   network, networkId, format, ext
  * Everything else is a user-defined variable supplied via templateVariables.
  *
+ * Case convention: the casing of the first letter controls output casing.
+ *   {network}   → "applovin"   (lowercase)
+ *   {Network}   → "Applovin"   (capitalized)
+ *   {NETWORK}   → "APPLOVIN"   (uppercase)
+ *   {networkId} → "applovin"   (lowercase)
+ *   {NetworkId} → "Applovin"   (capitalized)
+ *
  * Security: rejects `..`, absolute paths, and null bytes.
  */
 
@@ -20,12 +27,34 @@ const SYSTEM_VARS = new Set(['network', 'networkId', 'format', 'ext']);
 
 const TOKEN_RE = /\{(\w+)\}/g;
 
-/** Extract all `{token}` variable names from a template string. */
+/** Normalize a variable key to its lowercase context key. */
+function toContextKey(key: string): string {
+  // All uppercase: "NETWORK" → "network", "EXT" → "ext"
+  if (key === key.toUpperCase()) return key.toLowerCase();
+  // PascalCase/Capitalized: "Network" → "network", "NetworkId" → "networkId"
+  return key[0].toLowerCase() + key.slice(1);
+}
+
+/** Apply casing convention based on the variable name. */
+function applyCasing(key: string, value: string): string {
+  if (!value) return value;
+  // All uppercase variable name → UPPERCASE value
+  if (key === key.toUpperCase() && key.length > 1) return value.toUpperCase();
+  // First letter uppercase → Capitalize first letter, rest lowercase
+  if (key[0] === key[0].toUpperCase() && key[0] !== key[0].toLowerCase()) {
+    return value[0].toUpperCase() + value.slice(1).toLowerCase();
+  }
+  // Lowercase → lowercase value
+  return value.toLowerCase();
+}
+
+/** Extract all `{token}` variable names from a template string (normalized to lowercase context keys). */
 export function extractVariables(template: string): string[] {
   const vars: string[] = [];
   let m: RegExpExecArray | null;
   while ((m = TOKEN_RE.exec(template)) !== null) {
-    if (!vars.includes(m[1])) vars.push(m[1]);
+    const normalized = toContextKey(m[1]);
+    if (!vars.includes(normalized)) vars.push(normalized);
   }
   return vars;
 }
@@ -35,10 +64,14 @@ export function getUserVariables(template: string): string[] {
   return extractVariables(template).filter(v => !SYSTEM_VARS.has(v));
 }
 
-/** Replace `{token}` placeholders with values from context. */
+/** Replace `{token}` placeholders with values from context, applying casing convention. */
 export function resolveTemplate(template: string, ctx: TemplateContext): string {
   return template.replace(TOKEN_RE, (match, key) => {
-    return key in ctx ? ctx[key] : match;
+    const ctxKey = toContextKey(key);
+    if (ctxKey in ctx) return applyCasing(key, ctx[ctxKey]);
+    // Try exact key for user vars
+    if (key in ctx) return ctx[key];
+    return match;
   });
 }
 
@@ -48,7 +81,7 @@ export function validateTemplate(template: string): { valid: boolean; error?: st
     return { valid: false, error: 'Template must not be empty' };
   }
 
-  if (!template.includes('{ext}')) {
+  if (!/\{[eE][xX][tT]\}/.test(template)) {
     return { valid: false, error: 'Template must contain {ext} placeholder' };
   }
 
