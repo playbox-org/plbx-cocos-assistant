@@ -49,7 +49,12 @@ export class PlayboxApiClient {
       headers: this.headers,
       body: JSON.stringify({ name, type: 'playable_ad' }),
     });
-    if (!res.ok) throw new Error(`Failed to create project: ${res.status}`);
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      let detail = '';
+      try { detail = JSON.parse(text)?.error || text; } catch { detail = text; }
+      throw new Error(detail || `Failed to create project: ${res.status}`);
+    }
     const body: CreateProjectResponse = await res.json();
     if (!body.success || !body.data) throw new Error(body.error || 'Failed to create project');
     return body.data;
@@ -61,7 +66,12 @@ export class PlayboxApiClient {
       headers: this.headers,
       body: JSON.stringify(request),
     });
-    if (!res.ok) throw new Error(`Failed to create deployment: ${res.status}`);
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      let detail = '';
+      try { detail = JSON.parse(text)?.error || text; } catch { detail = text; }
+      throw new Error(detail || `Failed to create deployment: ${res.status}`);
+    }
     const body: CreateDeploymentResponse = await res.json();
     if (!body.success || !body.data) throw new Error(body.error || 'Failed to create deployment');
     return body.data;
@@ -73,7 +83,12 @@ export class PlayboxApiClient {
       headers: this.headers,
       body: JSON.stringify({ bundleSizeBytes }),
     });
-    if (!res.ok) throw new Error(`Failed to complete deployment: ${res.status}`);
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      let detail = '';
+      try { detail = JSON.parse(text)?.error || text; } catch { detail = text; }
+      throw new Error(detail || `Failed to complete deployment: ${res.status}`);
+    }
     const body: CompleteDeploymentResponse = await res.json();
     if (!body.success || !body.data) throw new Error(body.error || 'Failed to complete deployment');
     return body.data;

@@ -143,6 +143,10 @@ module.exports = Editor.Panel.define({
         if (t.btn) t.btn.classList.toggle('active', i === index);
         if (t.content) (t.content as HTMLElement).style.display = i === index ? 'flex' : 'none';
       });
+      // Re-check build availability when switching to Deploy tab
+      if (index === 3 && typeof this._checkDeployBuild === 'function') {
+        this._checkDeployBuild();
+      }
     };
 
     tabs.forEach((t, i) => {
@@ -1235,7 +1239,7 @@ module.exports = Editor.Panel.define({
       btnRefresh?.addEventListener('click', () => this._loadProjects(projectSel));
 
       // Check build existence and update deploy button state
-      const checkDeployBuild = async () => {
+      this._checkDeployBuild = async () => {
         const buildPath = buildPathInput?.value.trim() ?? '';
         const network = networkSel?.value ?? '';
         if (!buildPath || !network) {
@@ -1254,10 +1258,10 @@ module.exports = Editor.Panel.define({
         }
       };
 
-      networkSel?.addEventListener('change', checkDeployBuild);
-      buildPathInput?.addEventListener('change', checkDeployBuild);
+      networkSel?.addEventListener('change', () => this._checkDeployBuild?.());
+      buildPathInput?.addEventListener('change', () => this._checkDeployBuild?.());
       // Initial check after settings load
-      setTimeout(checkDeployBuild, 500);
+      setTimeout(() => this._checkDeployBuild?.(), 500);
 
       btnDeploy?.addEventListener('click', async () => {
         const projectId   = projectSel?.value;
