@@ -1265,6 +1265,8 @@ module.exports = Editor.Panel.define({
 
       btnDeploy?.addEventListener('click', async () => {
         const projectId   = projectSel?.value;
+        const selectedOpt = projectSel?.selectedOptions?.[0];
+        const projectSlug = selectedOpt?.dataset?.slug ?? '';
         const name        = deployNameInput?.value.trim();
         const buildPath   = buildPathInput?.value.trim();
         const network     = networkSel?.value;
@@ -1309,6 +1311,7 @@ module.exports = Editor.Panel.define({
           const networkBuildPath = buildPath + '/' + network;
           const result = await Editor.Message.request('plbx-cocos-extension', 'deploy', {
             projectId: projectId === '__new__' ? undefined : projectId,
+            projectSlug: projectId !== '__new__' ? projectSlug : undefined,
             projectName: projectId === '__new__' ? projectName : undefined,
             name,
             buildPath: networkBuildPath,
@@ -1366,6 +1369,7 @@ module.exports = Editor.Panel.define({
         for (const p of list) {
           const opt = document.createElement('option');
           opt.value       = p.id ?? p.projectId ?? '';
+          opt.dataset.slug = p.slug ?? '';
           opt.textContent = p.name ?? p.id ?? '—';
           selectEl.appendChild(opt);
         }

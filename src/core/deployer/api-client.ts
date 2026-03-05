@@ -77,6 +77,29 @@ export class PlayboxApiClient {
     return body.data;
   }
 
+  async checkDeploymentExists(projectSlug: string, deploymentSlug: string): Promise<{ exists: boolean; deployment?: { id: string; slug: string; status: string | null; publicUrl: string | null } }> {
+    const res = await fetch(
+      `${this.baseUrl}/deployments/by-slug?projectSlug=${encodeURIComponent(projectSlug)}&deploymentSlug=${encodeURIComponent(deploymentSlug)}`,
+      { headers: this.headers },
+    );
+    if (!res.ok) return { exists: false };
+    const body = await res.json() as { success?: boolean; data?: { exists: boolean; deployment?: any } };
+    return body.data ?? { exists: false };
+  }
+
+  async deleteDeploymentBySlug(projectSlug: string, deploymentSlug: string): Promise<void> {
+    const res = await fetch(
+      `${this.baseUrl}/deployments/by-slug?projectSlug=${encodeURIComponent(projectSlug)}&deploymentSlug=${encodeURIComponent(deploymentSlug)}`,
+      { method: 'DELETE', headers: this.headers },
+    );
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      let detail = '';
+      try { detail = JSON.parse(text)?.error || text; } catch { detail = text; }
+      throw new Error(detail || `Failed to delete deployment: ${res.status}`);
+    }
+  }
+
   async completeDeployment(deploymentId: string, bundleSizeBytes?: number): Promise<{ publicUrl: string; shareUrl: string }> {
     const res = await fetch(`${this.baseUrl}/deployments/${deploymentId}/complete`, {
       method: 'POST',

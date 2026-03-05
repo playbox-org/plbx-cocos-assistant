@@ -144,7 +144,7 @@ export const methods: Record<string, (...args: any[]) => any> = {
   },
 
   async deploy(config: {
-    projectId?: string; projectName?: string;
+    projectId?: string; projectSlug?: string; projectName?: string;
     name: string; buildPath: string;
     orientations?: string[];
   }) {
@@ -160,13 +160,29 @@ export const methods: Record<string, (...args: any[]) => any> = {
     });
 
     let projectId = config.projectId;
+    let projectSlug = config.projectSlug;
 
     // Create new project if needed
     if (!projectId && config.projectName) {
       const project = await client.createProject(config.projectName);
       projectId = project.id;
+      projectSlug = project.slug;
     }
     if (!projectId) throw new Error('No project selected');
+
+    // Normalize deployment name to slug (same as CLI)
+    const deploymentSlug = config.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    // Check if deployment already exists and auto-replace
+    if (projectSlug) {
+      const check = await client.checkDeploymentExists(projectSlug, deploymentSlug);
+      if (check.exists) {
+        await client.deleteDeploymentBySlug(projectSlug, deploymentSlug);
+      }
+    }
 
     // Scan build directory for files
     const projectRoot = Editor.Project.path || '';
