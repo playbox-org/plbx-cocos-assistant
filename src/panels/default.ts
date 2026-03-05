@@ -1201,13 +1201,28 @@ module.exports = Editor.Panel.define({
         }
       });
 
-      // Validate deployment name: no dots, URL-safe
+      // Validate deployment name: ASCII only, no dots, URL-safe
       deployNameInput?.addEventListener('input', () => {
-        const val = deployNameInput.value;
+        let val = deployNameInput.value;
+        // Strip non-ASCII characters (catches Cyrillic lookalikes etc.)
+        // eslint-disable-next-line no-control-regex
+        const nonAscii = /[^\x00-\x7F]/g;
+        if (nonAscii.test(val)) {
+          val = val.replace(nonAscii, '');
+          deployNameInput.value = val;
+          if (deployNameHint) {
+            deployNameHint.style.color = '#e8a040';
+            deployNameHint.textContent = 'Non-Latin characters removed (only a-z, 0-9, dashes)';
+          }
+          setTimeout(() => { if (deployNameHint) { deployNameHint.textContent = ''; deployNameHint.style.color = ''; } }, 3000);
+        }
         if (/[.]/.test(val)) {
           deployNameInput.value = val.replace(/\./g, '-');
-          if (deployNameHint) deployNameHint.textContent = 'Dots replaced with dashes (URL slug)';
-          setTimeout(() => { if (deployNameHint) deployNameHint.textContent = ''; }, 2000);
+          if (deployNameHint) {
+            deployNameHint.style.color = '#e8a040';
+            deployNameHint.textContent = 'Dots replaced with dashes (URL slug)';
+          }
+          setTimeout(() => { if (deployNameHint) { deployNameHint.textContent = ''; deployNameHint.style.color = ''; } }, 2000);
         }
       });
 

@@ -170,11 +170,14 @@ export const methods: Record<string, (...args: any[]) => any> = {
     }
     if (!projectId) throw new Error('No project selected');
 
+    // Strip non-ASCII before slug normalization (prevents Cyrillic lookalike issues)
+    const safeName = config.name.replace(/[^\x00-\x7F]/g, '');
     // Normalize deployment name to slug (same as CLI)
-    const deploymentSlug = config.name
+    const deploymentSlug = safeName
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
+    if (!deploymentSlug) throw new Error('Deployment name must contain at least one Latin letter or digit');
 
     // Check if deployment already exists and auto-replace
     if (projectSlug) {
