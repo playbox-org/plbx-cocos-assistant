@@ -1,13 +1,28 @@
-import sharp from 'sharp';
 import { statSync, renameSync } from 'fs';
 import { join, basename, extname, dirname } from 'path';
 import { CompressionOptions, CompressionResult, ImageMetadata } from './types';
+
+// Lazy-load sharp to prevent the entire extension from failing to load
+// when the native module is incompatible with the host Electron/Node version.
+type SharpFn = (input: string) => any;
+let _sharp: SharpFn | null = null;
+function loadSharp(): SharpFn {
+  if (!_sharp) {
+    try {
+      _sharp = require('sharp');
+    } catch (e: any) {
+      throw new Error(`Failed to load sharp: ${e.message}. Try "npm rebuild sharp" in the extension folder.`);
+    }
+  }
+  return _sharp!;
+}
 
 export async function compressImage(
   inputPath: string,
   options: CompressionOptions,
   outputDir?: string,
 ): Promise<CompressionResult> {
+  const sharp = loadSharp();
   const inputSize = statSync(inputPath).size;
 
   const inputBasename = basename(inputPath, extname(inputPath));
@@ -64,6 +79,7 @@ export async function compressImage(
 }
 
 export async function getImageMetadata(inputPath: string): Promise<ImageMetadata> {
+  const sharp = loadSharp();
   const meta = await sharp(inputPath).metadata();
   const size = statSync(inputPath).size;
 
@@ -80,6 +96,7 @@ export async function compressImageToBuffer(
   inputPath: string,
   options: CompressionOptions,
 ): Promise<{ buffer: Buffer; metadata: CompressionResult }> {
+  const sharp = loadSharp();
   const inputSize = statSync(inputPath).size;
 
   let pipeline = sharp(inputPath);
