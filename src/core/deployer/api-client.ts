@@ -16,9 +16,19 @@ export class PlayboxApiClient {
     this.config = config;
   }
 
-  private get headers(): Record<string, string> {
-    return {
+  private authHeaders(): Record<string, string> {
+    const h: Record<string, string> = {
       'Authorization': `Bearer ${this.config.apiKey}`,
+    };
+    if (this.config.organizationId) {
+      h['X-Org-Id'] = this.config.organizationId;
+    }
+    return h;
+  }
+
+  private jsonHeaders(): Record<string, string> {
+    return {
+      ...this.authHeaders(),
       'Content-Type': 'application/json',
     };
   }
@@ -27,16 +37,18 @@ export class PlayboxApiClient {
     return this.config.apiUrl;
   }
 
-  async whoami(): Promise<{ userId: string; organizations: Array<{ id: string; name: string; slug: string }> }> {
-    const res = await fetch(`${this.baseUrl}/whoami`, { headers: this.headers });
+  async whoami(): Promise<{ userId: string; organizationId?: string | null; organizations: Array<{ id: string; name: string; slug: string }> }> {
+    const res = await fetch(`${this.baseUrl}/whoami`, { headers: this.authHeaders() });
     if (!res.ok) throw new Error(`Auth failed: ${res.status}`);
     const body: WhoAmIResponse = await res.json();
     if (!body.success || !body.data) throw new Error(body.error || 'Auth failed');
     return body.data;
   }
 
-  async listProjects(): Promise<Project[]> {
-    const res = await fetch(`${this.baseUrl}/projects`, { headers: this.headers });
+  async listProjects(organizationId?: string): Promise<Project[]> {
+    const orgId = organizationId || this.config.organizationId;
+    const params = orgId ? `?organizationId=${encodeURIComponent(orgId)}` : '';
+    const res = await fetch(`${this.baseUrl}/projects${params}`, { headers: this.authHeaders() });
     if (!res.ok) throw new Error(`Failed to list projects: ${res.status}`);
     const body: ListProjectsResponse = await res.json();
     if (!body.success || !body.data) throw new Error(body.error || 'Failed to list projects');
@@ -46,7 +58,7 @@ export class PlayboxApiClient {
   async createProject(name: string): Promise<Project> {
     const res = await fetch(`${this.baseUrl}/projects`, {
       method: 'POST',
-      headers: this.headers,
+      headers: this.jsonHeaders(),
       body: JSON.stringify({ name, type: 'playable_ad' }),
     });
     if (!res.ok) {
@@ -63,7 +75,7 @@ export class PlayboxApiClient {
   async createDeployment(request: CreateDeploymentRequest): Promise<{ deploymentId: string; uploadUrls: Array<{ path: string; uploadUrl: string }> }> {
     const res = await fetch(`${this.baseUrl}/deployments`, {
       method: 'POST',
-      headers: this.headers,
+      headers: this.jsonHeaders(),
       body: JSON.stringify(request),
     });
     if (!res.ok) {
@@ -80,7 +92,7 @@ export class PlayboxApiClient {
   async checkDeploymentExists(projectSlug: string, deploymentSlug: string): Promise<{ exists: boolean; deployment?: { id: string; slug: string; status: string | null; publicUrl: string | null } }> {
     const res = await fetch(
       `${this.baseUrl}/deployments/by-slug?projectSlug=${encodeURIComponent(projectSlug)}&deploymentSlug=${encodeURIComponent(deploymentSlug)}`,
-      { headers: this.headers },
+      { headers: this.authHeaders() },
     );
     if (!res.ok) return { exists: false };
     const body = await res.json() as { success?: boolean; data?: { exists: boolean; deployment?: any } };
@@ -90,7 +102,7 @@ export class PlayboxApiClient {
   async deleteDeploymentBySlug(projectSlug: string, deploymentSlug: string): Promise<void> {
     const res = await fetch(
       `${this.baseUrl}/deployments/by-slug?projectSlug=${encodeURIComponent(projectSlug)}&deploymentSlug=${encodeURIComponent(deploymentSlug)}`,
-      { method: 'DELETE', headers: this.headers },
+      { method: 'DELETE', headers: this.authHeaders() },
     );
     if (!res.ok) {
       const text = await res.text().catch(() => '');
@@ -103,7 +115,7 @@ export class PlayboxApiClient {
   async completeDeployment(deploymentId: string, bundleSizeBytes?: number): Promise<{ publicUrl: string; shareUrl: string }> {
     const res = await fetch(`${this.baseUrl}/deployments/${deploymentId}/complete`, {
       method: 'POST',
-      headers: this.headers,
+      headers: this.jsonHeaders(),
       body: JSON.stringify({ bundleSizeBytes }),
     });
     if (!res.ok) {

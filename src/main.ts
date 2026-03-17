@@ -250,21 +250,31 @@ export const methods: Record<string, (...args: any[]) => any> = {
     const token = await getGlobalToken();
     if (!token) throw new Error('PLBX API token not set');
 
+    // Resolve organization context before any API calls
+    const authClient = new PlayboxApiClient({
+      apiUrl: 'https://app.plbx.ai/api/cli',
+      apiKey: token,
+    });
+    const whoami = await authClient.whoami();
+    const orgId = whoami.organizationId || whoami.organizations?.[0]?.id;
+    if (!orgId) throw new Error('No organization found for this API key');
+
     const client = new PlayboxApiClient({
       apiUrl: 'https://app.plbx.ai/api/cli',
       apiKey: token,
+      organizationId: orgId,
     });
 
     let projectId = config.projectId;
     let projectSlug = config.projectSlug;
 
     // Create new project if needed
-    if (!projectId && config.projectName) {
+    if (!projectId && !projectSlug && config.projectName) {
       const project = await client.createProject(config.projectName);
       projectId = project.id;
       projectSlug = project.slug;
     }
-    if (!projectId) throw new Error('No project selected');
+    if (!projectId && !projectSlug) throw new Error('No project selected');
 
     // Strip non-ASCII before slug normalization (prevents Cyrillic lookalike issues)
     const safeName = config.name.replace(/[^\x00-\x7F]/g, '');
@@ -326,7 +336,8 @@ export const methods: Record<string, (...args: any[]) => any> = {
     // Both selected or none = no lock (auto)
 
     const deployment = await client.createDeployment({
-      projectId,
+      ...(projectId ? { projectId } : {}),
+      ...(projectSlug ? { projectSlug } : {}),
       name: config.name,
       visibility: 'public',
       entryFile: 'index.html',
@@ -377,7 +388,10 @@ export const methods: Record<string, (...args: any[]) => any> = {
       apiUrl: 'https://app.plbx.ai/api/cli',
       apiKey: token,
     });
-    return client.listProjects();
+    // Resolve organization to pass as query param
+    const whoami = await client.whoami();
+    const orgId = whoami.organizationId || whoami.organizations?.[0]?.id;
+    return client.listProjects(orgId ?? undefined);
   },
 
   // === Preview ===

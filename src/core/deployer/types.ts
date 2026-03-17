@@ -1,6 +1,7 @@
 export interface PlayboxConfig {
-  apiUrl: string;      // default: 'https://app.plbx.ai/api/cli'
-  apiKey: string;      // Bearer token
+  apiUrl: string;
+  apiKey: string;
+  organizationId?: string;
 }
 
 export interface Project {
