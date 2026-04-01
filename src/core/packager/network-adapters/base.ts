@@ -50,7 +50,7 @@ export function facebookBridge(): string {
 /** Google Ads bridge */
 export function googleBridge(): string {
   return buildPlbxBridge(
-    `if (window.ExitApi) { ExitApi.exit(); } else if (url) { window.open(url, "_blank"); }`,
+    `if (window.ExitApi) { ExitApi.exit(); } else { var dest = url || window.clickTag || ""; if (dest) window.open(dest, "_blank"); }`,
     `window.plbx_html.is_hide_download = function() { return true; };`,
   );
 }

@@ -26,5 +26,12 @@ export class GoogleAdapter extends BaseAdapter {
 
     builder.injectMeta('ad-size', size);
     builder.injectMeta('ad-orientation', orientationLabel);
+
+    // Inject clickTag variable required by Google Ads Rich Media validator.
+    // Must be a `var` declaration (validator pattern-matches for it).
+    // Default value is Google's macro; falls back to URL param at runtime.
+    const clickTagScript = `var clickTag = "%%CLICK_URL_UNESC%%";\n` +
+      `try { var u = new URLSearchParams(window.location.search).get("clickTag"); if (u) clickTag = u; } catch(e) {}`;
+    builder.injectBodyScript(clickTagScript);
   }
 }

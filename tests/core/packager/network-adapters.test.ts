@@ -65,6 +65,15 @@ describe('Network Adapters', () => {
       const html = builder.toHtml();
       expect(html).toContain('480x320');
     });
+
+    it('should inject clickTag variable with Google macro default', () => {
+      const adapter = getAdapter('google');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toContain('var clickTag');
+      expect(html).toContain('%%CLICK_URL_UNESC%%');
+    });
   });
 
   describe('Facebook adapter', () => {
