@@ -140,6 +140,22 @@ Open Cocos Creator — the extension loads automatically. Open the panel via **P
 - Node.js **18+**
 - FFmpeg *(optional — required for audio compression)*
 
+## Troubleshooting
+
+**Image compression fails with "Could not load sharp"**
+
+The `sharp` library uses platform-specific native binaries. If you see this error, rebuild it for your OS:
+
+```bash
+# Windows
+npm install --os=win32 --cpu=x64 sharp
+
+# macOS / Linux
+npm rebuild sharp
+```
+
+Run this inside the extension folder (`extensions/plbx-cocos-extension/`), then restart Cocos Creator.
+
 ## Development
 
 ```bash

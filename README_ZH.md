@@ -140,6 +140,22 @@ npm run build
 - Node.js **18+**
 - FFmpeg *(可选——音频压缩所需)*
 
+## 常见问题
+
+**图片压缩失败——"Could not load sharp"**
+
+`sharp` 库使用平台相关的原生二进制文件。如果出现此错误，请为您的操作系统重新构建：
+
+```bash
+# Windows
+npm install --os=win32 --cpu=x64 sharp
+
+# macOS / Linux
+npm rebuild sharp
+```
+
+在扩展文件夹（`extensions/plbx-cocos-extension/`）中执行，然后重启 Cocos Creator。
+
 ## 开发
 
 ```bash

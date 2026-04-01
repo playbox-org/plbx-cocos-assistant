@@ -140,6 +140,22 @@ npm run build
 - Node.js **18+**
 - FFmpeg *(опционально — нужен для сжатия аудио)*
 
+## Решение проблем
+
+**Сжатие изображений не работает — "Could not load sharp"**
+
+Библиотека `sharp` использует нативные бинарники для каждой платформы. Если появилась эта ошибка, пересоберите для вашей ОС:
+
+```bash
+# Windows
+npm install --os=win32 --cpu=x64 sharp
+
+# macOS / Linux
+npm rebuild sharp
+```
+
+Выполните в папке расширения (`extensions/plbx-cocos-extension/`), затем перезапустите Cocos Creator.
+
 ## Разработка
 
 ```bash

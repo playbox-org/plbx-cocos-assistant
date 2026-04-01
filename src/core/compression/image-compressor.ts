@@ -11,7 +11,15 @@ function loadSharp(): SharpFn {
     try {
       _sharp = require('sharp');
     } catch (e: any) {
-      throw new Error(`Failed to load sharp: ${e.message}. Try "npm rebuild sharp" in the extension folder.`);
+      const platform = process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux';
+      const cmd = process.platform === 'win32'
+        ? 'npm install --os=win32 --cpu=x64 sharp'
+        : 'npm rebuild sharp';
+      throw new Error(
+        `Could not load the "sharp" image library for ${platform}.\n\n` +
+        `To fix, run this in the extension folder:\n\n  ${cmd}\n\n` +
+        `Extension folder: look for plbx-cocos-extension in your project\'s extensions/ directory.`
+      );
     }
   }
   return _sharp!;
