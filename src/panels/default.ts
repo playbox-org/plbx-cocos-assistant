@@ -1472,7 +1472,8 @@ module.exports = Editor.Panel.define({
       };
 
       projectInput?.addEventListener('focus', () => {
-        renderDropdown(projectInput.value);
+        projectInput.select();
+        renderDropdown('');
         projectDropdown?.classList.add('open');
       });
       projectInput?.addEventListener('input', () => {
