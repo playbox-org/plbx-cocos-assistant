@@ -98,8 +98,10 @@ module.exports = Editor.Panel.define({
     deployToken:       '#deploy-token',
     btnSaveToken:      '#btn-save-token',
     loginStatus:       '#login-status',
-    deployProject:     '#deploy-project',
-    btnRefreshProjects:'#btn-refresh-projects',
+    deployProject:       '#deploy-project',
+    deployProjectInput:  '#deploy-project-input',
+    deployProjectDropdown: '#deploy-project-dropdown',
+    btnRefreshProjects:  '#btn-refresh-projects',
     deployProjectName: '#deploy-project-name',
     deployNewProjectRow: '#deploy-new-project-row',
     deployName:        '#deploy-name',
@@ -1389,7 +1391,9 @@ module.exports = Editor.Panel.define({
       const tokenInput       = this.$.deployToken as HTMLInputElement;
       const btnSaveToken     = this.$.btnSaveToken as HTMLButtonElement;
       const loginStatus      = this.$.loginStatus as HTMLDivElement;
-      const projectSel       = this.$.deployProject as HTMLSelectElement;
+      const projectHidden    = this.$.deployProject as HTMLInputElement;
+      const projectInput     = this.$.deployProjectInput as HTMLInputElement;
+      const projectDropdown  = this.$.deployProjectDropdown as HTMLDivElement;
       const btnRefresh       = this.$.btnRefreshProjects as HTMLButtonElement;
       const projectNameInput = this.$.deployProjectName as HTMLInputElement;
       const newProjectRow    = this.$.deployNewProjectRow as HTMLDivElement;
@@ -1409,7 +1413,7 @@ module.exports = Editor.Panel.define({
       ]).then(([token, settings]: [string, any]) => {
         if (token && tokenInput) {
           tokenInput.value = token;
-          this._checkLoginStatus(token, loginStatus, projectSel);
+          this._checkLoginStatus(token, loginStatus);
         }
         if (projectNameInput && settings?.projectName) {
           projectNameInput.value = settings.projectName;
@@ -1422,11 +1426,63 @@ module.exports = Editor.Panel.define({
         }
       }).catch((e: any) => { console.warn('[plbx]', e); });
 
-      // Show/hide new project name field
-      projectSel?.addEventListener('change', () => {
-        if (newProjectRow) {
-          newProjectRow.style.display = projectSel.value === '__new__' ? '' : 'none';
+      // Combobox: filter, select, toggle
+      this._projectsList = [] as Array<{ id: string; slug: string; name: string }>;
+
+      const clearDropdown = (el: HTMLElement) => {
+        while (el.firstChild) el.removeChild(el.firstChild);
+      };
+
+      const renderDropdown = (filter: string) => {
+        if (!projectDropdown) return;
+        clearDropdown(projectDropdown);
+        const q = filter.toLowerCase();
+        const filtered = this._projectsList.filter((p: any) =>
+          !q || p.name.toLowerCase().includes(q)
+        );
+        for (const p of filtered) {
+          const div = document.createElement('div');
+          div.className = 'combobox-item';
+          div.textContent = p.name;
+          div.dataset.id = p.id;
+          div.dataset.slug = p.slug;
+          div.addEventListener('mousedown', (e: Event) => {
+            e.preventDefault();
+            projectHidden.value = p.id;
+            projectHidden.dataset.slug = p.slug;
+            projectInput.value = p.name;
+            projectDropdown.classList.remove('open');
+            if (newProjectRow) newProjectRow.style.display = 'none';
+          });
+          projectDropdown.appendChild(div);
         }
+        // "Create new" always at bottom
+        const newItem = document.createElement('div');
+        newItem.className = 'combobox-item create-new';
+        newItem.textContent = '+ Create new project';
+        newItem.addEventListener('mousedown', (e: Event) => {
+          e.preventDefault();
+          projectHidden.value = '__new__';
+          projectHidden.dataset.slug = '';
+          projectInput.value = '+ Create new project';
+          projectDropdown.classList.remove('open');
+          if (newProjectRow) newProjectRow.style.display = '';
+        });
+        projectDropdown.appendChild(newItem);
+      };
+
+      projectInput?.addEventListener('focus', () => {
+        renderDropdown(projectInput.value);
+        projectDropdown?.classList.add('open');
+      });
+      projectInput?.addEventListener('input', () => {
+        projectHidden.value = '';
+        projectHidden.dataset.slug = '';
+        renderDropdown(projectInput.value);
+        projectDropdown?.classList.add('open');
+      });
+      projectInput?.addEventListener('blur', () => {
+        setTimeout(() => projectDropdown?.classList.remove('open'), 150);
       });
 
       // Validate deployment name: ASCII only, no dots, URL-safe
@@ -1469,7 +1525,7 @@ module.exports = Editor.Panel.define({
             loginStatus.className = 'login-status connected';
           }
           this._setDeployAuth(true);
-          this._loadProjects(projectSel);
+          this._loadProjects();
         } catch (e: any) {
           if (loginStatus) {
             loginStatus.textContent = 'Login failed: ' + (e?.message ?? e);
@@ -1481,7 +1537,7 @@ module.exports = Editor.Panel.define({
         }
       });
 
-      btnRefresh?.addEventListener('click', () => this._loadProjects(projectSel));
+      btnRefresh?.addEventListener('click', () => this._loadProjects());
 
       // Check build existence and update deploy button state
       this._checkDeployBuild = async () => {
@@ -1509,9 +1565,8 @@ module.exports = Editor.Panel.define({
       setTimeout(() => this._checkDeployBuild?.(), 500);
 
       btnDeploy?.addEventListener('click', async () => {
-        const projectId   = projectSel?.value;
-        const selectedOpt = projectSel?.selectedOptions?.[0];
-        const projectSlug = selectedOpt?.dataset?.slug ?? '';
+        const projectId   = projectHidden?.value;
+        const projectSlug = projectHidden?.dataset?.slug ?? '';
         const name        = deployNameInput?.value.trim();
         const buildPath   = buildPathInput?.value.trim();
         const network     = networkSel?.value;
@@ -1593,7 +1648,7 @@ module.exports = Editor.Panel.define({
       if (body) body.style.display = authenticated ? '' : 'none';
     },
 
-    async _checkLoginStatus(this: any, token: string, statusEl: HTMLElement, projectSel: HTMLSelectElement) {
+    async _checkLoginStatus(this: any, token: string, statusEl: HTMLElement) {
       try {
         const user = await Editor.Message.request('plbx-cocos-extension', 'plbx-login', token);
         if (statusEl) {
@@ -1601,7 +1656,7 @@ module.exports = Editor.Panel.define({
           statusEl.className = 'login-status connected';
         }
         this._setDeployAuth(true);
-        this._loadProjects(projectSel);
+        this._loadProjects();
       } catch {
         if (statusEl) {
           statusEl.textContent = 'Token saved (not verified)';
@@ -1611,30 +1666,28 @@ module.exports = Editor.Panel.define({
       }
     },
 
-    async _loadProjects(this: any, selectEl: HTMLSelectElement) {
-      if (!selectEl) return;
+    async _loadProjects(this: any) {
+      const projectHidden = this.$.deployProject as HTMLInputElement;
+      const projectInput  = this.$.deployProjectInput as HTMLInputElement;
+      if (!projectHidden) return;
       try {
         const projects = await Editor.Message.request('plbx-cocos-extension', 'plbx-list-projects');
-        // Keep first option (placeholder) and clear the rest
-        while (selectEl.options.length > 1) selectEl.remove(1);
         const list = Array.isArray(projects) ? projects : projects?.projects ?? projects?.data ?? [];
-        for (const p of list) {
-          const opt = document.createElement('option');
-          opt.value       = p.id ?? p.projectId ?? '';
-          opt.dataset.slug = p.slug ?? '';
-          opt.textContent = p.name ?? p.id ?? '—';
-          selectEl.appendChild(opt);
-        }
-        // Add "Create new" option at end
-        const newOpt = document.createElement('option');
-        newOpt.value = '__new__';
-        newOpt.textContent = '+ Create new project';
-        selectEl.appendChild(newOpt);
+        this._projectsList = list.map((p: any) => ({
+          id:   p.id ?? p.projectId ?? '',
+          slug: p.slug ?? '',
+          name: p.name ?? p.id ?? '—',
+        }));
 
         // Restore saved project selection
         const settings = await Editor.Message.request('plbx-cocos-extension', 'get-settings').catch(() => null);
         if (settings?.deployProjectId) {
-          selectEl.value = settings.deployProjectId;
+          const saved = this._projectsList.find((p: any) => p.id === settings.deployProjectId);
+          if (saved) {
+            projectHidden.value = saved.id;
+            projectHidden.dataset.slug = saved.slug;
+            if (projectInput) projectInput.value = saved.name;
+          }
         }
       } catch (e: any) {
         console.error('[plbx] loadProjects error:', e?.message ?? e);

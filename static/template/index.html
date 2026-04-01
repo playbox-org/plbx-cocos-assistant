@@ -281,10 +281,11 @@
         <div class="section-header" style="margin-top:0;">Deployment</div>
         <div class="form-row">
           <span class="form-label">Project</span>
-          <select id="deploy-project" class="form-select">
-            <option value="">— select project —</option>
-            <option value="__new__">+ Create new project</option>
-          </select>
+          <div class="combobox" id="deploy-project-combo">
+            <input type="text" id="deploy-project-input" class="form-input" placeholder="Search or select project..." autocomplete="off" />
+            <div class="combobox-dropdown" id="deploy-project-dropdown"></div>
+          </div>
+          <input type="hidden" id="deploy-project" value="" />
           <button id="btn-refresh-projects" class="btn btn-secondary btn-small">Refresh</button>
         </div>
         <div id="deploy-new-project-row" class="form-row" style="display:none;">
