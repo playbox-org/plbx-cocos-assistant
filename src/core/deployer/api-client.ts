@@ -47,8 +47,10 @@ export class PlayboxApiClient {
 
   async listProjects(organizationId?: string): Promise<Project[]> {
     const orgId = organizationId || this.config.organizationId;
-    const params = orgId ? `?organizationId=${encodeURIComponent(orgId)}` : '';
-    const res = await fetch(`${this.baseUrl}/projects${params}`, { headers: this.authHeaders() });
+    const qs = new URLSearchParams();
+    if (orgId) qs.set('organizationId', orgId);
+    qs.set('limit', '200');
+    const res = await fetch(`${this.baseUrl}/projects?${qs}`, { headers: this.authHeaders() });
     if (!res.ok) throw new Error(`Failed to list projects: ${res.status}`);
     const body: ListProjectsResponse = await res.json();
     if (!body.success || !body.data) throw new Error(body.error || 'Failed to list projects');
