@@ -74,6 +74,17 @@ export class PlayboxApiClient {
     return body.data;
   }
 
+  async listDeployments(projectSlug: string): Promise<Array<{ slug: string; status: string; publicUrl: string | null; bundleSizeBytes: number | null; deployedAt: string }>> {
+    const qs = new URLSearchParams();
+    qs.set('projectSlug', projectSlug);
+    if (this.config.organizationId) qs.set('organizationId', this.config.organizationId);
+    qs.set('limit', '50');
+    const res = await fetch(`${this.baseUrl}/deployments?${qs}`, { headers: this.authHeaders() });
+    if (!res.ok) return [];
+    const body = await res.json();
+    return body?.data ?? [];
+  }
+
   async createDeployment(request: CreateDeploymentRequest): Promise<{ deploymentId: string; uploadUrls: Array<{ path: string; uploadUrl: string }> }> {
     const res = await fetch(`${this.baseUrl}/deployments`, {
       method: 'POST',

@@ -1,6 +1,6 @@
 {
   "package_version": 2,
-  "version": "0.1.3",
+  "version": "0.1.5",
   "name": "plbx-cocos-extension",
   "title": "i18n:plbx-cocos-extension.title",
   "description": "i18n:plbx-cocos-extension.description",
@@ -191,6 +191,11 @@
       "getVersion": {
         "methods": [
           "getVersion"
+        ]
+      },
+      "plbx-list-deployments": {
+        "methods": [
+          "plbx-list-deployments"
         ]
       }
     },

@@ -287,10 +287,16 @@
           </div>
           <input type="hidden" id="deploy-project" value="" />
           <button id="btn-refresh-projects" class="btn btn-secondary btn-small">Refresh</button>
+          <button id="btn-new-project" class="btn btn-secondary btn-small">+ New</button>
         </div>
         <div id="deploy-new-project-row" class="form-row" style="display:none;">
-          <span class="form-label">Project Name</span>
+          <span class="form-label">New Project</span>
           <input type="text" id="deploy-project-name" class="form-input" placeholder="my-game" />
+          <button id="btn-cancel-new-project" class="btn btn-secondary btn-small">Cancel</button>
+        </div>
+        <div id="deploy-existing" class="deploy-existing" style="display:none;">
+          <div class="deploy-existing-label">Existing deployments</div>
+          <div id="deploy-existing-list" class="deploy-existing-list"></div>
         </div>
         <div class="form-row">
           <span class="form-label">Deployment Name</span>

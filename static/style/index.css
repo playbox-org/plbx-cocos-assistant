@@ -1115,6 +1115,71 @@ body,
   border-top: 1px solid #444;
 }
 
+.deploy-existing {
+  margin: 4px 0 8px;
+  padding: 6px 10px;
+  background: #2a2a2a;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.deploy-existing-label {
+  color: #666;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.deploy-existing-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.deploy-existing-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  color: #aaa;
+  cursor: pointer;
+}
+
+.deploy-existing-item:hover {
+  color: #fff;
+}
+
+.deploy-existing-item .dep-slug {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deploy-existing-item .dep-status {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #4caf50;
+  color: #fff;
+}
+
+.deploy-existing-item .dep-status.uploading {
+  background: #ff9800;
+}
+
+.deploy-existing-item .dep-size {
+  color: #666;
+  min-width: 50px;
+  text-align: right;
+}
+
+.deploy-existing-item .dep-date {
+  color: #555;
+  min-width: 70px;
+  text-align: right;
+}
+
 .panel-footer {
   padding: 4px 12px;
   text-align: right;

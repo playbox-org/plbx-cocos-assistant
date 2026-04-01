@@ -394,6 +394,19 @@ export const methods: Record<string, (...args: any[]) => any> = {
     return client.listProjects(orgId ?? undefined);
   },
 
+  async 'plbx-list-deployments'(projectSlug: string) {
+    const token = await getGlobalToken();
+    if (!token) return [];
+    const client = new PlayboxApiClient({
+      apiUrl: 'https://app.plbx.ai/api/cli',
+      apiKey: token,
+    });
+    const whoami = await client.whoami();
+    const orgId = whoami.organizationId || whoami.organizations?.[0]?.id;
+    if (orgId) (client as any).config.organizationId = orgId;
+    return client.listDeployments(projectSlug);
+  },
+
   // === Preview ===
   async startPreview(outputDir: string, networkIds: string[]) {
     const { resolve } = require('path');

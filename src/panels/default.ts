@@ -102,6 +102,10 @@ module.exports = Editor.Panel.define({
     deployProjectInput:  '#deploy-project-input',
     deployProjectDropdown: '#deploy-project-dropdown',
     btnRefreshProjects:  '#btn-refresh-projects',
+    btnNewProject:       '#btn-new-project',
+    deployExisting:      '#deploy-existing',
+    deployExistingList:  '#deploy-existing-list',
+    btnCancelNewProject: '#btn-cancel-new-project',
     deployProjectName: '#deploy-project-name',
     deployNewProjectRow: '#deploy-new-project-row',
     deployName:        '#deploy-name',
@@ -1395,6 +1399,8 @@ module.exports = Editor.Panel.define({
       const projectInput     = this.$.deployProjectInput as HTMLInputElement;
       const projectDropdown  = this.$.deployProjectDropdown as HTMLDivElement;
       const btnRefresh       = this.$.btnRefreshProjects as HTMLButtonElement;
+      const btnNewProject    = this.$.btnNewProject as HTMLButtonElement;
+      const btnCancelNew     = this.$.btnCancelNewProject as HTMLButtonElement;
       const projectNameInput = this.$.deployProjectName as HTMLInputElement;
       const newProjectRow    = this.$.deployNewProjectRow as HTMLDivElement;
       const deployNameInput  = this.$.deployName as HTMLInputElement;
@@ -1453,22 +1459,11 @@ module.exports = Editor.Panel.define({
             projectInput.value = p.name;
             projectDropdown.classList.remove('open');
             if (newProjectRow) newProjectRow.style.display = 'none';
+            this._checkDeployBuild?.();
+            this._loadDeployments(p.slug);
           });
           projectDropdown.appendChild(div);
         }
-        // "Create new" always at bottom
-        const newItem = document.createElement('div');
-        newItem.className = 'combobox-item create-new';
-        newItem.textContent = '+ Create new project';
-        newItem.addEventListener('mousedown', (e: Event) => {
-          e.preventDefault();
-          projectHidden.value = '__new__';
-          projectHidden.dataset.slug = '';
-          projectInput.value = '+ Create new project';
-          projectDropdown.classList.remove('open');
-          if (newProjectRow) newProjectRow.style.display = '';
-        });
-        projectDropdown.appendChild(newItem);
       };
 
       projectInput?.addEventListener('focus', () => {
@@ -1481,9 +1476,33 @@ module.exports = Editor.Panel.define({
         projectHidden.dataset.slug = '';
         renderDropdown(projectInput.value);
         projectDropdown?.classList.add('open');
+        this._checkDeployBuild?.();
       });
       projectInput?.addEventListener('blur', () => {
         setTimeout(() => projectDropdown?.classList.remove('open'), 150);
+      });
+
+      // "+ New" / "Cancel" buttons for new project
+      btnNewProject?.addEventListener('click', () => {
+        projectHidden.value = '__new__';
+        projectHidden.dataset.slug = '';
+        projectInput.value = '';
+        projectInput.placeholder = 'New project will be created';
+        projectInput.disabled = true;
+        if (newProjectRow) newProjectRow.style.display = '';
+        const existingEl = this.$.deployExisting as HTMLElement;
+        if (existingEl) existingEl.style.display = 'none';
+        projectNameInput?.focus();
+        this._checkDeployBuild?.();
+      });
+      btnCancelNew?.addEventListener('click', () => {
+        projectHidden.value = '';
+        projectHidden.dataset.slug = '';
+        projectInput.value = '';
+        projectInput.placeholder = 'Search or select project...';
+        projectInput.disabled = false;
+        if (newProjectRow) newProjectRow.style.display = 'none';
+        this._checkDeployBuild?.();
       });
 
       // Validate deployment name: ASCII only, no dots, URL-safe
@@ -1509,7 +1528,9 @@ module.exports = Editor.Panel.define({
           }
           setTimeout(() => { if (deployNameHint) { deployNameHint.textContent = ''; deployNameHint.style.color = ''; } }, 2000);
         }
+        this._checkDeployBuild?.();
       });
+      projectNameInput?.addEventListener('input', () => this._checkDeployBuild?.());
 
       btnSaveToken?.addEventListener('click', async () => {
         const token = tokenInput?.value.trim();
@@ -1540,8 +1561,30 @@ module.exports = Editor.Panel.define({
 
       btnRefresh?.addEventListener('click', () => this._loadProjects());
 
-      // Check build existence and update deploy button state
+      // Check deploy readiness: project selected + build exists
       this._checkDeployBuild = async () => {
+        const pid = projectHidden?.value ?? '';
+        const newName = projectNameInput?.value.trim() ?? '';
+        const hasProject = pid && (pid !== '__new__' || newName);
+        if (!hasProject) {
+          if (btnDeploy) { btnDeploy.disabled = true; btnDeploy.title = 'Select a project first'; }
+          if (deployStatus) deployStatus.textContent = 'Select a project';
+          return;
+        }
+        if (pid === '__new__' && newName) {
+          const duplicate = this._projectsList?.find((p: any) => p.name.toLowerCase() === newName.toLowerCase());
+          if (duplicate) {
+            if (btnDeploy) { btnDeploy.disabled = true; btnDeploy.title = 'Project with this name already exists'; }
+            if (deployStatus) deployStatus.textContent = `Project "${duplicate.name}" already exists — select it from the list`;
+            return;
+          }
+        }
+        const name = deployNameInput?.value.trim() ?? '';
+        if (!name) {
+          if (btnDeploy) { btnDeploy.disabled = true; btnDeploy.title = 'Enter a deployment name'; }
+          if (deployStatus) deployStatus.textContent = 'Enter a deployment name';
+          return;
+        }
         const buildPath = buildPathInput?.value.trim() ?? '';
         const network = networkSel?.value ?? '';
         if (!buildPath || !network) {
@@ -1688,10 +1731,71 @@ module.exports = Editor.Panel.define({
             projectHidden.value = saved.id;
             projectHidden.dataset.slug = saved.slug;
             if (projectInput) projectInput.value = saved.name;
+            this._loadDeployments(saved.slug);
           }
         }
       } catch (e: any) {
         console.error('[plbx] loadProjects error:', e?.message ?? e);
+      }
+    },
+
+    async _loadDeployments(this: any, projectSlug: string) {
+      const container = this.$.deployExisting as HTMLElement;
+      const list = this.$.deployExistingList as HTMLElement;
+      const deployNameInput = this.$.deployName as HTMLInputElement;
+      if (!container || !list) return;
+
+      if (!projectSlug) {
+        container.style.display = 'none';
+        return;
+      }
+
+      try {
+        const deps = await Editor.Message.request('plbx-cocos-extension', 'plbx-list-deployments', projectSlug);
+        if (!deps?.length) {
+          container.style.display = 'none';
+          return;
+        }
+
+        while (list.firstChild) list.removeChild(list.firstChild);
+
+        for (const d of deps) {
+          const row = document.createElement('div');
+          row.className = 'deploy-existing-item';
+          row.title = d.publicUrl || '';
+
+          const slug = document.createElement('span');
+          slug.className = 'dep-slug';
+          slug.textContent = d.slug;
+
+          const status = document.createElement('span');
+          status.className = 'dep-status' + (d.status !== 'ready' ? ' uploading' : '');
+          status.textContent = d.status;
+
+          const size = document.createElement('span');
+          size.className = 'dep-size';
+          size.textContent = d.bundleSizeBytes ? (d.bundleSizeBytes / 1024 / 1024).toFixed(1) + ' MB' : '—';
+
+          const date = document.createElement('span');
+          date.className = 'dep-date';
+          date.textContent = d.deployedAt?.substring(0, 10) ?? '';
+
+          row.appendChild(slug);
+          row.appendChild(status);
+          row.appendChild(size);
+          row.appendChild(date);
+
+          row.addEventListener('click', () => {
+            if (deployNameInput) deployNameInput.value = d.slug;
+            this._checkDeployBuild?.();
+          });
+
+          list.appendChild(row);
+        }
+
+        container.style.display = '';
+      } catch {
+        container.style.display = 'none';
       }
     },
   },
