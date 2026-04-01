@@ -409,7 +409,7 @@ export async function startPreviewServer(options: { outputDir: string; networks:
           const VALIDATOR_URLS: Record<string, string> = {
             applovin: 'https://p.applov.in/playablePreview?create=1&qr=1',
             facebook: 'https://developers.facebook.com/tools/playable-preview/',
-            google: 'https://h5validator.appspot.com/dcm/asset',
+            google: 'https://h5validator.appspot.com/adwords/asset',
             mintegral: 'https://www.mindworks-creative.com/review/',
             vungle: 'https://vungle.com/creative-verifier/',
             tiktok: 'https://ads.tiktok.com/help/article/playable-ad-specifications',
