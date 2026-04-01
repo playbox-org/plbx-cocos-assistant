@@ -1069,6 +1069,14 @@ body,
   flex-shrink: 0;
 }
 
+.panel-footer {
+  padding: 4px 12px;
+  text-align: right;
+  font-size: 10px;
+  color: #555;
+  flex-shrink: 0;
+}
+
 .report-filter-bar {
   padding: 6px 12px;
   border-bottom: 1px solid #2a2a2a;

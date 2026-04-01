@@ -48,6 +48,7 @@ module.exports = Editor.Panel.define({
     contentCompress:    '#content-compress',
     contentPackage:     '#content-package',
     contentDeploy:      '#content-deploy',
+    panelVersion:       '#panel-version',
 
     // Build Report tab
     btnAnalyze:       '#btn-analyze',
@@ -168,6 +169,14 @@ module.exports = Editor.Panel.define({
     activateTab(0);
 
     this._reportData = null;
+
+    // Show version in footer
+    const versionEl = this.$.panelVersion;
+    if (versionEl) {
+      Editor.Message.request('plbx-cocos-extension', 'getVersion')
+        .then((v: string) => { versionEl.textContent = v; })
+        .catch(() => {});
+    }
 
     this._initBuildReport();
     this._initCompress();

@@ -478,6 +478,15 @@ export const methods: Record<string, (...args: any[]) => any> = {
   async saveToken(token: string) {
     return saveGlobalToken(token);
   },
+
+  getVersion() {
+    try {
+      const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
+      return pkg.version ?? '0.0.0';
+    } catch {
+      return '0.0.0';
+    }
+  },
 };
 
 const PLBX_ADAPTER_TEMPLATE = `/**
