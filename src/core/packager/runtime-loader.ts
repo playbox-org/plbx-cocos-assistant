@@ -520,6 +520,98 @@ function patchAPIs() {
   if (DEBUG) console.log('[plbx] Browser APIs patched');
 }
 
+function patchSystemJS() {
+  if (typeof System === 'undefined') {
+    if (DEBUG) console.log('[plbx] No SystemJS found, skipping patch');
+    return;
+  }
+  if (DEBUG) console.log('[plbx] Patching SystemJS');
+
+  var proto = System.constructor.prototype;
+
+  // 1. Fix resolve — in sandbox WebViews location.href is about:srcdoc,
+  // so relative paths resolve to about:index.js which is garbage.
+  // Use a fake base URL that produces clean relative paths.
+  var _origResolve = proto.resolve;
+  var _fakeBase = 'https://plbx.local/';
+  proto.resolve = function(id, parentUrl) {
+    // If parentUrl is about: or empty, use fake base
+    var base = parentUrl || _fakeBase;
+    if (base.indexOf('about:') === 0 || base.indexOf('blob:') === 0) base = _fakeBase;
+    try {
+      return _origResolve.call(this, id, base);
+    } catch(e) {
+      // If resolve fails, check if we have the module in cache
+      var direct = id.replace(/^\\.\\//,'');
+      if (_findInJs(direct) || _findInJs(id) || _findAsset(direct) || _findAsset(id)) return id;
+      throw e;
+    }
+  };
+
+  // 2. Override instantiate — load JS from __js cache instead of creating
+  // <script> elements or making network requests.
+  var _origInstantiate = proto.instantiate;
+  proto.instantiate = function(url, parentUrl) {
+    // Normalize URL: strip fake base, try variations
+    var normalized = url.replace(_fakeBase, '').replace(/^\\.\\//,'');
+    var js = _findInJs(url) || _findInJs(normalized) || _findInJs('./' + normalized);
+
+    if (js) {
+      if (DEBUG) console.log('[plbx] SystemJS loading from cache:', normalized);
+      try {
+        (0, eval)(js + '\\n//# sourceURL=' + normalized);
+      } catch(e) {
+        console.error('[plbx] SystemJS eval error for ' + normalized + ':', e);
+      }
+      return this.getRegister();
+    }
+
+    // Check if it's a .json/.css that should be wrapped
+    var asset = _findAsset(url) || _findAsset(normalized) || _findAsset('./' + normalized);
+    if (asset) {
+      var raw = asset.binary ? atob(asset.data) : asset.data;
+      var ext = normalized.split('.').pop();
+
+      if (ext === 'json') {
+        if (DEBUG) console.log('[plbx] SystemJS wrapping JSON:', normalized);
+        var jsonModule = 'System.register([],function(e){return{execute:function(){e("default",' + raw + ')}}})';
+        (0, eval)(jsonModule);
+        return this.getRegister();
+      }
+      if (ext === 'css') {
+        if (DEBUG) console.log('[plbx] SystemJS wrapping CSS:', normalized);
+        var cssModule = 'System.register([],function(e){return{execute:function(){var s=new CSSStyleSheet();s.replaceSync(' + JSON.stringify(raw) + ');e("default",s)}}})';
+        (0, eval)(cssModule);
+        return this.getRegister();
+      }
+    }
+
+    if (DEBUG) console.warn('[plbx] SystemJS cache miss, falling through:', url);
+    return _origInstantiate.call(this, url, parentUrl);
+  };
+
+  // 3. Override System.fetch — SystemJS caches its own fetch reference.
+  // .json/.css files go through shouldFetch→this.fetch() pipeline.
+  var _origSysFetch = proto.fetch;
+  proto.fetch = function(url, opts) {
+    var normalized = url.replace(_fakeBase, '').replace(/^\\.\\//,'');
+    var asset = _findAsset(url) || _findAsset(normalized) || _findAsset('./' + normalized);
+    if (asset) {
+      var body = asset.binary ? atob(asset.data) : asset.data;
+      var mime = _getMime(url);
+      if (DEBUG) console.log('[plbx] System.fetch from cache:', normalized);
+      return Promise.resolve(new Response(body, {
+        status: 200,
+        headers: { 'Content-Type': mime }
+      }));
+    }
+    if (_origSysFetch) return _origSysFetch.call(this, url, opts);
+    return Promise.reject(new Error('[plbx] No fetch available for ' + url));
+  };
+
+  if (DEBUG) console.log('[plbx] SystemJS patched');
+}
+
 function bootCocos() {
   if (DEBUG) console.log('[plbx] Booting Cocos...');
 
@@ -540,6 +632,9 @@ function bootCocos() {
       console.warn('[plbx] Script not found in ZIP: ' + scripts[i]);
     }
   }
+
+  // Patch SystemJS after boot scripts have initialized it
+  patchSystemJS();
 
   // Call deferred boot callback (System.import etc.)
   // __plbx_boot is defined inline in <body> — it should already exist since
