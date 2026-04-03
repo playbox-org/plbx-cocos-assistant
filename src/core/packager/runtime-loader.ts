@@ -386,6 +386,64 @@ function patchAPIs() {
   window.XMLHttpRequest.OPENED = 1;
   window.XMLHttpRequest.UNSENT = 0;
 
+  // 1b. Patch fetch
+  if (typeof window.fetch === 'function') {
+    var _originalFetch = window.fetch;
+    window.fetch = function(input, init) {
+      var url = '';
+      if (typeof input === 'string') {
+        url = input;
+      } else if (input && typeof input === 'object' && input.url) {
+        url = input.url;
+      }
+      var asset = _findAsset(url);
+      if (!asset) {
+        return _originalFetch.apply(window, arguments);
+      }
+      if (DEBUG) console.log('[plbx] fetch intercepted:', url);
+      var contentType = _getMime(url);
+      return Promise.resolve().then(function() {
+        var resp = {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: new Headers({ 'Content-Type': contentType }),
+          url: url,
+          redirected: false,
+          type: 'basic',
+          text: function() {
+            if (asset.binary) {
+              return Promise.resolve(atob(asset.data));
+            }
+            return Promise.resolve(asset.data);
+          },
+          json: function() {
+            var raw = asset.binary ? atob(asset.data) : asset.data;
+            return Promise.resolve(JSON.parse(raw));
+          },
+          arrayBuffer: function() {
+            if (asset.binary) {
+              return Promise.resolve(_base64ToArrayBuffer(asset.data));
+            }
+            return Promise.resolve(_stringToArrayBuffer(asset.data));
+          },
+          blob: function() {
+            var mime = _getMime(url);
+            if (asset.binary) {
+              var bs = atob(asset.data);
+              var arr = new Uint8Array(bs.length);
+              for (var i = 0; i < bs.length; i++) arr[i] = bs.charCodeAt(i);
+              return Promise.resolve(new Blob([arr], { type: mime }));
+            }
+            return Promise.resolve(new Blob([asset.data], { type: mime }));
+          },
+          clone: function() { return resp; }
+        };
+        return resp;
+      });
+    };
+  }
+
   // 2. Patch Image
   var OriginalImage = window.Image;
   window.Image = function(width, height) {
