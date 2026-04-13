@@ -82,7 +82,7 @@ describe('generateRuntimeLoader', () => {
     // Should define gameStart and gameClose for validators to call
     expect(code).toContain('window.gameStart');
     expect(code).toContain('window.gameClose');
-    // Should poll for gameReady (defined by preview-util.js)
+    // Should poll for gameReady (defined by the ad-network validator)
     expect(code).toContain('signalLifecycle');
     expect(code).toContain('window.gameReady');
     expect(code).toContain('setTimeout(signalLifecycle');
@@ -203,6 +203,74 @@ describe('generateFullHtml binary handling', () => {
     expect(html).toContain('_base64ToArrayBuffer');
     // Must NOT contain unreliable _isBase64 heuristic
     expect(html).not.toContain('_isBase64');
+  });
+});
+
+describe('Image/script src patching must be configurable', () => {
+  // Regression guard: instance-level Object.defineProperty(img, 'src', ...)
+  // must declare `configurable: true`. Otherwise the accessor is locked on
+  // the instance, and any downstream code that tries to redefine `src`
+  // (preview-util re-sync, asset manager, HMR, other patchers) throws
+  // "Cannot redefine property: src" — observed as flaky first-load in the
+  // extension's preview panel.
+  it('Image src defineProperty must be configurable', () => {
+    const code = generateRuntimeLoader();
+    // Find the Image patch block and verify configurable: true appears before
+    // the setter body (i.e., inside the descriptor object literal).
+    const imgBlock = code.slice(code.indexOf("Object.defineProperty(img, 'src'"));
+    expect(imgBlock).toMatch(/configurable:\s*true/);
+  });
+
+  it('Script src defineProperty must be configurable', () => {
+    const code = generateRuntimeLoader();
+    const elBlock = code.slice(code.indexOf("Object.defineProperty(el, 'src'"));
+    expect(elBlock).toMatch(/configurable:\s*true/);
+  });
+});
+
+describe('validator-forbidden string hygiene', () => {
+  // Mintegral's PlayTurbo validator naively greps the whole HTML as text
+  // (including JS comments) and rejects creatives that mention "preview-util.js".
+  // This is a regression guard: the runtime loader embeds browser JS as a
+  // template literal, so any stray // comment inside those backticks leaks
+  // verbatim into the final HTML. tsc does not strip comments from string
+  // contents, so we must grep the generated output ourselves.
+  const FORBIDDEN = ['preview-util.js', 'preview-util'];
+
+  it('generateRuntimeLoader output must not contain validator-forbidden strings', () => {
+    const code = generateRuntimeLoader();
+    for (const needle of FORBIDDEN) {
+      expect(code, `runtime loader leaked "${needle}"`).not.toContain(needle);
+    }
+  });
+
+  it('generateRuntimeLoader with debug=true must not contain forbidden strings', () => {
+    const code = generateRuntimeLoader({ debug: true });
+    for (const needle of FORBIDDEN) {
+      expect(code).not.toContain(needle);
+    }
+  });
+
+  it('generateFullHtml output must not contain validator-forbidden strings', () => {
+    const html = generateFullHtml({
+      originalHtml: '<!DOCTYPE html><html><head><title>G</title></head><body></body></html>',
+      zipBase64: 'UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA==',
+    });
+    for (const needle of FORBIDDEN) {
+      expect(html, `final HTML leaked "${needle}"`).not.toContain(needle);
+    }
+  });
+
+  it('generateFullHtml with jsModules + debug must not leak forbidden strings', () => {
+    const html = generateFullHtml({
+      originalHtml: '<!DOCTYPE html><html><head></head><body></body></html>',
+      zipBase64: 'UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA==',
+      jsModules: { 'src/main.js': 'console.log(1)' },
+      loaderOptions: { debug: true },
+    });
+    for (const needle of FORBIDDEN) {
+      expect(html).not.toContain(needle);
+    }
   });
 });
 

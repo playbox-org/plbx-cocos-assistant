@@ -139,3 +139,59 @@ describe('packageForNetworks', () => {
     })).rejects.toThrow('Build HTML not found');
   });
 });
+
+describe('validator-forbidden string enforcement', () => {
+  it('should succeed for mintegral when HTML is clean', async () => {
+    const onProgress = vi.fn();
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['mintegral'],
+      config: defaultConfig,
+      onProgress,
+    });
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].outputPath).not.toBe('');
+    expect(result.results[0].outputSize).toBeGreaterThan(0);
+    expect(onProgress).toHaveBeenCalledWith('mintegral', 'done');
+  });
+
+  it('should fail mintegral build when injected content contains preview-util.js', async () => {
+    const onProgress = vi.fn();
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['mintegral'],
+      config: {
+        ...defaultConfig,
+        // User-supplied inject that would otherwise land in the final HTML
+        // and trip the PlayTurbo validator.
+        customInjectBody: '/* pulled from preview-util.js docs */',
+      },
+      onProgress,
+    });
+    expect(result.results[0].outputPath).toBe('');
+    expect(result.results[0].outputSize).toBe(0);
+    const errorCall = onProgress.mock.calls.find(
+      ([, phase]) => phase === 'error',
+    );
+    expect(errorCall).toBeDefined();
+    expect(errorCall![2]).toContain('preview-util');
+    expect(errorCall![2]).toContain('Mintegral');
+  });
+
+  it('should NOT fail applovin build when content contains preview-util.js', async () => {
+    // Other networks have no forbidden list, so this string is fine for them.
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['applovin'],
+      config: {
+        ...defaultConfig,
+        customInjectBody: '/* preview-util.js ref */',
+      },
+    });
+    expect(result.results[0].outputPath).not.toBe('');
+    expect(result.results[0].outputSize).toBeGreaterThan(0);
+  });
+});

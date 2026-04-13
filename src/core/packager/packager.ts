@@ -82,6 +82,8 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
             buildDir: options.buildDir,
           });
 
+          assertNoForbiddenStrings(finalHtml, adapter.getForbiddenStrings(), network.name);
+
           if (network.singleFileZip) {
             // Wrap the single HTML in a ZIP (+ optional config.json)
             const tempDir = join(dirname(outputPath), `_temp_${networkId}`);
@@ -119,7 +121,9 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
           mkdirSync(tempDir, { recursive: true });
 
           cpSync(options.buildDir, tempDir, { recursive: true });
-          writeFileSync(join(tempDir, 'index.html'), builder.toHtml());
+          const zipBranchHtml = builder.toHtml();
+          assertNoForbiddenStrings(zipBranchHtml, adapter.getForbiddenStrings(), network.name);
+          writeFileSync(join(tempDir, 'index.html'), zipBranchHtml);
 
           const extraFiles: Array<{ zipPath: string; content: string }> = [];
 
@@ -176,6 +180,23 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
     results,
     totalTime: Date.now() - startTime,
   };
+}
+
+/**
+ * Scan generated HTML against a network adapter's validator-forbidden
+ * substrings and throw if any are present. Prevents shipping builds that
+ * the network's validator would reject (e.g. Mintegral PlayTurbo rejects
+ * creatives mentioning "preview-util.js" anywhere — including JS comments).
+ */
+function assertNoForbiddenStrings(html: string, forbidden: string[], networkName: string): void {
+  if (!forbidden.length) return;
+  const found = forbidden.filter(needle => html.includes(needle));
+  if (found.length === 0) return;
+  throw new Error(
+    `[${networkName}] Generated HTML contains validator-forbidden string(s): ` +
+    found.map(s => `"${s}"`).join(', ') +
+    `. This build would be rejected by the network validator — aborting.`,
+  );
 }
 
 /**

@@ -9,6 +9,14 @@ export interface NetworkAdapter {
   getJsBundleName(): string | null;
   /** Extra config.json content to include in ZIP */
   getZipConfig(config: PackageConfig): Record<string, any> | null;
+  /**
+   * Substrings that must NOT appear anywhere in the final HTML (including
+   * JS comments and string literals). The packager scans the generated HTML
+   * against this list and refuses to emit the build on match. Used to guard
+   * against validator-level rejections that would otherwise be discovered
+   * only after upload.
+   */
+  getForbiddenStrings(): string[];
 }
 
 /**
@@ -112,5 +120,9 @@ export class BaseAdapter implements NetworkAdapter {
 
   getZipConfig(config: PackageConfig): Record<string, any> | null {
     return this.networkConfig.zipConfig || null;
+  }
+
+  getForbiddenStrings(): string[] {
+    return [];
   }
 }

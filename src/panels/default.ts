@@ -977,7 +977,7 @@ module.exports = Editor.Panel.define({
       if (!grid) return;
 
       // Primary networks shown by default (sorted alphabetically)
-      const PRIMARY_NETS = ['applovin', 'facebook', 'google', 'ironsource', 'unity'];
+      const PRIMARY_NETS = ['applovin', 'facebook', 'google', 'ironsource', 'unity', 'mintegral', 'moloco'];
       const SYSTEM_VARS = ['network', 'networkId', 'format', 'ext'];
       const TEMPLATE_PRESETS: Record<string, string> = {
         standard: '{networkId}/index.{ext}',

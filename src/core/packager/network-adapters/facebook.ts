@@ -1,13 +1,15 @@
-import { HtmlBuilder } from '../html-builder';
 import { NetworkConfig, PackageConfig } from '../../../shared/types';
 import { BaseAdapter, facebookBridge } from './base';
 
-const FB_PLAYABLE_AD_SCRIPT = `var FbPlayableAd = FbPlayableAd || {};
-FbPlayableAd.onCTAClick = function() { /* CTA handler */ };`;
-
 /**
  * Facebook/Meta adapter (also used by Moloco — same CTA pattern).
- * Injects FbPlayableAd initialization script.
+ *
+ * Do NOT inject a client-side `FbPlayableAd` stub: the Meta/Moloco validator
+ * supplies the real `window.FbPlayableAd` with a working `onCTAClick`, and
+ * any assignment like `FbPlayableAd.onCTAClick = function() {}` we inject
+ * would overwrite it and kill CTA tracking. The `facebookBridge()` already
+ * guards with `if (window.FbPlayableAd)` and falls back to `window.open`
+ * for SDK-less environments.
  */
 export class FacebookAdapter extends BaseAdapter {
   constructor(networkId: string, networkConfig: NetworkConfig) {
@@ -16,10 +18,5 @@ export class FacebookAdapter extends BaseAdapter {
 
   protected getPlbxBridge(_config: PackageConfig): string {
     return facebookBridge();
-  }
-
-  transform(builder: HtmlBuilder, config: PackageConfig): void {
-    super.transform(builder, config);
-    builder.injectBodyScript(FB_PLAYABLE_AD_SCRIPT);
   }
 }

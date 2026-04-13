@@ -128,8 +128,8 @@ function generateUnpackCode(options: RuntimeLoaderOptions): string {
     patchAPIs();
 
     // Define gameStart/gameClose as top-level functions (like super-html does).
-    // The validator (preview-util.js) will CALL these — it doesn't define them.
-    // gameReady is different: it IS defined by preview-util.js and we call it.
+    // The ad-network validator will CALL these — it doesn't define them.
+    // gameReady is the opposite: the validator defines it and we call it.
     if (typeof window.gameStart !== 'function') {
       window.gameStart = function() {
         if (DEBUG) console.log('[plbx] gameStart called');
@@ -142,7 +142,7 @@ function generateUnpackCode(options: RuntimeLoaderOptions): string {
     }
 
     // Signal gameReady to ad-network validator/SDK.
-    // preview-util.js defines window.gameReady — we poll because it may load
+    // The validator defines window.gameReady — we poll because it may load
     // AFTER our scripts. Once gameReady is called, the validator calls our
     // gameStart() in response.
     var _lifecycleDone = false;
@@ -154,7 +154,7 @@ function generateUnpackCode(options: RuntimeLoaderOptions): string {
         try { window.gameReady(); } catch(e) { console.error('[plbx] gameReady error:', e); }
         return;
       }
-      // Retry — preview-util.js may not be injected yet
+      // Retry — the validator script may not be injected yet
       setTimeout(signalLifecycle, 50);
     }
     signalLifecycle();
@@ -452,6 +452,7 @@ function patchAPIs() {
                       Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
     if (origSrcDesc) {
       Object.defineProperty(img, 'src', {
+        configurable: true,
         set: function(url) {
           var asset = _findAsset(url);
           if (asset) {
@@ -490,6 +491,7 @@ function patchAPIs() {
                         Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
       if (origSrcDesc) {
         Object.defineProperty(el, 'src', {
+          configurable: true,
           set: function(url) {
             var jsContent = _findInJs(url);
             if (jsContent) {

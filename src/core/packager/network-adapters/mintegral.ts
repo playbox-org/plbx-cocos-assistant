@@ -42,7 +42,7 @@ window.super_html = window.super_html || window.plbx_html;`;
 /**
  * Mintegral lifecycle functions.
  * - gameStart: defined so the validator can call it (triggers engine boot).
- *   Must NOT overwrite preview-util.js version if it exists.
+ *   Must NOT overwrite the validator's version if it exists.
  * - gameClose: defined so game code can signal game completion.
  */
 function mintegralLifecycle(): string {
@@ -71,5 +71,13 @@ export class MintegralAdapter extends BaseAdapter {
     super.transform(builder, config);
     builder.injectMeta('viewport', MINTEGRAL_VIEWPORT);
     builder.injectBodyScript(mintegralLifecycle());
+  }
+
+  // Mintegral PlayTurbo validator rejects creatives that mention its internal
+  // preview helper script anywhere in the HTML — even inside JS comments.
+  // See: https://playturbo.mintegral.com → "Rejected for technical error:
+  // Please remove the strings related to 'preview-util.js' from the comments."
+  getForbiddenStrings(): string[] {
+    return ['preview-util.js', 'preview-util'];
   }
 }

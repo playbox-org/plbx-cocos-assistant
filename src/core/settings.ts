@@ -17,7 +17,7 @@ export interface ProjectSettings {
 }
 
 const DEFAULT_SETTINGS: ProjectSettings = {
-  selectedNetworks: ['ironsource', 'applovin', 'google', 'facebook', 'unity'],
+  selectedNetworks: ['ironsource', 'applovin', 'google', 'facebook', 'unity', 'mintegral', 'moloco'],
   projectName: '',  // will default to project folder name
   deploymentName: '',
   deployProjectId: '',

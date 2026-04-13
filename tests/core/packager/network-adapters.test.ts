@@ -77,20 +77,48 @@ describe('Network Adapters', () => {
   });
 
   describe('Facebook adapter', () => {
-    it('should inject FbPlayableAd script', () => {
+    it('should reference FbPlayableAd.onCTAClick() in the CTA bridge', () => {
       const adapter = getAdapter('facebook');
       const builder = new HtmlBuilder(sampleHtml);
       adapter.transform(builder, defaultConfig);
-      expect(builder.toHtml()).toContain('FbPlayableAd');
+      const html = builder.toHtml();
+      // Bridge must CALL FbPlayableAd.onCTAClick(), not assign to it
+      expect(html).toContain('FbPlayableAd.onCTAClick()');
+      expect(html).toContain('if (window.FbPlayableAd)');
+    });
+
+    it('MUST NOT overwrite FbPlayableAd.onCTAClick (validator provides it)', () => {
+      // Regression guard for a bug where the adapter injected
+      //   var FbPlayableAd = FbPlayableAd || {};
+      //   FbPlayableAd.onCTAClick = function() {};
+      // which replaced the validator's real CTA handler with a no-op and
+      // silently killed click tracking on Meta / Moloco.
+      const adapter = getAdapter('facebook');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).not.toMatch(/FbPlayableAd\.onCTAClick\s*=/);
+      expect(html).not.toMatch(/var\s+FbPlayableAd\s*=/);
     });
   });
 
   describe('Moloco adapter', () => {
-    it('should inject FbPlayableAd (same as Facebook)', () => {
+    it('should reference FbPlayableAd.onCTAClick() in the CTA bridge (same as Facebook)', () => {
       const adapter = getAdapter('moloco');
       const builder = new HtmlBuilder(sampleHtml);
       adapter.transform(builder, defaultConfig);
-      expect(builder.toHtml()).toContain('FbPlayableAd');
+      const html = builder.toHtml();
+      expect(html).toContain('FbPlayableAd.onCTAClick()');
+      expect(html).toContain('if (window.FbPlayableAd)');
+    });
+
+    it('MUST NOT overwrite FbPlayableAd.onCTAClick (validator provides it)', () => {
+      const adapter = getAdapter('moloco');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).not.toMatch(/FbPlayableAd\.onCTAClick\s*=/);
+      expect(html).not.toMatch(/var\s+FbPlayableAd\s*=/);
     });
   });
 
@@ -119,6 +147,30 @@ describe('Network Adapters', () => {
       const html = builder.toHtml();
       expect(html).toContain('gameEnd');
       expect(html).toContain('gameClose');
+    });
+
+    it('should declare preview-util.js as forbidden string', () => {
+      const adapter = getAdapter('mintegral');
+      const forbidden = adapter.getForbiddenStrings();
+      expect(forbidden).toContain('preview-util.js');
+    });
+
+    it('transformed HTML must not contain any forbidden string', () => {
+      const adapter = getAdapter('mintegral');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      for (const needle of adapter.getForbiddenStrings()) {
+        expect(html, `adapter-transformed HTML leaked "${needle}"`).not.toContain(needle);
+      }
+    });
+  });
+
+  describe('Forbidden strings API (base)', () => {
+    it('non-Mintegral adapters should return empty forbidden list by default', () => {
+      for (const id of ['applovin', 'unity', 'facebook', 'moloco', 'google', 'tiktok']) {
+        expect(getAdapter(id).getForbiddenStrings()).toEqual([]);
+      }
     });
   });
 
