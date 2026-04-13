@@ -1,4 +1,5 @@
 import { NetworkAdapter, BaseAdapter } from './base';
+import { AppLovinAdapter } from './applovin';
 import { GoogleAdapter } from './google';
 import { FacebookAdapter } from './facebook';
 import { MintegralAdapter } from './mintegral';
@@ -11,9 +12,10 @@ import { NetworkConfig } from '../../../shared/types';
 type AdapterConstructor = new (id: string, config: NetworkConfig) => NetworkAdapter;
 
 const CUSTOM_ADAPTERS: Record<string, AdapterConstructor> = {
+  applovin: AppLovinAdapter,
   google: GoogleAdapter,
   facebook: FacebookAdapter,
-  moloco: FacebookAdapter,   // same CTA pattern as Facebook
+  moloco: FacebookAdapter, // same CTA pattern as Facebook
   mintegral: MintegralAdapter,
   tiktok: TikTokAdapter,
   pangle: PangleAdapter,

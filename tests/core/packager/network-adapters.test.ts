@@ -17,7 +17,7 @@ const defaultConfig: PackageConfig = {
 describe('Network Adapters', () => {
   describe('getAdapter', () => {
     it('should return adapter for every registered network', () => {
-      Object.keys(NETWORKS).forEach(id => {
+      Object.keys(NETWORKS).forEach((id) => {
         expect(() => getAdapter(id)).not.toThrow();
       });
     });
@@ -30,13 +30,47 @@ describe('Network Adapters', () => {
   describe('MRAID networks', () => {
     const mraidIds = ['applovin', 'unity', 'ironsource', 'adcolony', 'appreciate', 'chartboost', 'liftoff'];
 
-    mraidIds.forEach(id => {
+    mraidIds.forEach((id) => {
       it(`${id} should inject mraid.js`, () => {
         const adapter = getAdapter(id);
         const builder = new HtmlBuilder(sampleHtml);
         adapter.transform(builder, defaultConfig);
         expect(builder.toHtml()).toContain('mraid.js');
       });
+    });
+  });
+
+  describe('AppLovin adapter', () => {
+    it('should inject mraid.js', () => {
+      const adapter = getAdapter('applovin');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      expect(builder.toHtml()).toContain('mraid.js');
+    });
+
+    it('should inject viewport meta tag', () => {
+      const adapter = getAdapter('applovin');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toContain('user-scalable=no');
+    });
+
+    it('should use mraid.open() for CTA bridge', () => {
+      const adapter = getAdapter('applovin');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toContain('mraid.open');
+    });
+
+    it('should inject store URLs', () => {
+      const adapter = getAdapter('applovin');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toContain('apps.apple.com/app/123');
+      expect(html).toContain('play.google.com/store/apps');
     });
   });
 
@@ -167,8 +201,8 @@ describe('Network Adapters', () => {
   });
 
   describe('Forbidden strings API (base)', () => {
-    it('non-Mintegral adapters should return empty forbidden list by default', () => {
-      for (const id of ['applovin', 'unity', 'facebook', 'moloco', 'google', 'tiktok']) {
+    it('non-Mintegral/TikTok/Pangle adapters should return empty forbidden list by default', () => {
+      for (const id of ['applovin', 'unity', 'facebook', 'moloco', 'google']) {
         expect(getAdapter(id).getForbiddenStrings()).toEqual([]);
       }
     });
@@ -179,13 +213,134 @@ describe('Network Adapters', () => {
       const adapter = getAdapter('tiktok');
       const builder = new HtmlBuilder(sampleHtml);
       adapter.transform(builder, defaultConfig);
-      expect(builder.toHtml()).toContain('ttfe/union/playable');
+      expect(builder.toHtml()).toContain('playable/sdk/playable-sdk.js');
+    });
+
+    it('should use playableSDK.openAppStore() for CTA bridge', () => {
+      const adapter = getAdapter('tiktok');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toContain('playableSDK.openAppStore()');
+    });
+
+    it('should bridge game_ready to playableSDK.reportGameReady()', () => {
+      const adapter = getAdapter('tiktok');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toContain('playableSDK.reportGameReady');
+    });
+
+    it('should bridge game_end to playableSDK.reportGameClose()', () => {
+      const adapter = getAdapter('tiktok');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toContain('playableSDK.reportGameClose');
+    });
+
+    it('should inject viewport meta tag', () => {
+      const adapter = getAdapter('tiktok');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toContain('user-scalable=no');
     });
 
     it('should return zipConfig with orientation for portrait', () => {
       const adapter = getAdapter('tiktok');
       const config = adapter.getZipConfig({ ...defaultConfig, orientation: 'portrait' });
-      expect(config).toHaveProperty('playable_orientation');
+      expect(config).toEqual({ playable_orientation: 1 });
+    });
+
+    it('should return zipConfig with orientation for landscape', () => {
+      const adapter = getAdapter('tiktok');
+      const config = adapter.getZipConfig({ ...defaultConfig, orientation: 'landscape' });
+      expect(config).toEqual({ playable_orientation: 2 });
+    });
+
+    it('should return zipConfig with orientation for auto', () => {
+      const adapter = getAdapter('tiktok');
+      const config = adapter.getZipConfig({ ...defaultConfig, orientation: 'auto' });
+      expect(config).toEqual({ playable_orientation: 0 });
+    });
+
+    it('should declare preview-util.js as forbidden string', () => {
+      const adapter = getAdapter('tiktok');
+      const forbidden = adapter.getForbiddenStrings();
+      expect(forbidden).toContain('preview-util.js');
+    });
+
+    it('should NOT use mraid bridge', () => {
+      const adapter = getAdapter('tiktok');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).not.toContain('mraid.open');
+      expect(html).not.toContain('mraid.js');
+    });
+
+    it('should NOT use generic window.open as primary CTA', () => {
+      const adapter = getAdapter('tiktok');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      // The bridge should check playableSDK first, window.open only as fallback
+      expect(html).toContain('if (window.playableSDK)');
+    });
+  });
+
+  describe('Pangle adapter', () => {
+    it('should inject Pangle SDK', () => {
+      const adapter = getAdapter('pangle');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      expect(builder.toHtml()).toContain('playable-sdk.js');
+    });
+
+    it('should use playableSDK.openAppStore() for CTA bridge', () => {
+      const adapter = getAdapter('pangle');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toContain('playableSDK.openAppStore()');
+    });
+
+    it('should bridge game_ready to playableSDK.reportGameReady()', () => {
+      const adapter = getAdapter('pangle');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toContain('playableSDK.reportGameReady');
+    });
+
+    it('should bridge game_end to playableSDK.reportGameClose()', () => {
+      const adapter = getAdapter('pangle');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toContain('playableSDK.reportGameClose');
+    });
+
+    it('should inject viewport meta tag', () => {
+      const adapter = getAdapter('pangle');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toContain('user-scalable=no');
+    });
+
+    it('should return zipConfig with orientation', () => {
+      const adapter = getAdapter('pangle');
+      const config = adapter.getZipConfig({ ...defaultConfig, orientation: 'portrait' });
+      expect(config).toEqual({ playable_orientation: 1 });
+    });
+
+    it('should declare preview-util.js as forbidden string', () => {
+      const adapter = getAdapter('pangle');
+      const forbidden = adapter.getForbiddenStrings();
+      expect(forbidden).toContain('preview-util.js');
     });
   });
 
@@ -198,7 +353,7 @@ describe('Network Adapters', () => {
   });
 
   describe('Non-MRAID networks without SDK', () => {
-    ['tapjoy', 'smadex', 'rubeex'].forEach(id => {
+    ['tapjoy', 'smadex', 'rubeex'].forEach((id) => {
       it(`${id} should not inject mraid.js`, () => {
         const adapter = getAdapter(id);
         const builder = new HtmlBuilder(sampleHtml);

@@ -1,6 +1,6 @@
 {
   "package_version": 2,
-  "version": "0.1.10",
+  "version": "0.1.11",
   "name": "plbx-cocos-extension",
   "title": "i18n:plbx-cocos-extension.title",
   "description": "i18n:plbx-cocos-extension.description",
@@ -206,7 +206,7 @@
     "watch": "tsc -w",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "npm rebuild sharp 2>/dev/null || true"
+    "postinstall": "node -e \"try{require('child_process').execSync('npm rebuild sharp',{stdio:'ignore'})}catch(e){}\""
   },
   "devDependencies": {
     "@cocos/creator-types": "3.8.7",
