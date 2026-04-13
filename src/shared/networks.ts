@@ -138,7 +138,6 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     maxSize: MB4,
     mraid: false,
     sdkUrl: 'https://sf3-ttcdn-tos.pstatp.com/obj/union-fe-nc/playable/sdk/playable-sdk.js',
-    zipConfig: { playable_orientation: 0 },
     singleFileZip: true,
     inlineAssets: false,
   },
@@ -148,7 +147,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     format: 'zip',
     maxSize: MB4,
     mraid: false,
-    sdkUrl: 'https://sf1-ttcdn-tos.pstatp.com/obj/ttfe/union/playable/sdk/index.b5662ec443f458c8a87e.js',
+    sdkUrl: 'https://sf16-muse-va.ibytedtos.com/obj/union-fe-nc-i18n/playable/sdk/playable-sdk.js',
     singleFileZip: true,
     inlineAssets: false,
   },
@@ -268,7 +267,7 @@ export function getNetwork(id: string): NetworkConfig | undefined {
 }
 
 export function getNetworksByFormat(format: OutputFormat): NetworkConfig[] {
-  return Object.values(NETWORKS).filter(n => n.format === format);
+  return Object.values(NETWORKS).filter((n) => n.format === format);
 }
 
 export function getAllNetworks(): NetworkConfig[] {

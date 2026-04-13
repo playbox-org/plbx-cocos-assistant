@@ -50,9 +50,7 @@ export function mraidBridge(): string {
 
 /** Facebook/Moloco bridge */
 export function facebookBridge(): string {
-  return buildPlbxBridge(
-    `if (window.FbPlayableAd) { FbPlayableAd.onCTAClick(); } else if (url) { window.open(url, "_blank"); }`,
-  );
+  return buildPlbxBridge(`if (window.FbPlayableAd) { FbPlayableAd.onCTAClick(); } else if (url) { window.open(url, "_blank"); }`);
 }
 
 /** Google Ads bridge */
@@ -63,11 +61,20 @@ export function googleBridge(): string {
   );
 }
 
+/** TikTok/Pangle bridge — uses playableSDK for CTA, gameReady, and gameClose */
+export function tiktokBridge(): string {
+  return buildPlbxBridge(
+    `if (window.playableSDK) { playableSDK.openAppStore(); } else if (url) { window.open(url, "_blank"); }`,
+    [
+      `window.plbx_html.game_ready = function() { if (window.playableSDK && playableSDK.reportGameReady) { playableSDK.reportGameReady(); } };`,
+      `window.plbx_html.game_end = function() { if (window.playableSDK && playableSDK.reportGameClose) { playableSDK.reportGameClose(); } };`,
+    ].join('\n'),
+  );
+}
+
 /** Generic fallback bridge */
 export function genericBridge(): string {
-  return buildPlbxBridge(
-    `if (url) { window.open(url, "_blank"); }`,
-  );
+  return buildPlbxBridge(`if (url) { window.open(url, "_blank"); }`);
 }
 
 export class BaseAdapter implements NetworkAdapter {
@@ -101,7 +108,9 @@ export class BaseAdapter implements NetworkAdapter {
     const storeSetup = [
       config.storeUrlIos ? `window.plbx_html.appstore_url = "${config.storeUrlIos}";` : '',
       config.storeUrlAndroid ? `window.plbx_html.google_play_url = "${config.storeUrlAndroid}";` : '',
-    ].filter(Boolean).join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
     builder.injectBodyScript(bridge + (storeSetup ? '\n' + storeSetup : ''));
 
     // Inject custom head from config

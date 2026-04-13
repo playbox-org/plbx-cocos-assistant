@@ -258,7 +258,8 @@ export function generatePreviewUtil(params: PreviewUtilParams): string {
   // TikTok/Pangle playable SDK mock
   window.playableSDK = window.playableSDK || {
     openAppStore: function() { report('cta', { method: 'playable_sdk' }); },
-    reportGameReady: function() { report('game_ready', { method: 'playableSDK.reportGameReady' }); }
+    reportGameReady: function() { report('game_ready', { method: 'playableSDK.reportGameReady' }); },
+    reportGameClose: function() { report('game_end', { method: 'playableSDK.reportGameClose' }); }
   };
   // Alias
   window.openAppStore = function() { report('cta', { method: 'openAppStore' }); };

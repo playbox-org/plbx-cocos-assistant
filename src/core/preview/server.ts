@@ -23,11 +23,11 @@ function findBuildFile(outputDir: string, networkId: string): BuildFile | null {
 
   // Look for any .zip file
   const files = readdirSync(dir);
-  const zipFile = files.find(f => f.endsWith('.zip'));
+  const zipFile = files.find((f) => f.endsWith('.zip'));
   if (zipFile) return { path: join(dir, zipFile), isZip: true };
 
   // Look for any .html file
-  const htmlFile = files.find(f => f.endsWith('.html'));
+  const htmlFile = files.find((f) => f.endsWith('.html'));
   if (htmlFile) return { path: join(dir, htmlFile), isZip: false };
 
   return null;
@@ -90,7 +90,7 @@ const FULL_LIFECYCLE = new Set(['mintegral']);
 const PARTIAL_LIFECYCLE = new Set(['tiktok', 'pangle']);
 
 // Networks where game_end/complete is explicitly validated
-const GAME_END_REQUIRED = new Set(['mintegral', 'vungle']);
+const GAME_END_REQUIRED = new Set(['mintegral', 'vungle', 'tiktok', 'pangle']);
 
 interface CheckDef {
   id: string;
@@ -100,32 +100,53 @@ interface CheckDef {
 
 function getNetworkChecks(networkId: string, mraid: boolean): CheckDef[] {
   const checks: CheckDef[] = [
-    { id: 'file_size', label: 'File size',
-      hint: 'Reduce asset sizes: compress textures (TinyPNG), use audio compression, remove unused assets. PLBX auto-inlines everything into a single HTML.' },
-    { id: 'game_loads', label: 'Game loads',
-      hint: 'Check browser console for errors. Ensure all assets are inlined and no external dependencies are missing.' },
+    {
+      id: 'file_size',
+      label: 'File size',
+      hint: 'Reduce asset sizes: compress textures (TinyPNG), use audio compression, remove unused assets. PLBX auto-inlines everything into a single HTML.',
+    },
+    {
+      id: 'game_loads',
+      label: 'Game loads',
+      hint: 'Check browser console for errors. Ensure all assets are inlined and no external dependencies are missing.',
+    },
   ];
 
   // MRAID ready — for MRAID networks (AppLovin, Unity, ironSource, etc.)
   if (mraid) {
-    checks.push({ id: 'mraid_ready', label: 'MRAID ready',
-      hint: 'MRAID SDK must initialize. PLBX injects mraid.js mock automatically. If not firing, check that your code listens for mraid "ready" event.' });
+    checks.push({
+      id: 'mraid_ready',
+      label: 'MRAID ready',
+      hint: 'MRAID SDK must initialize. PLBX injects mraid.js mock automatically. If not firing, check that your code listens for mraid "ready" event.',
+    });
   }
 
   // Full lifecycle: Mintegral requires gameReady → gameStart → gameEnd → gameClose
   if (FULL_LIFECYCLE.has(networkId)) {
-    checks.push({ id: 'game_ready', label: 'gameReady()',
-      hint: 'Call window.gameReady() when all assets are loaded and the game is ready to play. In Cocos Creator, call it in your main scene\'s onLoad or start method.' });
-    checks.push({ id: 'game_start', label: 'gameStart()',
-      hint: 'gameStart() is called automatically by the SDK after gameReady(). If not detected, ensure gameReady() is being called first.' });
+    checks.push({
+      id: 'game_ready',
+      label: 'gameReady()',
+      hint: "Call window.gameReady() when all assets are loaded and the game is ready to play. In Cocos Creator, call it in your main scene's onLoad or start method.",
+    });
+    checks.push({
+      id: 'game_start',
+      label: 'gameStart()',
+      hint: 'gameStart() is called automatically by the SDK after gameReady(). If not detected, ensure gameReady() is being called first.',
+    });
   }
 
   // Partial lifecycle: TikTok/Pangle require gameReady + gameStart
   if (PARTIAL_LIFECYCLE.has(networkId)) {
-    checks.push({ id: 'game_ready', label: 'gameReady()',
-      hint: 'Call window.gameReady() when the game is ready. For TikTok/Pangle, also call playableSDK.reportGameReady() if using their SDK.' });
-    checks.push({ id: 'game_start', label: 'gameStart()',
-      hint: 'gameStart() is triggered after gameReady(). Ensure gameReady() fires correctly.' });
+    checks.push({
+      id: 'game_ready',
+      label: 'gameReady()',
+      hint: 'Call window.gameReady() when the game is ready. For TikTok/Pangle, also call playableSDK.reportGameReady() if using their SDK.',
+    });
+    checks.push({
+      id: 'game_start',
+      label: 'gameStart()',
+      hint: 'gameStart() is triggered after gameReady(). Ensure gameReady() fires correctly.',
+    });
   }
 
   // CTA — with network-specific label
@@ -142,28 +163,44 @@ function getNetworkChecks(networkId: string, mraid: boolean): CheckDef[] {
     mytarget: 'Call MTRG.onCTAClick() when the user taps the CTA button.',
     yandex: 'Call yandexHTML5BannerApi.getClickURLNum(1) when the user taps the CTA button.',
   };
-  checks.push({ id: 'cta', label: ctaLabel,
-    hint: ctaHints[networkId] || (mraid
-      ? 'Call mraid.open(storeUrl) when the user taps the CTA button.'
-      : 'Trigger a CTA call when the user taps the download button. Use the network-specific API.') });
+  checks.push({
+    id: 'cta',
+    label: ctaLabel,
+    hint:
+      ctaHints[networkId] ||
+      (mraid
+        ? 'Call mraid.open(storeUrl) when the user taps the CTA button.'
+        : 'Trigger a CTA call when the user taps the download button. Use the network-specific API.'),
+  });
 
   // game_end — required for Mintegral (gameEnd), Vungle (complete event)
   if (GAME_END_REQUIRED.has(networkId)) {
-    checks.push({ id: 'game_end', label: 'gameEnd()',
-      hint: 'Call window.gameEnd() when the gameplay is complete (e.g. level finished, time ran out). This must fire before or alongside the CTA.' });
+    checks.push({
+      id: 'game_end',
+      label: 'gameEnd()',
+      hint: 'Call window.gameEnd() when the gameplay is complete (e.g. level finished, time ran out). This must fire before or alongside the CTA.',
+    });
   }
 
   // game_close — Mintegral only
   if (FULL_LIFECYCLE.has(networkId)) {
-    checks.push({ id: 'game_close', label: 'gameClose()',
-      hint: 'Call window.gameClose() when the playable ad is being closed. Typically called after CTA or at the end of the experience.' });
+    checks.push({
+      id: 'game_close',
+      label: 'gameClose()',
+      hint: 'Call window.gameClose() when the playable ad is being closed. Typically called after CTA or at the end of the experience.',
+    });
   }
 
-  checks.push({ id: 'no_external', label: 'No external requests',
-    hint: 'All assets must be inlined into the HTML file. PLBX does this automatically during packaging. If external requests appear, check for hardcoded URLs in your code.' });
-  checks.push({ id: 'no_errors', label: 'No code exceptions',
-    hint: 'Fix JavaScript errors in your game code. Check the console below for details. Common causes: missing assets, API calls to undefined objects, timing issues.' });
-
+  checks.push({
+    id: 'no_external',
+    label: 'No external requests',
+    hint: 'All assets must be inlined into the HTML file. PLBX does this automatically during packaging. If external requests appear, check for hardcoded URLs in your code.',
+  });
+  checks.push({
+    id: 'no_errors',
+    label: 'No code exceptions',
+    hint: 'Fix JavaScript errors in your game code. Check the console below for details. Common causes: missing assets, API calls to undefined objects, timing issues.',
+  });
 
   return checks;
 }
@@ -171,10 +208,7 @@ function getNetworkChecks(networkId: string, mraid: boolean): CheckDef[] {
 function extractAxonEvents(html: string): string[] {
   const events = new Set<string>();
   // Match trackEvent('name'), trackEvent("name"), trackEvent(`name`)
-  const patterns = [
-    /trackEvent\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-    /trackEvent\s*\(\s*`([^`]+)`\s*\)/g,
-  ];
+  const patterns = [/trackEvent\s*\(\s*['"]([^'"]+)['"]\s*\)/g, /trackEvent\s*\(\s*`([^`]+)`\s*\)/g];
   for (const pattern of patterns) {
     let match;
     while ((match = pattern.exec(html)) !== null) {
@@ -384,7 +418,10 @@ body { background: #1a1a2e; color: #e0e0e0; font-family: -apple-system, BlinkMac
 </html>`;
 }
 
-export async function startPreviewServer(options: { outputDir: string; networks: string[] }): Promise<{ port: number; url: string }> {
+export async function startPreviewServer(options: {
+  outputDir: string;
+  networks: string[];
+}): Promise<{ port: number; url: string }> {
   // Stop existing server if running
   if (_server) {
     await stopPreviewServer();
@@ -416,7 +453,7 @@ export async function startPreviewServer(options: { outputDir: string; networks:
             pangle: 'https://ads.tiktok.com/help/article/playable-ad-specifications',
           };
 
-          const result = networks.map(id => {
+          const result = networks.map((id) => {
             const config = getNetwork(id);
             const checks = getNetworkChecks(id, config?.mraid || false);
             return {
