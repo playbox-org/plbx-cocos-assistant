@@ -11,8 +11,10 @@ beforeAll(() => {
   mkdirSync(MOCK_BUILD, { recursive: true });
   mkdirSync(join(MOCK_BUILD, 'assets'), { recursive: true });
   // Create a minimal Cocos-like build output
-  writeFileSync(join(MOCK_BUILD, 'index.html'),
-    '<!DOCTYPE html><html><head><title>Game</title></head><body><script src="main.js"></script></body></html>');
+  writeFileSync(
+    join(MOCK_BUILD, 'index.html'),
+    '<!DOCTYPE html><html><head><title>Game</title></head><body><script src="main.js"></script></body></html>',
+  );
   writeFileSync(join(MOCK_BUILD, 'main.js'), 'console.log("game");');
   writeFileSync(join(MOCK_BUILD, 'assets', 'sprite.png'), Buffer.alloc(200));
 });
@@ -75,9 +77,31 @@ describe('packageForNetworks', () => {
       config: defaultConfig,
     });
     expect(result.results).toHaveLength(2);
-    const formats = result.results.map(r => r.format);
+    const formats = result.results.map((r) => r.format);
     expect(formats).toContain('html');
     expect(formats).toContain('zip');
+  });
+
+  it('should produce dual format outputs for liftoff (html + self-contained zip)', async () => {
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['liftoff'],
+      config: defaultConfig,
+    });
+    expect(result.results).toHaveLength(2);
+    const htmlResult = result.results.find((r) => r.format === 'html');
+    const zipResult = result.results.find((r) => r.format === 'zip');
+    expect(htmlResult).toBeDefined();
+    expect(zipResult).toBeDefined();
+    expect(htmlResult!.outputSize).toBeGreaterThan(0);
+    expect(zipResult!.outputSize).toBeGreaterThan(0);
+    // ZIP should contain self-contained HTML (smaller than raw HTML due to compression)
+    expect(zipResult!.outputPath).toContain('.zip');
+    // HTML output should contain inlined assets
+    const html = readFileSync(htmlResult!.outputPath, 'utf-8');
+    expect(html).toContain('window.__zip');
+    expect(html).toContain('mraid.js');
   });
 
   it('should embed runtime loader in HTML output', async () => {
@@ -131,12 +155,14 @@ describe('packageForNetworks', () => {
   });
 
   it('should throw when build HTML is missing', async () => {
-    await expect(packageForNetworks({
-      buildDir: '/nonexistent/path',
-      outputDir: PACK_OUTPUT,
-      networks: ['applovin'],
-      config: defaultConfig,
-    })).rejects.toThrow('Build HTML not found');
+    await expect(
+      packageForNetworks({
+        buildDir: '/nonexistent/path',
+        outputDir: PACK_OUTPUT,
+        networks: ['applovin'],
+        config: defaultConfig,
+      }),
+    ).rejects.toThrow('Build HTML not found');
   });
 });
 
@@ -172,9 +198,7 @@ describe('validator-forbidden string enforcement', () => {
     });
     expect(result.results[0].outputPath).toBe('');
     expect(result.results[0].outputSize).toBe(0);
-    const errorCall = onProgress.mock.calls.find(
-      ([, phase]) => phase === 'error',
-    );
+    const errorCall = onProgress.mock.calls.find(([, phase]) => phase === 'error');
     expect(errorCall).toBeDefined();
     expect(errorCall![2]).toContain('preview-util');
     expect(errorCall![2]).toContain('Mintegral');

@@ -77,6 +77,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     maxSize: MB5,
     mraid: true,
     inlineAssets: true,
+    dualFormat: true,
   },
   smadex: {
     id: 'smadex',

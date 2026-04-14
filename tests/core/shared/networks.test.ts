@@ -22,15 +22,15 @@ describe('NETWORKS registry', () => {
   it('should filter networks by format', () => {
     const zipNetworks = getNetworksByFormat('zip');
     expect(zipNetworks.length).toBeGreaterThan(5);
-    zipNetworks.forEach(n => expect(n.format).toBe('zip'));
+    zipNetworks.forEach((n) => expect(n.format).toBe('zip'));
 
     const htmlNetworks = getNetworksByFormat('html');
     expect(htmlNetworks.length).toBeGreaterThan(5);
-    htmlNetworks.forEach(n => expect(n.format).toBe('html'));
+    htmlNetworks.forEach((n) => expect(n.format).toBe('html'));
   });
 
   it('should have valid maxSize for all networks', () => {
-    Object.values(NETWORKS).forEach(network => {
+    Object.values(NETWORKS).forEach((network) => {
       expect(network.maxSize).toBeGreaterThan(0);
       expect(network.maxSize).toBeLessThanOrEqual(10 * 1024 * 1024);
     });
@@ -45,8 +45,21 @@ describe('NETWORKS registry', () => {
   });
 
   it('most ZIP networks should use singleFileZip', () => {
-    const singleFileZipIds = ['google', 'mintegral', 'vungle', 'snapchat', 'bigo', 'gdt', 'kwai', 'pangle', 'tiktok', 'mytarget', 'adikteev', 'bigabid'];
-    singleFileZipIds.forEach(id => {
+    const singleFileZipIds = [
+      'google',
+      'mintegral',
+      'vungle',
+      'snapchat',
+      'bigo',
+      'gdt',
+      'kwai',
+      'pangle',
+      'tiktok',
+      'mytarget',
+      'adikteev',
+      'bigabid',
+    ];
+    singleFileZipIds.forEach((id) => {
       const n = getNetwork(id);
       expect(n, `${id} should exist`).toBeDefined();
       expect(n!.format, `${id} should be zip`).toBe('zip');
@@ -67,6 +80,14 @@ describe('NETWORKS registry', () => {
     expect(inmobi!.inlineAssets).toBe(true);
   });
 
+  it('liftoff should be dualFormat (html + zip)', () => {
+    const liftoff = getNetwork('liftoff');
+    expect(liftoff!.format).toBe('html');
+    expect(liftoff!.mraid).toBe(true);
+    expect(liftoff!.inlineAssets).toBe(true);
+    expect(liftoff!.dualFormat).toBe(true);
+  });
+
   it('snapchat should have config.json with orientation', () => {
     const snapchat = getNetwork('snapchat');
     expect(snapchat!.zipConfig).toBeDefined();
@@ -74,8 +95,20 @@ describe('NETWORKS registry', () => {
   });
 
   it('MRAID networks should all have mraid=true', () => {
-    const mraidIds = ['applovin', 'unity', 'ironsource', 'adcolony', 'appreciate', 'chartboost', 'liftoff', 'mytarget', 'adikteev', 'bigabid', 'inmobi'];
-    mraidIds.forEach(id => {
+    const mraidIds = [
+      'applovin',
+      'unity',
+      'ironsource',
+      'adcolony',
+      'appreciate',
+      'chartboost',
+      'liftoff',
+      'mytarget',
+      'adikteev',
+      'bigabid',
+      'inmobi',
+    ];
+    mraidIds.forEach((id) => {
       const n = getNetwork(id);
       expect(n, `${id} should exist`).toBeDefined();
       expect(n!.mraid, `${id} should have mraid=true`).toBe(true);

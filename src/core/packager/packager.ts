@@ -60,16 +60,21 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
         outputPath = join(options.outputDir, resolved);
         mkdirSync(dirname(outputPath), { recursive: true });
 
-        if (format === 'html' || network.singleFileZip) {
+        // Determine if this format needs a fully-inlined single HTML.
+        // True for: html format, singleFileZip networks, or dualFormat networks
+        // where the primary format is html (inlineAssets) but we also emit a ZIP.
+        const needsInlinedHtml =
+          format === 'html' || network.singleFileZip || (format === 'zip' && network.dualFormat && network.inlineAssets);
+        // Determine if the inlined HTML should be wrapped in a ZIP
+        const wrapInZip = format === 'zip' && (network.singleFileZip || (network.dualFormat && network.inlineAssets));
+
+        if (needsInlinedHtml) {
           // Build a fully-inlined single HTML file.
-          // For html format it's written as-is; for singleFileZip it's wrapped in a ZIP.
-          options.onProgress?.(networkId, 'processing', `Building ${network.singleFileZip ? 'single-file ZIP' : format.toUpperCase()}...`);
+          // For html format it's written as-is; for singleFileZip/dualFormat ZIP it's wrapped in a ZIP.
+          options.onProgress?.(networkId, 'processing', `Building ${wrapInZip ? 'single-file ZIP' : format.toUpperCase()}...`);
 
           // Pack everything except index.html and CSS (inlined separately)
-          const zipBuffer = await packDirectoryToZip(
-            options.buildDir, undefined,
-            { excludeExtensions: ['.css', '.html'] },
-          );
+          const zipBuffer = await packDirectoryToZip(options.buildDir, undefined, { excludeExtensions: ['.css', '.html'] });
           const zipBase64 = zipBuffer.toString('base64');
 
           // Extract and minify CSS for inline injection
@@ -84,7 +89,7 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
 
           assertNoForbiddenStrings(finalHtml, adapter.getForbiddenStrings(), network.name);
 
-          if (network.singleFileZip) {
+          if (wrapInZip) {
             // Wrap the single HTML in a ZIP (+ optional config.json)
             const tempDir = join(dirname(outputPath), `_temp_${networkId}`);
             mkdirSync(tempDir, { recursive: true });
@@ -161,7 +166,6 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
       }
 
       options.onProgress?.(networkId, 'done');
-
     } catch (error: any) {
       options.onProgress?.(networkId, 'error', error.message);
       results.push({
@@ -190,12 +194,12 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
  */
 function assertNoForbiddenStrings(html: string, forbidden: string[], networkName: string): void {
   if (!forbidden.length) return;
-  const found = forbidden.filter(needle => html.includes(needle));
+  const found = forbidden.filter((needle) => html.includes(needle));
   if (found.length === 0) return;
   throw new Error(
     `[${networkName}] Generated HTML contains validator-forbidden string(s): ` +
-    found.map(s => `"${s}"`).join(', ') +
-    `. This build would be rejected by the network validator — aborting.`,
+      found.map((s) => `"${s}"`).join(', ') +
+      `. This build would be rejected by the network validator — aborting.`,
   );
 }
 
