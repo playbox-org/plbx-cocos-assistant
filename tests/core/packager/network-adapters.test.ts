@@ -201,8 +201,11 @@ describe('Network Adapters', () => {
   });
 
   describe('Forbidden strings API (base)', () => {
-    it('non-Mintegral/TikTok/Pangle adapters should return empty forbidden list by default', () => {
-      for (const id of ['applovin', 'unity', 'facebook', 'moloco', 'google']) {
+    it('non-Mintegral adapters should return empty forbidden list by default', () => {
+      // Only Mintegral PlayTurbo rejects on "preview-util.js" — other networks
+      // don't have this validator rule, so declaring forbidden strings for
+      // them would false-positive on unrelated customInjectBody content.
+      for (const id of ['applovin', 'unity', 'facebook', 'moloco', 'google', 'tiktok', 'pangle']) {
         expect(getAdapter(id).getForbiddenStrings()).toEqual([]);
       }
     });
@@ -264,12 +267,6 @@ describe('Network Adapters', () => {
       const adapter = getAdapter('tiktok');
       const config = adapter.getZipConfig({ ...defaultConfig, orientation: 'auto' });
       expect(config).toEqual({ playable_orientation: 0 });
-    });
-
-    it('should declare preview-util.js as forbidden string', () => {
-      const adapter = getAdapter('tiktok');
-      const forbidden = adapter.getForbiddenStrings();
-      expect(forbidden).toContain('preview-util.js');
     });
 
     it('should NOT use mraid bridge', () => {
@@ -335,12 +332,6 @@ describe('Network Adapters', () => {
       const adapter = getAdapter('pangle');
       const config = adapter.getZipConfig({ ...defaultConfig, orientation: 'portrait' });
       expect(config).toEqual({ playable_orientation: 1 });
-    });
-
-    it('should declare preview-util.js as forbidden string', () => {
-      const adapter = getAdapter('pangle');
-      const forbidden = adapter.getForbiddenStrings();
-      expect(forbidden).toContain('preview-util.js');
     });
   });
 

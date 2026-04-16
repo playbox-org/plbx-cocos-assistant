@@ -37,8 +37,4 @@ export class PangleAdapter extends BaseAdapter {
     const orientation = ORIENTATION_MAP[config.orientation] ?? 0;
     return { playable_orientation: orientation };
   }
-
-  getForbiddenStrings(): string[] {
-    return ['preview-util.js'];
-  }
 }
