@@ -7,7 +7,7 @@ import { compressAudio, compressAudioToBuffer, isFFmpegAvailable } from './core/
 import { packageForNetworks } from './core/packager/packager';
 import { PlayboxApiClient } from './core/deployer/api-client';
 import { uploadFile } from './core/deployer/uploader';
-import { getProjectSettings, saveProjectSettings, getGlobalToken, saveGlobalToken } from './core/settings';
+import { getProjectSettings, saveProjectSettings, getGlobalToken, saveGlobalToken, sanitizeProjectName } from './core/settings';
 import { startPreviewServer, stopPreviewServer } from './core/preview/server';
 import { getAllNetworks } from './shared/networks';
 import { join, resolve } from 'path';
@@ -270,7 +270,9 @@ export const methods: Record<string, (...args: any[]) => any> = {
 
     // Create new project if needed
     if (!projectId && !projectSlug && config.projectName) {
-      const project = await client.createProject(config.projectName);
+      const cleanName = sanitizeProjectName(config.projectName);
+      if (!cleanName) throw new Error('Invalid project name');
+      const project = await client.createProject(cleanName);
       projectId = project.id;
       projectSlug = project.slug;
     }

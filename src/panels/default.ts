@@ -1627,6 +1627,23 @@ module.exports = Editor.Panel.define({
         if (!buildPath) { if (deployStatus) deployStatus.textContent = 'Enter build path';        return; }
         if (!orientations.length) { if (deployStatus) deployStatus.textContent = 'Select at least one orientation'; return; }
 
+        if (projectId === '__new__') {
+          const looksLikePath = projectName && /[\\/]|^[A-Za-z]:/.test(projectName);
+          const detail = looksLikePath
+            ? `The name "${projectName}" looks like a file path. A new project with this exact name will be created on plbx.ai. Continue?`
+            : `No project named "${projectName}" exists yet. A new project will be created on plbx.ai. Continue?`;
+          const dlg = await Editor.Dialog.info('Create new project?', {
+            detail,
+            buttons: ['Create', 'Cancel'],
+            default: 0,
+            cancel: 1,
+          }).catch(() => null);
+          if (!dlg || dlg.response !== 0) {
+            if (deployStatus) deployStatus.textContent = 'Cancelled';
+            return;
+          }
+        }
+
         await Editor.Message.request('plbx-cocos-extension', 'save-settings', {
           deploymentName: name,
           deployProjectId: projectId === '__new__' ? '' : projectId,
