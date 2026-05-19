@@ -1,28 +1,28 @@
-import { statSync, renameSync } from 'fs';
-import { join, basename, extname, dirname } from 'path';
+import { join } from 'path';
+import { spawn } from 'child_process';
 import { CompressionOptions, CompressionResult, ImageMetadata } from './types';
 
-// Lazy-load sharp to prevent the entire extension from failing to load
-// when the native module is incompatible with the host Electron/Node version.
-type SharpFn = (input: string) => any;
-let _sharp: SharpFn | null = null;
-function loadSharp(): SharpFn {
-  if (!_sharp) {
-    try {
-      _sharp = require('sharp');
-    } catch (e: any) {
-      const platform = process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux';
-      const cmd = process.platform === 'win32'
-        ? 'npm install --os=win32 --cpu=x64 sharp'
-        : 'npm rebuild sharp';
-      throw new Error(
-        `Could not load the "sharp" image library for ${platform}.\n\n` +
-        `To fix, run this in the extension folder:\n\n  ${cmd}\n\n` +
-        `Extension folder: look for plbx-cocos-extension in your project\'s extensions/ directory.`
-      );
-    }
-  }
-  return _sharp!;
+// sharp is loaded in a separate Node.js child process to avoid native ABI mismatch
+// between Cocos Creator's Electron and the sharp binary compiled for plain Node.js.
+const WORKER = join(__dirname, '..', '..', '..', 'sharp-worker.js');
+
+function runWorker<T>(command: object): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('node', [WORKER], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let out = '', err = '';
+    child.stdout.on('data', (d: Buffer) => { out += d.toString(); });
+    child.stderr.on('data', (d: Buffer) => { err += d.toString(); });
+    child.on('error', (e: Error) => reject(new Error('sharp worker spawn failed: ' + e.message)));
+    child.on('close', (code: number | null) => {
+      if (code === 0) {
+        try { resolve(JSON.parse(out)); } catch { reject(new Error('sharp worker invalid JSON: ' + out)); }
+      } else {
+        reject(new Error('sharp worker error: ' + err));
+      }
+    });
+    child.stdin.write(JSON.stringify(command));
+    child.stdin.end();
+  });
 }
 
 export async function compressImage(
@@ -30,121 +30,19 @@ export async function compressImage(
   options: CompressionOptions,
   outputDir?: string,
 ): Promise<CompressionResult> {
-  const sharp = loadSharp();
-  const inputSize = statSync(inputPath).size;
-
-  const inputBasename = basename(inputPath, extname(inputPath));
-  const outputExt = options.format === 'jpeg' ? '.jpeg' : `.${options.format}`;
-  const outputFilename = `${inputBasename}${outputExt}`;
-  const outputDirectory = outputDir ?? dirname(inputPath);
-  const outputPath = join(outputDirectory, outputFilename);
-
-  // sharp cannot write to the same file it reads — use a temp file then rename
-  const sameFile = outputPath === inputPath;
-  const writePath = sameFile ? outputPath + '.tmp' : outputPath;
-
-  let pipeline = sharp(inputPath);
-
-  if (options.resize) {
-    pipeline = pipeline.resize({
-      width: options.resize.width,
-      height: options.resize.height,
-      fit: options.resize.fit,
-    });
-  }
-
-  switch (options.format) {
-    case 'webp':
-      pipeline = pipeline.webp({ quality: options.quality });
-      break;
-    case 'avif':
-      pipeline = pipeline.avif({ quality: options.quality });
-      break;
-    case 'jpeg':
-      pipeline = pipeline.jpeg({ quality: options.quality });
-      break;
-    case 'png':
-      // sharp png quality maps to compressionLevel 0-9 (inverted: quality 100 = level 0)
-      pipeline = pipeline.png({ compressionLevel: Math.round((100 - options.quality) / 11) });
-      break;
-  }
-
-  await pipeline.toFile(writePath);
-  if (sameFile) renameSync(writePath, outputPath);
-
-  const outputSize = statSync(outputPath).size;
-  const savings = ((inputSize - outputSize) / inputSize) * 100;
-
-  return {
-    inputPath,
-    outputPath,
-    inputSize,
-    outputSize,
-    format: options.format,
-    quality: options.quality,
-    savings,
-  };
+  return runWorker({ type: 'compress', inputPath, options, outputDir });
 }
 
 export async function getImageMetadata(inputPath: string): Promise<ImageMetadata> {
-  const sharp = loadSharp();
-  const meta = await sharp(inputPath).metadata();
-  const size = statSync(inputPath).size;
-
-  return {
-    width: meta.width ?? 0,
-    height: meta.height ?? 0,
-    format: meta.format ?? 'unknown',
-    size,
-    channels: meta.channels ?? 0,
-  };
+  return runWorker({ type: 'metadata', inputPath });
 }
 
 export async function compressImageToBuffer(
   inputPath: string,
   options: CompressionOptions,
 ): Promise<{ buffer: Buffer; metadata: CompressionResult }> {
-  const sharp = loadSharp();
-  const inputSize = statSync(inputPath).size;
-
-  let pipeline = sharp(inputPath);
-
-  if (options.resize) {
-    pipeline = pipeline.resize({
-      width: options.resize.width,
-      height: options.resize.height,
-      fit: options.resize.fit,
-    });
-  }
-
-  switch (options.format) {
-    case 'webp':
-      pipeline = pipeline.webp({ quality: options.quality });
-      break;
-    case 'avif':
-      pipeline = pipeline.avif({ quality: options.quality });
-      break;
-    case 'jpeg':
-      pipeline = pipeline.jpeg({ quality: options.quality });
-      break;
-    case 'png':
-      pipeline = pipeline.png({ compressionLevel: Math.round((100 - options.quality) / 11) });
-      break;
-  }
-
-  const buffer = await pipeline.toBuffer();
-  const outputSize = buffer.length;
-  const savings = ((inputSize - outputSize) / inputSize) * 100;
-
-  const metadata: CompressionResult = {
-    inputPath,
-    outputPath: '',
-    inputSize,
-    outputSize,
-    format: options.format,
-    quality: options.quality,
-    savings,
-  };
-
-  return { buffer, metadata };
+  const result = await runWorker<{ bufferBase64: string; metadata: CompressionResult }>(
+    { type: 'compressToBuffer', inputPath, options },
+  );
+  return { buffer: Buffer.from(result.bufferBase64, 'base64'), metadata: result.metadata };
 }
