@@ -128,6 +128,19 @@ function getCriticalErrors(result: Awaited<ReturnType<typeof verifyHtmlInBrowser
     if (err.text.includes('Invalid typed array length') || err.text.includes('RangeError')) {
       critical.push(`BinaryCorrupt: ${err.text}`);
     }
+    // Spine/emscripten init failures — SkeletonInstance namespace must be ready
+    // by time scene loads. "G6.SkeletonInstance is not a constructor" =
+    // spine wasm/asm module factory did not register default export.
+    if (err.text.includes('SkeletonInstance is not a constructor') ||
+        err.text.includes('is not a function') && err.text.includes('spine')) {
+      critical.push(`SpineInit: ${err.text}`);
+    }
+  }
+
+  for (const ex of result.uncaughtExceptions) {
+    if (ex.includes('SkeletonInstance is not a constructor')) {
+      critical.push(`SpineInit: ${ex}`);
+    }
   }
 
   return critical;
@@ -154,6 +167,17 @@ const PROJECTS = [
       orientation: 'landscape' as const,
     },
   },
+  // farmington: spine-4.2 enabled build. Validates emscripten currentScript/new URL
+  // rewrite path (cocos-js-rewriter.ts).
+  {
+    name: 'farmington',
+    fixtureDir: join(__dirname, '../fixtures/farmington-build'),
+    config: {
+      storeUrlIos: 'https://apps.apple.com/app/farmington',
+      storeUrlAndroid: 'https://play.google.com/store/apps/details?id=com.playbox.farmington',
+      orientation: 'portrait' as const,
+    },
+  },
 ];
 
 const HTML_NETWORKS = ['ironsource', 'applovin', 'unity', 'facebook'] as const;
@@ -170,7 +194,12 @@ for (const project of PROJECTS) {
     beforeAll(async () => {
       if (existsSync(outputDir)) rmSync(outputDir, { recursive: true, force: true });
       mkdirSync(outputDir, { recursive: true });
-      browser = await chromium.launch({ headless: true });
+      // SwiftShader даёт software WebGL в headless — без него Cocos падает на
+      // canvas.getContext('webgl') === null и до spine init не доходит.
+      browser = await chromium.launch({
+        headless: true,
+        args: ['--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'],
+      });
     }, 30000);
 
     afterAll(async () => {
@@ -191,6 +220,43 @@ for (const project of PROJECTS) {
         expect(existsSync(htmlResult!.outputPath)).toBe(true);
 
         const browserResult = await verifyHtmlInBrowser(browser, htmlResult!.outputPath, 15000);
+
+        // farmington uses spine — verify spine.asm-* default export is a function.
+        // Без GPU полный Cocos boot падает на canvas.getContext('webgl') = null
+        // до spine init, поэтому проверяем модуль напрямую через System.import.
+        if (project.name === 'farmington') {
+          const page = await browser.newPage();
+          await page.goto(`file://${htmlResult!.outputPath}`, { waitUntil: 'domcontentloaded' });
+          await page.waitForFunction(
+            () => (window as any).__res && (window as any)._PLBX_systemJsPatched,
+            { timeout: 15000 },
+          );
+          const spineProbe = await page.evaluate(async () => {
+            try {
+              const Sys: any = (window as any).System;
+              const base = 'https://plbx.local/cocos-js/cc.js';
+              // Replicate cc.js Promise.all pipeline (race condition triggers here).
+              const t: any = await Promise.all([
+                Sys.import('./spine.asm-ByQcr60x.js', base),
+                Sys.import('./spine.js-DGaEcPzV.js', base),
+                Sys.import('./spine.wasm-DxRECbrD.js', base),
+              ]);
+              return {
+                asmDefaultType: typeof t[0].default,
+                memDefaultValue: t[1].default,
+                wasmDefaultType: typeof t[2].default,
+              };
+            } catch (e: any) {
+              return { error: e.message };
+            }
+          });
+          await page.close();
+          expect(spineProbe.error, `spine import error: ${spineProbe.error}`).toBeUndefined();
+          expect(spineProbe.asmDefaultType, 'spine.asm-* default must be function').toBe('function');
+          expect(spineProbe.memDefaultValue, 'spine.js-* default must be mem path').toBe('assets/spine.js.mem-DkFYcHIO.bin');
+          expect(spineProbe.wasmDefaultType, 'spine.wasm-* default must be function').toBe('function');
+        }
+
         const critical = getCriticalErrors(browserResult);
 
         if (critical.length > 0) {

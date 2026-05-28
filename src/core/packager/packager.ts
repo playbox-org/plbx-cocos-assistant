@@ -7,6 +7,7 @@ import { getNetwork, NETWORKS } from '../../shared/networks';
 import { PackageResult, OutputFormat } from '../../shared/types';
 import { PackagerOptions, PackagerResult } from './types';
 import { packDirectoryToZip } from './asset-inliner';
+import { rewriteCocosJs, shouldRewriteCocosJs } from './cocos-js-rewriter';
 import { generateFullHtml, generatePayloadJs } from './runtime-loader';
 import { buildLauncher, fillLauncherPayloadUrl } from './launcher-builder';
 import { resolveTemplate } from './template-resolver';
@@ -168,8 +169,14 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
           // For html format it's written as-is; for singleFileZip/dualFormat ZIP it's wrapped in a ZIP.
           options.onProgress?.(networkId, 'processing', `Building ${wrapInZip ? 'single-file ZIP' : format.toUpperCase()}...`);
 
-          // Pack everything except index.html and CSS (inlined separately)
-          const zipBuffer = await packDirectoryToZip(options.buildDir, undefined, { excludeExtensions: ['.css', '.html'] });
+          // Pack everything except index.html and CSS (inlined separately).
+          // transform: переписываем cocos-js/*.js под наш runtime (см.
+          // cocos-js-rewriter.ts) — обходит emscripten currentScript-trap.
+          const zipBuffer = await packDirectoryToZip(options.buildDir, undefined, {
+            excludeExtensions: ['.css', '.html'],
+            transform: (path, content) =>
+              shouldRewriteCocosJs(path) ? rewriteCocosJs(content.toString('utf-8')) : null,
+          });
           const zipBase64 = zipBuffer.toString('base64');
 
           // Extract and minify CSS for inline injection

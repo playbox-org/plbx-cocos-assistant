@@ -254,8 +254,54 @@ function _toDataUri(url, base64) {
   return 'data:' + _getMime(url) + ';base64,' + base64;
 }
 
+// _PLBX_URL: обёртка для new URL внутри cocos-js/*.js (см. cocos-js-rewriter.ts).
+// Защищает от случаев когда target/base = undefined у emscripten-loader'ов
+// (spine.asm, box2d-wasm, ...), которые читают baseURL через document.currentScript.
+// В embedded-loader сценарии currentScript === null → baseURL = "" → стандартный
+// new URL ломается. Здесь мы:
+//   - заменяем undefined/null/"" base на _PLBX_currentScript.src (фейковый base).
+//   - валит ли target в "undefined"-строку → возвращаем безопасный stub-URL
+//     чтобы fetch потом резолвился в наш кеш или нормально 404-нулся.
+function _installPlbxUrlShim() {
+  var FAKE_BASE = (window._PLBX_currentScript && window._PLBX_currentScript.src) ||
+                   'plbx://cocos-js/cc.js';
+  var Original = URL;
+  function Shim(target, base) {
+    var t = target == null ? '' : String(target);
+    if (t === 'undefined') t = '';
+    var b = base;
+    if (b == null || b === '' || b === 'undefined') b = FAKE_BASE;
+    try {
+      return new Original(t, b);
+    } catch(e) {
+      // Любая ошибка резолвинга — возвращаем безопасный URL с пустым href,
+      // чтобы дальнейший fetch не превратился в "cocos-js/undefined".
+      try { return new Original('plbx://noop'); } catch(_) { return { href: '' }; }
+    }
+  }
+  // Сохраняем доступ к статикам/прототипу настоящего URL — emscripten не трогает,
+  // но Cocos может (cc.URL и т.п.). Прокси через Object.setPrototypeOf не нужен,
+  // достаточно копирования статиков.
+  if (Original.createObjectURL) Shim.createObjectURL = Original.createObjectURL.bind(Original);
+  if (Original.revokeObjectURL) Shim.revokeObjectURL = Original.revokeObjectURL.bind(Original);
+  Shim.prototype = Original.prototype;
+  window._PLBX_URL = Shim;
+}
+
+// _PLBX_currentScript: фейковая ссылка на текущий скрипт. Эмулирует
+// document.currentScript.src для emscripten-loader'ов, которые без него
+// не могут определить откуда грузить .mem/.wasm файлы. base указывает в
+// директорию cocos-js, чтобы относительные пути ("assets/spine.js.mem-...")
+// резолвились корректно через new URL.
+function _installPlbxCurrentScript() {
+  window._PLBX_currentScript = { src: 'plbx://cocos-js/cc.js' };
+}
+
 function patchAPIs() {
   if (DEBUG) console.log('[plbx] Patching browser APIs');
+
+  _installPlbxCurrentScript();
+  _installPlbxUrlShim();
 
   // 1. Patch XMLHttpRequest
   var OriginalXHR = window.XMLHttpRequest;
@@ -598,6 +644,25 @@ function patchSystemJS() {
         (0, eval)(cssModule);
         return this.getRegister();
       }
+
+      // .js path: стандартный SystemJS использует script-tag injection для .js,
+      // что race-condition'ит lastRegister при Promise.all (anon System.register
+      // глобален). Cocos cc.js делает Promise.all([spine.asm, spine.js-mem,
+      // spine.wasm]) — три коротких модуля грузятся параллельно, последний
+      // register перетирает предыдущие → namespace.default = undefined для
+      // mem/wasm. Решение: для всех .js из нашего кеша делаем sync eval +
+      // getRegister здесь, синхронно — register пишется и тут же забирается,
+      // никакой race condition нет.
+      if (ext === 'js') {
+        if (DEBUG) console.log('[plbx] SystemJS sync-eval JS:', normalized);
+        try {
+          (0, eval)(raw + '\\n//# sourceURL=' + url);
+          return this.getRegister();
+        } catch(e) {
+          if (DEBUG) console.error('[plbx] SystemJS sync-eval failed for ' + normalized + ':', e);
+          throw e;
+        }
+      }
     }
 
     if (DEBUG) console.warn('[plbx] SystemJS instantiate fallthrough:', url);
@@ -623,6 +688,7 @@ function patchSystemJS() {
     return Promise.reject(new Error('[plbx] No fetch available for ' + url));
   };
 
+  window._PLBX_systemJsPatched = true;
   if (DEBUG) console.log('[plbx] SystemJS patched');
 }
 

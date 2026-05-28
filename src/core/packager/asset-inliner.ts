@@ -44,15 +44,24 @@ export function bufferToDataUri(buffer: Buffer, mimeType: string): string {
 /**
  * Pack a directory into a ZIP buffer.
  * Recursively adds all files, with optional extension exclusion.
+ *
+ * `transform(relativePath, content)` лётный фильтр: если возвращает строку,
+ * она кладётся в ZIP вместо оригинального содержимого. Возврат `null`/`undefined`
+ * = без изменений. Применяется к каждому файлу до записи. Путь нормализован
+ * к forward slashes.
  */
 export async function packDirectoryToZip(
   dirPath: string,
   basePath?: string,
-  options?: { excludeExtensions?: string[] },
+  options?: {
+    excludeExtensions?: string[];
+    transform?: (relativePath: string, content: Buffer) => string | Buffer | null | undefined;
+  },
 ): Promise<Buffer> {
   const zip = new JSZip();
   const base = basePath || dirPath;
   const excludeExts = new Set(options?.excludeExtensions?.map(e => e.startsWith('.') ? e : `.${e}`) || []);
+  const transform = options?.transform;
 
   function addDir(currentPath: string) {
     const entries = readdirSync(currentPath, { withFileTypes: true });
@@ -64,8 +73,10 @@ export async function packDirectoryToZip(
         if (excludeExts.size > 0 && excludeExts.has(extname(entry.name).toLowerCase())) {
           continue;
         }
-        const relativePath = relative(base, fullPath);
-        zip.file(relativePath, readFileSync(fullPath));
+        const relativePath = relative(base, fullPath).split('\\').join('/');
+        const raw = readFileSync(fullPath);
+        const transformed = transform ? transform(relativePath, raw) : null;
+        zip.file(relativePath, transformed != null ? transformed : raw);
       }
     }
   }
