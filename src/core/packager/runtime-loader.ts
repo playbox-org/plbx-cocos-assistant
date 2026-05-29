@@ -9,11 +9,18 @@
  * - JSZip library available globally
  */
 
+import { generateSelfContainedLoader } from './loader';
+
 export interface RuntimeLoaderOptions {
   /** Enable debug logging in the runtime */
   debug?: boolean;
   /** Enable vconsole for mobile debugging */
   vconsole?: boolean;
+  /**
+   * Which loader to emit. Defaults to 'self-contained' (origin-independent
+   * plbx loader). 'systemjs' = legacy global-patch loader (rollback path).
+   */
+  mode?: 'self-contained' | 'systemjs';
 }
 
 /**
@@ -427,17 +434,40 @@ function patchAPIs() {
 
       // Defer callbacks to next macrotask — Cocos engine expects async XHR
       // and registers download tracking between send() and onload.
-      // IMPORTANT: only use dispatchEvent, NOT manual onload()/onreadystatechange()
-      // calls — the onXxx properties are IDL attributes backed by addEventListener,
-      // so dispatchEvent already invokes them. Calling both causes double completion.
+      //
+      // WebKit (iOS WKWebView) vs Blink divergence: for cached assets we skip
+      // the native originalOpen(), so the underlying XHR stays UNSENT at the
+      // native level. In Blink, dispatchEvent(new Event('load')) still routes to
+      // the .onload IDL attribute handler. In WebKit it does NOT — a synthetic
+      // event on a never-opened XHR fires addEventListener() listeners but not
+      // the on* attribute handlers. Cocos Settings.init() sets xhr.onload = fn
+      // directly (no addEventListener), so on iOS its load callback never ran,
+      // cc.game.init() Promise hung forever, game never inited -> gray screen.
+      //
+      // Fix: fire addEventListener-based listeners via dispatchEvent (with the
+      // on* attributes temporarily detached so they don't double-fire), THEN
+      // invoke the on* attribute handlers directly. Each path runs exactly once,
+      // cross-engine.
       var dataSize = asset.data.length;
       _aborted = false;
       _sendTimer = setTimeout(function() {
         _sendTimer = null;
         if (_aborted) return;
-        xhr.dispatchEvent(new Event('readystatechange'));
-        xhr.dispatchEvent(new ProgressEvent('progress', { lengthComputable: true, loaded: dataSize, total: dataSize }));
-        xhr.dispatchEvent(new Event('load'));
+        var _orsc = xhr.onreadystatechange, _oprog = xhr.onprogress, _oload = xhr.onload;
+        // Detach attribute handlers so dispatchEvent only invokes addEventListener listeners.
+        try { xhr.onreadystatechange = null; xhr.onprogress = null; xhr.onload = null; } catch(e) {}
+        var rsEvt = new Event('readystatechange');
+        var prEvt = new ProgressEvent('progress', { lengthComputable: true, loaded: dataSize, total: dataSize });
+        var ldEvt = new Event('load');
+        xhr.dispatchEvent(rsEvt);
+        xhr.dispatchEvent(prEvt);
+        xhr.dispatchEvent(ldEvt);
+        if (_aborted) return;
+        // Re-attach then invoke the attribute handlers directly (WebKit-safe).
+        try { xhr.onreadystatechange = _orsc; xhr.onprogress = _oprog; xhr.onload = _oload; } catch(e) {}
+        if (typeof _orsc === 'function') { try { _orsc.call(xhr, rsEvt); } catch(e) { if (DEBUG) console.error('[plbx] onreadystatechange threw:', e); } }
+        if (typeof _oprog === 'function') { try { _oprog.call(xhr, prEvt); } catch(e) {} }
+        if (typeof _oload === 'function') { try { _oload.call(xhr, ldEvt); } catch(e) { if (DEBUG) console.error('[plbx] onload threw:', e); } }
       }, 0);
     };
 
@@ -595,17 +625,41 @@ function patchSystemJS() {
 
   var proto = System.constructor.prototype;
 
-  // 1. Fix resolve — in sandbox WebViews location.href is about:srcdoc,
-  // so relative paths resolve to about:index.js which is garbage.
-  // Use a fake base URL that produces clean relative paths.
+  // 1. Fix resolve — in sandbox WebViews (sandbox="allow-scripts" WITHOUT
+  // allow-same-origin, e.g. AppLovin video+playable, super-html mraid-proxy)
+  // the iframe origin is "null" and document baseURI is "about:srcdoc".
+  // Two failure modes follow:
+  //   a) relative parentUrl resolves against about:srcdoc → about:index.js garbage.
+  //   b) systemjs-importmap targets (e.g. "cc" → "cocos-js/cc.js") get absolutized
+  //      against the about:srcdoc base AT IMPORTMAP-PARSE TIME, before this patch
+  //      runs — so _origResolve('cc') returns "about:cocos-js/cc.js". That URL is
+  //      never matched against our ZIP cache (keys are "cocos-js/cc.js"), nor is
+  //      it about:-rewritten here because only parentUrl was being checked. It
+  //      falls through to real script-injection of "about:cocos-js/cc.js" →
+  //      SystemJS Invalid-URL error #3 → cc never loads → GRAY SCREEN.
+  // Fix: rewrite about:/blob: in BOTH the incoming parentUrl AND the resolved
+  // result, normalizing any about:<path> back onto _fakeBase so instantiate/fetch
+  // (which strip _fakeBase) can suffix-match it in the cache.
   var _origResolve = proto.resolve;
   var _fakeBase = 'https://plbx.local/';
+  function _deAbout(u) {
+    // "about:cocos-js/cc.js" / "about:srcdoc/x.js" → "https://plbx.local/<path>"
+    if (typeof u !== 'string') return u;
+    if (u.indexOf('about:') === 0) {
+      var rest = u.slice('about:'.length).replace(/^srcdoc\\/?/, '');
+      return _fakeBase + rest.replace(/^\\//, '');
+    }
+    return u;
+  }
   proto.resolve = function(id, parentUrl) {
     // If parentUrl is about: or empty, use fake base
     var base = parentUrl || _fakeBase;
     if (base.indexOf('about:') === 0 || base.indexOf('blob:') === 0) base = _fakeBase;
     try {
-      return _origResolve.call(this, id, base);
+      var resolved = _origResolve.call(this, id, base);
+      // The importmap may have already pinned the target to an about: URL at
+      // parse time — normalize it so downstream cache lookups can match.
+      return _deAbout(resolved);
     } catch(e) {
       // If resolve fails, check if we have the module in cache
       var direct = id.replace(/^\\.\\//,'');
@@ -624,7 +678,7 @@ function patchSystemJS() {
   // registers must stay associated with their declared URLs.
   var _origInstantiate = proto.instantiate;
   proto.instantiate = function(url, parentUrl) {
-    var normalized = url.replace(_fakeBase, '').replace(/^\\.\\//,'');
+    var normalized = _deAbout(url).replace(_fakeBase, '').replace(/^\\.\\//,'');
 
     // Wrap .json/.css via System.register so SystemJS treats them as modules
     var asset = _findAsset(url) || _findAsset(normalized) || _findAsset('./' + normalized);
@@ -673,7 +727,7 @@ function patchSystemJS() {
   // .json/.css files go through shouldFetch→this.fetch() pipeline.
   var _origSysFetch = proto.fetch;
   proto.fetch = function(url, opts) {
-    var normalized = url.replace(_fakeBase, '').replace(/^\\.\\//,'');
+    var normalized = _deAbout(url).replace(_fakeBase, '').replace(/^\\.\\//,'');
     var asset = _findAsset(url) || _findAsset(normalized) || _findAsset('./' + normalized);
     if (asset) {
       var body = asset.binary ? atob(asset.data) : asset.data;
@@ -779,9 +833,14 @@ function bootCocos() {
  * This should be injected into <head> BEFORE any Cocos scripts.
  */
 export function generateRuntimeLoader(options: RuntimeLoaderOptions = {}): string {
-  const patchCode = generatePatchCode(options);
-  const unpackCode = generateUnpackCode(options);
-  return patchCode + '\n' + unpackCode;
+  const mode = options.mode ?? 'self-contained';
+  if (mode === 'systemjs') {
+    // Legacy global-patch loader (rollback path).
+    const patchCode = generatePatchCode(options);
+    const unpackCode = generateUnpackCode(options);
+    return patchCode + '\n' + unpackCode;
+  }
+  return generateSelfContainedLoader(options);
 }
 
 /**
@@ -810,6 +869,8 @@ export function generatePayloadJs(params: {
   cssContent?: string;
   loaderOptions?: RuntimeLoaderOptions;
   buildDir?: string;
+  /** Effective loader engine (per-network). Forwarded to generateFullHtml. */
+  loaderMode?: 'self-contained' | 'systemjs';
 }): string {
   const fullHtml = generateFullHtml(params);
 
@@ -869,12 +930,15 @@ export function generateFullHtml(params: {
   loaderOptions?: RuntimeLoaderOptions;
   /** Build directory for reading import-map and other inline data */
   buildDir?: string;
+  /** Effective loader engine for this output (per-network). Overrides loaderOptions.mode. */
+  loaderMode?: 'self-contained' | 'systemjs';
 }): string {
   const { originalHtml, zipBase64, jsModules, cssContent, loaderOptions = {} } = params;
   const buildDir = params.buildDir;
 
+  const mode = params.loaderMode ?? loaderOptions.mode ?? 'self-contained';
   const jszipRuntime = getJSZipRuntime();
-  const runtimeLoader = generateRuntimeLoader(loaderOptions);
+  const runtimeLoader = generateRuntimeLoader({ ...loaderOptions, mode });
 
   // --- Phase 1: Rewrite original HTML ---
 
@@ -926,6 +990,10 @@ export function generateFullHtml(params: {
     if (buildDir) {
       try {
         let content = _readFile(_join(buildDir, src), 'utf-8');
+        // NOTE: we do NOT FB-rewrite inlined system.bundle.js/polyfills here —
+        // their createElement('script') is feature-detection code that breaks if
+        // rewritten. Only cocos-js/* (real bundle loader) is rewritten, in the
+        // ZIP transform (see packager.ts / cocos-js-rewriter selfContained).
         // Escape </script> inside JS to prevent HTML parser from breaking
         content = content.replace(/<\/script>/gi, '<\\/script>');
         return '<script>/* ' + src + ' */\n' + content + '</script>';
@@ -941,18 +1009,22 @@ export function generateFullHtml(params: {
 
   let injection = '';
 
-  // Pre-populated JS modules (optional)
-  if (jsModules && Object.keys(jsModules).length > 0) {
-    injection += '<script>window.__res = ' + JSON.stringify(jsModules) + ';</script>\n';
+  if (mode === 'self-contained') {
+    // The self-contained loader builds __plbx_res from the ZIP itself, so it
+    // only needs the base64 ZIP. No pre-populated __res / __plbx_scripts.
+    injection += '<script>window.__plbx_zip = "' + zipBase64 + '";</script>\n';
   } else {
-    injection += '<script>window.__res = {};</script>\n';
+    // Legacy loader globals.
+    if (jsModules && Object.keys(jsModules).length > 0) {
+      injection += '<script>window.__res = ' + JSON.stringify(jsModules) + ';</script>\n';
+    } else {
+      injection += '<script>window.__res = {};</script>\n';
+    }
+    // Script execution order for boot sequence
+    injection += '<script>window.__plbx_scripts = ' + JSON.stringify(scriptOrder) + ';</script>\n';
+    // ZIP data
+    injection += '<script>window.__zip = "' + zipBase64 + '";</script>\n';
   }
-
-  // Script execution order for boot sequence
-  injection += '<script>window.__plbx_scripts = ' + JSON.stringify(scriptOrder) + ';</script>\n';
-
-  // ZIP data
-  injection += '<script>window.__zip = "' + zipBase64 + '";</script>\n';
 
   // JSZip library
   injection += '<script>' + jszipRuntime + '</script>\n';

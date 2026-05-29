@@ -68,9 +68,9 @@ describeIf('Integration: roadside build packaging', () => {
     const r = result.results[0];
     const html = readFileSync(r.outputPath, 'utf-8');
 
-    expect(html).toContain('window.__zip');
-    expect(html).toContain('window.__res');
-    expect(html).toContain('XMLHttpRequest');
+    expect(html).toContain('window.__plbx_zip');
+    expect(html).toContain('window.__plbx_res');
+    expect(html).toContain('plbx_boot');
     expect(html).toContain('mraid.js');
 
     const refPath = join(REF_DIR, 'applovin', 'Roadside_applovin.html');
@@ -156,14 +156,14 @@ describeIf('Integration: roadside build packaging', () => {
 
     // Runtime loader should contain lifecycle signaling
     expect(html).toContain('gameReady');
-    expect(html).toContain('signalLifecycle');
+    expect(html).toContain('plbx_boot');
     // Mintegral bridge should use install() for CTA
     expect(html).toContain('window.install');
 
     // Should contain runtime loader
-    expect(html).toContain('__zip');
+    expect(html).toContain('__plbx_zip');
     expect(html).toContain('__plbx_boot');
-    expect(html).toContain('bootCocos');
+    expect(html).toContain('plbx_boot_engine');
 
     // Should have inlined CSS (no external stylesheet links)
     expect(html).not.toMatch(/<link[^>]*rel=["']stylesheet["']/);

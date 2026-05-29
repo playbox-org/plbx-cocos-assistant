@@ -59,10 +59,39 @@
         <div id="axon-events"></div>
         <div id="axon-empty" class="axon-empty">No trackEvent() calls found in source</div>
       </div>
+      <div id="molocov2-section" style="display:none;">
+        <h3 class="mv2-title">MolocoV2 Macro Fires</h3>
+        <div id="molocov2-macros"></div>
+      </div>
       <div id="cta-toast" class="cta-toast">CTA Clicked</div>
     </div>
   </div>
   <div class="console" id="console"></div>
+  <div id="mv2-dock" class="mv2-dock" style="display:none;">
+    <div class="mv2-dock-header">
+      <span class="mv2-dock-title">Manual triggers</span>
+      <button id="mv2-dock-toggle" class="mv2-dock-toggle" type="button" title="Collapse">–</button>
+    </div>
+    <div id="mv2-dock-body" class="mv2-dock-body">
+      <div class="mv2-controls-row">
+        <button class="mv2-btn" data-mv2-action="viewable" data-mv2-value="true" type="button">Viewable</button>
+        <button class="mv2-btn" data-mv2-action="viewable" data-mv2-value="false" type="button">Hidden</button>
+        <button class="mv2-btn" data-mv2-action="pause" type="button">Pause</button>
+        <button class="mv2-btn" data-mv2-action="resume" type="button">Resume</button>
+      </div>
+      <div class="mv2-controls-row">
+        <button class="mv2-btn" data-mv2-action="cta" type="button">CTA</button>
+        <button class="mv2-btn" data-mv2-action="game-end" type="button">End game</button>
+        <input id="mv2-tap-count" class="mv2-input" type="number" min="1" max="50" value="3">
+        <button class="mv2-btn" data-mv2-action="simulate-taps" type="button">Simulate taps</button>
+      </div>
+      <div class="mv2-controls-row">
+        <button class="mv2-btn" data-mv2-action="mute" type="button">Mute</button>
+        <button class="mv2-btn" data-mv2-action="unmute" type="button">Unmute</button>
+        <button class="mv2-btn mv2-btn-reset" id="mv2-reset" type="button">Reset</button>
+      </div>
+    </div>
+  </div>
   <script src="/static/preview/preview.js"></script>
 </body>
 </html>

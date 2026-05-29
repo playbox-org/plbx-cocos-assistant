@@ -64,7 +64,10 @@ async function verifyHtmlInBrowser(browser: Browser, htmlPath: string, timeoutMs
 
   try {
     await page.waitForFunction(
-      () => (window as any).__res && Object.keys((window as any).__res).length > 0,
+      () => {
+        const res = (window as any).__plbx_res || (window as any).__res;
+        return res && Object.keys(res).length > 0;
+      },
       { timeout: timeoutMs },
     );
   } catch {
@@ -228,7 +231,7 @@ for (const project of PROJECTS) {
           const page = await browser.newPage();
           await page.goto(`file://${htmlResult!.outputPath}`, { waitUntil: 'domcontentloaded' });
           await page.waitForFunction(
-            () => (window as any).__res && (window as any)._PLBX_systemJsPatched,
+            () => ((window as any).__plbx_res || (window as any).__res) && (window as any)._PLBX_systemJsPatched,
             { timeout: 15000 },
           );
           const spineProbe = await page.evaluate(async () => {

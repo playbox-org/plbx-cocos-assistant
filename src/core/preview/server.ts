@@ -11,11 +11,23 @@ let _port = 0;
 interface BuildFile {
   path: string;
   isZip: boolean;
+  /** For launcher-payload format: path to the sibling payload.js */
+  payloadPath?: string;
 }
 
 function findBuildFile(outputDir: string, networkId: string): BuildFile | null {
   const dir = join(outputDir, networkId);
   if (!existsSync(dir)) return null;
+
+  // launcher-payload format (molocoV2 etc.): prefer production launcher.html
+  // over launcher-local.html — preview-util.js will substitute #PAYLOAD_URL#
+  // with a /preview/{networkId}/payload.js route so the launcher still works
+  // without the inlined payload bloating every request.
+  const launcherHtml = join(dir, 'launcher.html');
+  const payloadJs = join(dir, 'payload.js');
+  if (existsSync(launcherHtml) && existsSync(payloadJs)) {
+    return { path: launcherHtml, isZip: false, payloadPath: payloadJs };
+  }
 
   // Check for index.html first
   const indexHtml = join(dir, 'index.html');
@@ -98,6 +110,41 @@ interface CheckDef {
   hint?: string;
 }
 
+// MolocoV2 macros tracked individually in the validator UI. Listed once here so the
+// checklist + the macro-fire UI stay consistent.
+const MOLOCO_V2_TRACKED_MACROS: ReadonlyArray<{ key: string; label: string; hint: string }> = [
+  {
+    key: 'mraid_viewable',
+    label: 'mraid_viewable beacon',
+    hint: 'Fires after mraid.isViewable() becomes true. Trigger the "Viewable" button in the preview to simulate it.',
+  },
+  {
+    key: 'game_viewable',
+    label: 'game_viewable beacon',
+    hint: 'Fires after plbx_html.game_ready() — Cocos boot signals the game is ready to display.',
+  },
+  {
+    key: 'click',
+    label: 'click beacon',
+    hint: 'Fires from plbx_html.download() — tap the CTA in the playable.',
+  },
+  {
+    key: 'engagement',
+    label: 'engagement beacon',
+    hint: 'Fires after taps_for_engagement taps (default 1). Use "Simulate N taps" or tap the canvas.',
+  },
+  {
+    key: 'redirection',
+    label: 'redirection beacon',
+    hint: 'Fires after taps_for_redirection taps (default 3). Sustained engagement signal.',
+  },
+  {
+    key: 'complete',
+    label: 'complete beacon',
+    hint: 'Fires from plbx_html.game_end() — call from game code on level finished or use "End game".',
+  },
+];
+
 function getNetworkChecks(networkId: string, mraid: boolean): CheckDef[] {
   const checks: CheckDef[] = [
     {
@@ -111,6 +158,39 @@ function getNetworkChecks(networkId: string, mraid: boolean): CheckDef[] {
       hint: 'Check browser console for errors. Ensure all assets are inlined and no external dependencies are missing.',
     },
   ];
+
+  // MolocoV2 launcher-payload format: per-macro lifecycle checks. Skip the generic
+  // CTA/external-request rails since the macro suite covers them more precisely.
+  if (networkId === 'molocoV2') {
+    checks.push({
+      id: 'mraid_ready',
+      label: 'MRAID ready',
+      hint: 'mraid.js mock must initialize. Defer-boot gate waits for mraid.getState() === default.',
+    });
+    checks.push({
+      id: 'viewable_listener',
+      label: 'viewableChange listener registered',
+      hint: 'Payload must call mraid.addEventListener("viewableChange", fn) so mraid_viewable fires in production.',
+    });
+    for (const macro of MOLOCO_V2_TRACKED_MACROS) {
+      checks.push({
+        id: 'macro_' + macro.key,
+        label: macro.label,
+        hint: macro.hint,
+      });
+    }
+    checks.push({
+      id: 'final_url_used',
+      label: 'final_url consumed by CTA',
+      hint: 'plbx_html.download() must open MOLOCO_MACROS.final_url via mraid.open — not the storeUrl fallback.',
+    });
+    checks.push({
+      id: 'no_errors',
+      label: 'No code exceptions',
+      hint: 'Fix JavaScript errors in your game code. Common causes: missing assets, API calls to undefined objects, timing issues.',
+    });
+    return checks;
+  }
 
   // MRAID ready — for MRAID networks (AppLovin, Unity, ironSource, etc.)
   if (mraid) {
@@ -494,6 +574,24 @@ export async function startPreviewServer(options: {
           return;
         }
 
+        // GET /preview/{networkId}/payload.js — launcher-payload sibling fetch
+        // Production launcher.html ships with <script src="#PAYLOAD_URL#">; in
+        // preview the server substitutes the placeholder with this route so
+        // the launcher can pull its IIFE without inlining the whole thing.
+        const payloadMatch = url.match(/^\/preview\/([a-zA-Z0-9_-]+)\/payload\.js$/);
+        if (payloadMatch) {
+          const networkId = payloadMatch[1];
+          const buildFile = findBuildFile(outputDir, networkId);
+          if (!buildFile || !buildFile.payloadPath || !existsSync(buildFile.payloadPath)) {
+            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            res.end('payload.js not found for network: ' + networkId);
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
+          res.end(readFileSync(buildFile.payloadPath));
+          return;
+        }
+
         // GET /preview/{networkId}
         const previewMatch = url.match(/^\/preview\/([a-zA-Z0-9_-]+)$/);
         if (previewMatch) {
@@ -512,6 +610,12 @@ export async function startPreviewServer(options: {
             html = await extractHtmlFromZip(buildFile.path);
           } else {
             html = readFileSync(buildFile.path, 'utf-8');
+          }
+
+          // launcher-payload format: substitute #PAYLOAD_URL# placeholder so the
+          // launcher resolves its IIFE via /preview/{networkId}/payload.js
+          if (buildFile.payloadPath) {
+            html = html.split('#PAYLOAD_URL#').join(`/preview/${networkId}/payload.js`);
           }
 
           const utilScript = generatePreviewUtil({

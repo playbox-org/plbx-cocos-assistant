@@ -33,6 +33,10 @@ export interface PackageConfig {
   orientation: Orientation;
   customInjectHead?: string;
   customInjectBody?: string;
+  /** Runtime loader engine. Defaults to 'self-contained'. */
+  loaderMode?: 'self-contained' | 'systemjs';
+  /** Networks pinned to the legacy SystemJS loader regardless of loaderMode. */
+  legacyLoaderNetworks?: string[];
 }
 
 export interface AssetReportItem {

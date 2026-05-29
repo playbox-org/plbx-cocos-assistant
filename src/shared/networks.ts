@@ -125,7 +125,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
       payloadMaxSize: MB5,
       assetProvider: 'Playbox',
       assetVersion: '2.0',
-      includeSplash: false, // default off — keeps launcher well under 3 KB
+      includeSplash: true, // PLBX branded loading splash; auto-hides on game_ready (~1.8 KB total, still < 3 KB)
     },
   },
   nefta: {

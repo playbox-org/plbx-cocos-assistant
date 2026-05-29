@@ -50,8 +50,18 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
         const outDir = join(options.outputDir, networkId);
         mkdirSync(outDir, { recursive: true });
 
-        // Build payload.js (IIFE injecting full Cocos runtime into launcher's document)
-        const zipBuffer = await packDirectoryToZip(options.buildDir, undefined, { excludeExtensions: ['.css', '.html'] });
+        const launcherLoaderMode = options.config.legacyLoaderNetworks?.includes(networkId)
+          ? 'systemjs'
+          : (options.config.loaderMode ?? 'self-contained');
+        // Build payload.js (IIFE injecting full Cocos runtime into launcher's document).
+        // Apply the same cocos-js rewrite as the main path (currentScript/new URL +
+        // for self-contained also XMLHttpRequest/createElement → FB-safe shims).
+        const launcherSelfContained = launcherLoaderMode === 'self-contained';
+        const zipBuffer = await packDirectoryToZip(options.buildDir, undefined, {
+          excludeExtensions: ['.css', '.html'],
+          transform: (path, content) =>
+            shouldRewriteCocosJs(path) ? rewriteCocosJs(content.toString('utf-8'), { selfContained: launcherSelfContained }) : null,
+        });
         const zipBase64 = zipBuffer.toString('base64');
         const cssContent = extractAndMinifyCss(options.buildDir);
 
@@ -60,6 +70,7 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
           zipBase64,
           cssContent,
           buildDir: options.buildDir,
+          loaderMode: launcherLoaderMode,
         });
 
         const assetTitle =
@@ -169,13 +180,23 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
           // For html format it's written as-is; for singleFileZip/dualFormat ZIP it's wrapped in a ZIP.
           options.onProgress?.(networkId, 'processing', `Building ${wrapInZip ? 'single-file ZIP' : format.toUpperCase()}...`);
 
+          // Per-network loader engine: global loaderMode, overridable by pinning
+          // a network into legacyLoaderNetworks (rollback path).
+          const globalLoaderMode = options.config.loaderMode ?? 'self-contained';
+          const effectiveLoaderMode = options.config.legacyLoaderNetworks?.includes(networkId)
+            ? 'systemjs'
+            : globalLoaderMode;
+
           // Pack everything except index.html and CSS (inlined separately).
           // transform: переписываем cocos-js/*.js под наш runtime (см.
-          // cocos-js-rewriter.ts) — обходит emscripten currentScript-trap.
+          // cocos-js-rewriter.ts) — обходит emscripten currentScript-trap; для
+          // self-contained также XMLHttpRequest→_XMLLocalRequest и createElement
+          // script→_createLocalJSElement (FB-safe, движок грузит из кеша).
+          const selfContained = effectiveLoaderMode === 'self-contained';
           const zipBuffer = await packDirectoryToZip(options.buildDir, undefined, {
             excludeExtensions: ['.css', '.html'],
             transform: (path, content) =>
-              shouldRewriteCocosJs(path) ? rewriteCocosJs(content.toString('utf-8')) : null,
+              shouldRewriteCocosJs(path) ? rewriteCocosJs(content.toString('utf-8'), { selfContained }) : null,
           });
           const zipBase64 = zipBuffer.toString('base64');
 
@@ -187,6 +208,7 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
             zipBase64,
             cssContent,
             buildDir: options.buildDir,
+            loaderMode: effectiveLoaderMode,
           });
 
           assertNoForbiddenStrings(finalHtml, adapter.getForbiddenStrings(), network.name);

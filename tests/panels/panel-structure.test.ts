@@ -293,22 +293,25 @@ describe('i18n keys', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const i18n = require(I18N_EN);
 
-  it('should have extension namespace', () => {
-    expect(i18n['plbx-cocos-extension']).toBeDefined();
+  // i18n files are FLAT — Cocos namespaces them by extension name at runtime
+  // (i18n.t('plbx-cocos-extension.title')), so the file itself must NOT contain
+  // a 'plbx-cocos-extension' wrapper key. These assertions read the flat module.
+  it('should be a flat module (no extension-name wrapper)', () => {
+    expect(i18n['plbx-cocos-extension']).toBeUndefined();
+    expect(i18n).toBeDefined();
   });
 
   it('should have title and description', () => {
-    const ns = i18n['plbx-cocos-extension'];
-    expect(ns.title).toBeTruthy();
-    expect(ns.description).toBeTruthy();
+    expect(i18n.title).toBeTruthy();
+    expect(i18n.description).toBeTruthy();
   });
 
   it('should have panel title', () => {
-    expect(i18n['plbx-cocos-extension'].panels.default.title).toBe('Playbox');
+    expect(i18n.panels.default.title).toBe('Playbox');
   });
 
   it('should have open-panel label', () => {
-    expect(i18n['plbx-cocos-extension']['open-panel']).toBeTruthy();
+    expect(i18n['open-panel']).toBeTruthy();
   });
 });
 

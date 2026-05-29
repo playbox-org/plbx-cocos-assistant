@@ -4,15 +4,48 @@ export interface PreviewUtilParams {
   maxSize: number;
 }
 
+/**
+ * The CTA method the REAL network validator tracks for this network. Our mock
+ * tags each 'cta' report with whether the method matches — so the validator
+ * shows the TRUTH (did the game reach the network's CTA SDK?) instead of
+ * counting a bare window.open() (blocked/untracked in real ad sandboxes) as a
+ * success. Keep in sync with the bridges in network-adapters/base.ts.
+ */
+function expectedCtaMethod(networkId: string, mraid: boolean): string {
+  const MAP: Record<string, string> = {
+    facebook: 'fbplayable',
+    moloco: 'fbplayable',
+    molocoV2: 'mraid.open',
+    google: 'exitapi',
+    mintegral: 'install',
+    tiktok: 'playable_sdk',
+    pangle: 'playable_sdk',
+    vungle: 'vungle_download',
+    bigo: 'bgy_mraid',
+    mytarget: 'mtrg',
+  };
+  return MAP[networkId] || (mraid ? 'mraid.open' : 'window.open');
+}
+
 export function generatePreviewUtil(params: PreviewUtilParams): string {
   const { networkId, mraid } = params;
   const parts: string[] = [];
+  const expectedCta = expectedCtaMethod(networkId, mraid);
 
   // Phase 1: Reporting
   parts.push(`
 (function() {
   var _plbxEvents = [];
+  var _plbxExpectedCta = ${JSON.stringify(expectedCta)};
   function report(event, data) {
+    // Tag CTA events with whether the call matched the network's REAL CTA SDK
+    // method. A bare window.open() on an SDK network is NOT a tracked CTA —
+    // marking it correct:false stops the validator showing a false success.
+    if (event === 'cta') {
+      data = data || {};
+      data.expected = _plbxExpectedCta;
+      data.correct = data.method === _plbxExpectedCta;
+    }
     _plbxEvents.push({ event: event, data: data, time: Date.now() });
     try {
       parent.postMessage({ type: 'plbx:preview', event: event, data: data || {} }, '*');
@@ -35,7 +68,7 @@ export function generatePreviewUtil(params: PreviewUtilParams): string {
   });
 `);
 
-  // Phase 3: Network request tracking
+  // Phase 3: Network request tracking + MOLOCO_MACROS fire detection
   parts.push(`
   var _requests = [];
   var _whitelist = [location.hostname, 'localhost', '127.0.0.1', ''];
@@ -49,11 +82,56 @@ export function generatePreviewUtil(params: PreviewUtilParams): string {
     } catch(e) { return false; }
   }
 
+  // ---- MOLOCO_MACROS reverse-lookup ----
+  // Built lazily on first fire so we capture the launcher's MOLOCO_MACROS values
+  // (DSP substitutes the #...# placeholders before serving). The lookup maps both
+  // the raw encoded value and the decoded value back to the macro key — adapter
+  // implementations may use either form.
+  var _macroLookup = null;
+  function _buildMacroLookup() {
+    var M = window.MOLOCO_MACROS;
+    if (!M) return null;
+    var L = {};
+    for (var k in M) {
+      if (!Object.prototype.hasOwnProperty.call(M, k)) continue;
+      var raw = M[k];
+      if (!raw || typeof raw !== 'string') continue;
+      L[raw] = k;
+      try { L[decodeURIComponent(raw)] = k; } catch(e) {}
+    }
+    return L;
+  }
+  function _macroKeyForUrl(url) {
+    if (!url || typeof url !== 'string') return null;
+    if (_macroLookup === null) _macroLookup = _buildMacroLookup();
+    if (!_macroLookup) return null;
+    if (_macroLookup[url]) return _macroLookup[url];
+    try {
+      var d = decodeURIComponent(url);
+      if (_macroLookup[d]) return _macroLookup[d];
+    } catch(e) {}
+    return null;
+  }
+  function _logMacroFire(url, channel) {
+    var key = _macroKeyForUrl(url);
+    if (!key) return;
+    var stack = '';
+    try { stack = (new Error()).stack || ''; } catch(e) {}
+    report('macro_fire', {
+      macroKey: key,
+      url: url,
+      channel: channel,
+      ts: (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(),
+      stack: stack.split('\\n').slice(2, 6).join('\\n')
+    });
+  }
+
   // Wrap XMLHttpRequest
   var _xhrOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function(method, url) {
     var u = String(url);
     _requests.push(u);
+    _logMacroFire(u, 'xhr');
     if (isExternal(u)) report('external_request', { url: u });
     return _xhrOpen.apply(this, arguments);
   };
@@ -64,33 +142,42 @@ export function generatePreviewUtil(params: PreviewUtilParams): string {
     window.fetch = function(input) {
       var u = typeof input === 'string' ? input : (input && input.url ? input.url : '');
       _requests.push(u);
+      _logMacroFire(u, 'fetch');
       if (isExternal(u)) report('external_request', { url: u });
       return _origFetch.apply(this, arguments);
     };
   }
 
-  // Wrap Image.src
-  var _imgDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
-  if (_imgDesc && _imgDesc.set) {
-    Object.defineProperty(HTMLImageElement.prototype, 'src', {
-      set: function(v) {
-        if (isExternal(v)) report('external_request', { url: v, type: 'image' });
-        _imgDesc.set.call(this, v);
-      },
-      get: _imgDesc.get,
-      configurable: true
-    });
+  // Wrap Image.src — guarded against double-patching (preview reload safety)
+  if (!window.__plbx_image_patched) {
+    window.__plbx_image_patched = true;
+    var _imgDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    if (_imgDesc && _imgDesc.set) {
+      Object.defineProperty(HTMLImageElement.prototype, 'src', {
+        set: function(v) {
+          _logMacroFire(v, 'image');
+          if (isExternal(v)) report('external_request', { url: v, type: 'image' });
+          _imgDesc.set.call(this, v);
+        },
+        get: _imgDesc.get,
+        configurable: true
+      });
+    }
   }
 `);
 
   // Phase 4: SDK mocks (network-specific)
 
   // Shared state and listener system for MRAID + dapi
+  const isMolocoV2 = networkId === 'molocoV2';
   if (mraid) {
     parts.push(`
   // Shared SDK state
   var _sdkState = 'loading';
-  var _viewable = true;
+  // MolocoV2 spec: ad container delivers viewableChange(true) only after the
+  // creative is actually visible. Start false so production semantics are
+  // mirrored — manual "Trigger viewable" button drives the transition.
+  var _viewable = ${isMolocoV2 ? 'false' : 'true'};
   var _volume = 100;
   var _listeners = {};
 
@@ -102,7 +189,12 @@ export function generatePreviewUtil(params: PreviewUtilParams): string {
   function _addListener(name, cb) {
     if (typeof cb !== 'function') return;
     _listeners[name] = _listeners[name] || [];
-    if (_listeners[name].indexOf(cb) === -1) _listeners[name].push(cb);
+    if (_listeners[name].indexOf(cb) === -1) {
+      _listeners[name].push(cb);
+      // Tell the validator UI when payload registers viewableChange — without
+      // that listener mraid_viewable never fires in production.
+      report('mraid_listener_added', { event: name });
+    }
     if (name === 'ready' && _sdkState !== 'loading') { setTimeout(function() { try { cb(); } catch(e) {} }, 0); }
   }
 
@@ -114,7 +206,8 @@ export function generatePreviewUtil(params: PreviewUtilParams): string {
 
   function _getSize() { return { width: window.innerWidth || 320, height: window.innerHeight || 480 }; }
 
-  // MRAID mock (2.0 + 3.0)
+  // MRAID mock (2.0 + 3.0). Manual-trigger helpers (_fire*) exposed so the
+  // validator UI can drive lifecycle transitions from the parent window.
   window.mraid = window.mraid || {
     getVersion: function() { return '3.0'; },
     getState: function() { return _sdkState; },
@@ -133,7 +226,27 @@ export function generatePreviewUtil(params: PreviewUtilParams): string {
     close: function() {},
     useCustomClose: function() {},
     setOrientationProperties: function() {},
-    expand: function() {}
+    expand: function() {},
+    _fireViewableChange: function(v) {
+      _viewable = !!v;
+      _fire('viewableChange', _viewable);
+      report('mraid_viewable_change', { viewable: _viewable });
+    },
+    _fireExposureChange: function(exposed) {
+      _fire('exposureChange', exposed ? 100 : 0);
+    },
+    _setState: function(s) {
+      _sdkState = String(s);
+      _fire('stateChange', _sdkState);
+    },
+    // Drive MRAID audioVolumeChange in isolation (no force-pause of audio
+    // engine). Lets the validator verify the GAME reacts to live mute on its
+    // own via plbx.on_mute_change, not the preview forcing silence.
+    _setAudioVolume: function(v) {
+      _volume = Number(v);
+      _fire('audioVolumeChange', _volume);
+      report('audio_volume', { volume: _volume });
+    }
   };
 
   // dapi mock (IronSource/Unity Ads) — shares listeners with mraid
@@ -209,13 +322,16 @@ export function generatePreviewUtil(params: PreviewUtilParams): string {
     } catch(err) {}
   });
 
-  // Initialize SDK after small delay
+  // Initialize SDK after small delay.
+  // For molocoV2: only flip state to 'default' (so getState() != 'loading')
+  // and fire 'ready'. Viewable stays false until manual trigger — production
+  // mraid behavior where viewableChange(true) arrives separately.
   setTimeout(function() {
     _sdkState = 'default';
     _fire('ready');
-    _fire('viewableChange', true);
+    ${isMolocoV2 ? "// viewable stays false — wait for manual trigger" : "_fire('viewableChange', true);"}
     report('mraid_ready', {});
-  }, 50);
+  }, ${isMolocoV2 ? 100 : 50});
 `);
   }
 
@@ -250,6 +366,94 @@ export function generatePreviewUtil(params: PreviewUtilParams): string {
     parts.push(`
   // Facebook/Moloco mock — both use FbPlayableAd API
   window.FbPlayableAd = { onCTAClick: function() { report('cta', { method: 'fbplayable' }); } };
+`);
+  }
+
+  if (networkId === 'molocoV2') {
+    parts.push(`
+  // ---- MolocoV2 validator extensions ----
+  //
+  // Manual-trigger postMessage protocol — the validator UI dispatches these to
+  // drive lifecycle from outside the iframe. Distinct namespace from existing
+  // plbx:audio-control etc. messages so we never cross signals.
+  window.addEventListener('message', function(e) {
+    var d = e && e.data;
+    if (!d || typeof d !== 'object' || d.type !== 'plbx:molocov2') return;
+    var action = d.action;
+    try {
+      switch (action) {
+        case 'viewable':
+          if (window.mraid && window.mraid._fireViewableChange) {
+            window.mraid._fireViewableChange(d.value !== false);
+          }
+          break;
+        case 'pause':
+          if (window.mraid && window.mraid._setState) window.mraid._setState('hidden');
+          break;
+        case 'resume':
+          if (window.mraid && window.mraid._setState) window.mraid._setState('default');
+          if (window.mraid && window.mraid._fireViewableChange) window.mraid._fireViewableChange(true);
+          break;
+        case 'game-end':
+          if (window.plbx_html && typeof window.plbx_html.game_end === 'function') {
+            window.plbx_html.game_end();
+          }
+          break;
+        case 'simulate-taps':
+          var n = parseInt(d.count, 10);
+          if (!isFinite(n) || n < 1) n = 1;
+          for (var i = 0; i < n; i++) {
+            if (window.plbx_html && typeof window.plbx_html.tap === 'function') {
+              window.plbx_html.tap();
+            }
+          }
+          break;
+        case 'cta':
+          if (window.plbx_html && typeof window.plbx_html.download === 'function') {
+            window.plbx_html.download();
+          }
+          break;
+        case 'mute':
+          if (window.mraid && window.mraid._setAudioVolume) window.mraid._setAudioVolume(0);
+          break;
+        case 'unmute':
+          if (window.mraid && window.mraid._setAudioVolume) window.mraid._setAudioVolume(100);
+          break;
+        default:
+          break;
+      }
+    } catch(err) {
+      report('error', { message: 'molocov2 trigger ' + action + ': ' + (err && err.message) });
+    }
+  });
+
+  // Snapshot start_muted contract on load — UI surfaces the static
+  // is_muted() value alongside the macro to verify the adapter reads it.
+  setTimeout(function() {
+    try {
+      var raw = (window.MOLOCO_MACROS && window.MOLOCO_MACROS.start_muted) || '';
+      var expected = (raw === '1' || raw === 'true');
+      var actual = (window.plbx_html && typeof window.plbx_html.is_muted === 'function')
+        ? !!window.plbx_html.is_muted()
+        : null;
+      report('molocov2_start_muted', { macro: raw, expected: expected, actual: actual });
+    } catch(e) {}
+  }, 200);
+
+  // Track final_url usage in CTA path. mraid.open() intercept already reports
+  // 'cta' — augment with whether the URL matches MOLOCO_MACROS.final_url.
+  if (window.mraid && !window.mraid.__plbx_open_wrapped) {
+    window.mraid.__plbx_open_wrapped = true;
+    var _origOpen = window.mraid.open.bind(window.mraid);
+    window.mraid.open = function(url) {
+      var finalRaw = (window.MOLOCO_MACROS && window.MOLOCO_MACROS.final_url) || '';
+      var finalDecoded = finalRaw;
+      try { finalDecoded = decodeURIComponent(finalRaw); } catch(e) {}
+      var match = !!url && (url === finalRaw || url === finalDecoded);
+      report('molocov2_cta', { url: url, match: match });
+      return _origOpen(url);
+    };
+  }
 `);
   }
 

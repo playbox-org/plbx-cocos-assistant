@@ -70,6 +70,22 @@ describe('MolocoV2 target', () => {
     expect(payload.trimEnd().endsWith('})();')).toBe(true);
   });
 
+  it('fires the mraid_viewable beacon exactly once (fireOnce, not fire)', async () => {
+    // Regression: fireMraidViewable guards on _fired['mraid_viewable'], but only
+    // fireOnce() writes _fired — a bare fire() leaves the guard permanently false
+    // so the beacon re-fires on every viewableChange / poll tick (Moloco DSP
+    // expects one viewable per session).
+    const r = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['molocoV2'],
+      config: defaultConfig,
+    });
+    const payload = readFileSync(r.results[0].secondaryPath!, 'utf-8');
+    expect(payload).toContain("fireOnce('mraid_viewable')");
+    expect(payload).not.toContain("fire('mraid_viewable')");
+  });
+
   it('launcher contains all required structural elements + macros', async () => {
     const r = await packageForNetworks({
       buildDir: MOCK_BUILD,
@@ -177,6 +193,12 @@ describe('MolocoV2 target', () => {
     expect(payload).toContain('MOLOCO_MACROS');
     // Defer-boot gate carried into payload
     expect(payload).toContain("mraid.addEventListener('viewableChange'");
+    // Viewability must ALSO be polled via isViewable(): the launcher can fire the
+    // first viewableChange before this payload's listener attaches, losing the
+    // pulse (splash stuck until a 2nd pulse — "viewable only works the 2nd time").
+    // Polling catches the already-viewable / missed-first-pulse case.
+    expect(payload).toContain('mraid.isViewable()');
+    expect(payload).toMatch(/setTimeout\(function\(\)\s*\{\s*poll\(/);
   });
 
   it('tap thresholds dynamic via taps_for_engagement / taps_for_redirection macros', async () => {
@@ -194,7 +216,7 @@ describe('MolocoV2 target', () => {
     expect(payload).not.toMatch(/taps\s*===\s*3\b/);
   });
 
-  it('payload defines FbPlayableAd shim routing to plbx_html', async () => {
+  it('payload does NOT define FbPlayableAd shim (MRAID-only path)', async () => {
     const r = await packageForNetworks({
       buildDir: MOCK_BUILD,
       outputDir: PACK_OUTPUT,
@@ -202,10 +224,11 @@ describe('MolocoV2 target', () => {
       config: defaultConfig,
     });
     const payload = readFileSync(r.results[0].secondaryPath!, 'utf-8');
-    expect(payload).toContain('window.FbPlayableAd');
-    expect(payload).toContain('window.FbPlayableAd = window.FbPlayableAd ||');
-    expect(payload).toContain('onCTAClick');
-    expect(payload).toContain('window.plbx_html.download');
+    // No legacy FAN bridge — CTA goes purely through mraid.open(final_url)
+    expect(payload).not.toContain('window.FbPlayableAd');
+    expect(payload).not.toContain('onCTAClick');
+    // Sanity: still has the mraid CTA path
+    expect(payload).toContain('mraid.open(dest)');
   });
 
   it('rejects build when content contains forbidden tracker strings', async () => {
@@ -220,6 +243,54 @@ describe('MolocoV2 target', () => {
     });
     expect(r.results[0].outputPath).toBe('');
     expect(r.results[0].outputSize).toBe(0);
+  });
+
+  it('renders the branded splash with an auto-hide hook, still under 3 KB', async () => {
+    const r = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['molocoV2'],
+      config: defaultConfig,
+    });
+    const launcher = readFileSync(r.results[0].outputPath, 'utf-8');
+    // Splash DOM + branded PLBX logo (pulsing rainbow mark) + wordmark
+    expect(launcher).toContain('<div id="s">');
+    expect(launcher).toContain('PLAYBOX');
+    expect(launcher).toContain('<svg id="lg"');
+    expect(launcher).toContain('@keyframes plbxp');
+    // Stops defined once, inherited via href to stay under the 3 KB budget
+    expect(launcher).toContain('href="#g0"');
+    // Auto-hide hook + fallback timeout so the splash can never get stuck
+    expect(launcher).toContain('window.__plbx_splash_hide');
+    expect(launcher).toMatch(/setTimeout\(window\.__plbx_splash_hide,\s*\d+\)/);
+    // Budget still respected with splash on
+    expect(r.results[0].outputSize).toBeLessThan(3072);
+    expect(r.results[0].withinLimit).toBe(true);
+  });
+
+  it('payload game_ready dismisses the launcher splash', async () => {
+    const r = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['molocoV2'],
+      config: defaultConfig,
+    });
+    const payload = readFileSync(r.results[0].secondaryPath!, 'utf-8');
+    // game_ready calls the splash hook guardedly (no-op when splash absent)
+    expect(payload).toContain('__plbx_splash_hide');
+    expect(payload).toMatch(/game_ready\s*=\s*function/);
+  });
+
+  it('quotes critical launcher attributes for strict QA parsers', async () => {
+    const r = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['molocoV2'],
+      config: defaultConfig,
+    });
+    const launcher = readFileSync(r.results[0].outputPath, 'utf-8');
+    expect(launcher).toContain('<script src="mraid.js"></script>');
+    expect(launcher).toContain('<meta charset="utf-8">');
   });
 
   it('fillLauncherPayloadUrl substitutes placeholder with real CDN URL', () => {

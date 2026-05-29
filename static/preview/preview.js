@@ -78,6 +78,11 @@
   var axonExpected = [];   // event names extracted from source
   var axonFired = {};      // { eventName: count }
   var currentValidatorUrl = null;
+  // MolocoV2 state
+  var isMolocoV2 = false;
+  var macroFires = {};           // { macroKey: { count, lastTs, lastUrl } }
+  var molocoV2MacroDefs = [];    // [{ id: 'macro_X', label, key }] extracted from server checks
+  var viewableListenerSeen = false;
 
   // ========== DOM REFERENCES ==========
   var phoneFrame = document.getElementById('phone-frame');
@@ -139,10 +144,11 @@
 
     CHECK_DEFS.forEach(function(def) {
       var c = checks[def.id] || { status: 'pending', detail: '' };
-      var icons = { pending: '\u23F3', pass: '\u2705', fail: '\u274C' };
+      var icons = { pending: '\u23F3', pass: '\u2705', fail: '\u274C', warn: '\u26A0\uFE0F' };
 
       var div = document.createElement('div');
-      div.className = 'check' + (c.status === 'fail' ? ' fail' : '');
+      var stateClass = c.status === 'fail' ? ' fail' : c.status === 'warn' ? ' warn' : '';
+      div.className = 'check' + stateClass;
 
       var iconSpan = document.createElement('span');
       iconSpan.className = 'icon';
@@ -242,6 +248,70 @@
     });
   }
 
+  // ========== MOLOCOV2 MACRO TRACKING ==========
+  function resetMolocoV2State() {
+    macroFires = {};
+    viewableListenerSeen = false;
+    renderMolocoV2Section();
+  }
+
+  function renderMolocoV2Section() {
+    var dock = document.getElementById('mv2-dock');
+    if (dock) dock.style.display = isMolocoV2 ? '' : 'none';
+    var section = document.getElementById('molocov2-section');
+    if (!section) return;
+    if (!isMolocoV2) { section.style.display = 'none'; return; }
+    section.style.display = '';
+
+    var container = document.getElementById('molocov2-macros');
+    if (!container) return;
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    molocoV2MacroDefs.forEach(function(def) {
+      var entry = macroFires[def.key];
+      var count = entry ? entry.count : 0;
+      var status = count === 0 ? 'pending' : count === 1 ? 'fired' : 'warn';
+      var div = document.createElement('div');
+      div.className = 'mv2-macro ' + status;
+
+      var icon = document.createElement('span');
+      icon.className = 'icon';
+      icon.textContent = count === 0 ? '⏳' : count === 1 ? '✅' : '⚠';
+      div.appendChild(icon);
+
+      var info = document.createElement('div');
+      info.className = 'mv2-macro-info';
+      var name = document.createElement('div');
+      name.className = 'mv2-macro-name';
+      name.textContent = def.key;
+      info.appendChild(name);
+      if (entry) {
+        var meta = document.createElement('div');
+        meta.className = 'mv2-macro-meta';
+        meta.textContent = 'fired ' + count + '× @ ' + Math.round(entry.lastTs) + 'ms';
+        info.appendChild(meta);
+      }
+      div.appendChild(info);
+      container.appendChild(div);
+    });
+  }
+
+  function recordMacroFire(macroKey, url, ts) {
+    if (!macroFires[macroKey]) {
+      macroFires[macroKey] = { count: 0, lastTs: 0, lastUrl: '' };
+    }
+    macroFires[macroKey].count++;
+    macroFires[macroKey].lastTs = typeof ts === 'number' ? ts : 0;
+    macroFires[macroKey].lastUrl = url || '';
+    var checkId = 'macro_' + macroKey;
+    if (checks[checkId]) {
+      var c = macroFires[macroKey].count;
+      var detail = 'fired ' + c + '×';
+      setCheck(checkId, c === 1 ? 'pass' : 'warn', detail);
+    }
+    renderMolocoV2Section();
+  }
+
   // ========== NETWORK LOADING ==========
   function loadNetwork(id) {
     currentNetwork = id;
@@ -254,6 +324,13 @@
       CHECK_DEFS = DEFAULT_CHECK_DEFS;
     }
     currentValidatorUrl = (net && net.validatorUrl) || null;
+
+    // MolocoV2 mode toggle — drives macro section + manual-trigger buttons
+    isMolocoV2 = (id === 'molocoV2');
+    molocoV2MacroDefs = CHECK_DEFS
+      .filter(function(d) { return d.id.indexOf('macro_') === 0; })
+      .map(function(d) { return { id: d.id, label: d.label, key: d.id.replace('macro_', '') }; });
+    resetMolocoV2State();
 
     resetChecks();
     var consoleEl = document.getElementById('console');
@@ -334,18 +411,30 @@
     var evt = e.data.event;
     var data = e.data.data || {};
 
-    var logMsg = '[preview] ' + evt;
-    if (data.url) logMsg += ' url=' + data.url;
-    if (data.message) logMsg += ' ' + data.message;
-    log(logMsg, evt === 'error' ? 'error' : evt === 'cta' ? 'cta' : '');
+    // macro_fire emits its own specialized log line below — skip the generic
+    // [preview] entry so the console doesn't show two lines per fire.
+    if (evt !== 'macro_fire') {
+      var logMsg = '[preview] ' + evt;
+      if (data.url) logMsg += ' url=' + data.url;
+      if (data.message) logMsg += ' ' + data.message;
+      log(logMsg, evt === 'error' ? 'error' : evt === 'cta' ? 'cta' : '');
+    }
 
     switch (evt) {
       case 'mraid_ready': setCheck('mraid_ready', 'pass'); break;
       case 'game_ready': setCheck('game_ready', 'pass'); break;
       case 'game_start': setCheck('game_start', 'pass'); break;
       case 'cta':
-        setCheck('cta', 'pass', data.method || 'called');
-        showCtaToast(data.method);
+        // Only the network's real CTA SDK method counts. A bare window.open()
+        // (or any non-matching method) is NOT tracked by the real validator —
+        // show it as a warning, not a green pass, so the preview tells the truth.
+        if (data.correct === false) {
+          setCheck('cta', 'warn', (data.method || 'called') + " won't track — " + (data.expected || '?') + ' expected');
+          showCtaToast((data.method || 'CTA') + ' (won\'t track)');
+        } else {
+          setCheck('cta', 'pass', data.method || 'called');
+          showCtaToast(data.method);
+        }
         break;
       case 'game_close': setCheck('game_close', 'pass'); break;
       case 'game_end': setCheck('game_end', 'pass'); break;
@@ -358,9 +447,84 @@
           renderAxonEvents();
         }
         break;
+      case 'macro_fire':
+        if (data.macroKey) {
+          log('Macro: ' + data.macroKey + ' [' + (data.channel || 'image') + ']', 'cta');
+          recordMacroFire(data.macroKey, data.url, data.ts);
+        }
+        break;
+      case 'mraid_listener_added':
+        if (data.event === 'viewableChange') {
+          viewableListenerSeen = true;
+          setCheck('viewable_listener', 'pass');
+        }
+        break;
+      case 'mraid_viewable_change':
+        log('mraid viewable=' + data.viewable);
+        break;
+      case 'molocov2_start_muted':
+        // expected derived from MOLOCO_MACROS.start_muted; actual from plbx_html.is_muted()
+        if (checks['macro_start_muted']) {
+          var match = data.expected === data.actual;
+          setCheck('macro_start_muted', match ? 'pass' : 'warn',
+            'macro=' + (data.macro || '∅') + ' is_muted=' + data.actual);
+        }
+        break;
+      case 'molocov2_cta':
+        // CTA via mraid.open — verify URL matches MOLOCO_MACROS.final_url
+        if (checks['final_url_used']) {
+          setCheck('final_url_used', data.match ? 'pass' : 'fail',
+            data.match ? 'matches final_url' : 'fallback URL: ' + (data.url || ''));
+        }
+        break;
       case 'preview_loaded': log('preview-util.js initialized for ' + data.networkId); break;
     }
   });
+
+  // ========== MOLOCOV2 MANUAL TRIGGERS ==========
+  function sendMolocoV2Trigger(action, extras) {
+    var frame = document.getElementById('preview-frame');
+    if (!frame || !frame.contentWindow) return;
+    var msg = Object.assign({ type: 'plbx:molocov2', action: action }, extras || {});
+    frame.contentWindow.postMessage(msg, '*');
+    log('→ trigger: ' + action + (extras && extras.count ? ' (×' + extras.count + ')' : ''), 'cta');
+  }
+
+  document.querySelectorAll('[data-mv2-action]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var action = btn.getAttribute('data-mv2-action');
+      var extras = {};
+      var rawValue = btn.getAttribute('data-mv2-value');
+      if (rawValue !== null) extras.value = rawValue === 'true';
+      if (action === 'simulate-taps') {
+        var inp = document.getElementById('mv2-tap-count');
+        var n = parseInt(inp && inp.value, 10);
+        if (!isFinite(n) || n < 1) n = 1;
+        extras.count = n;
+      }
+      sendMolocoV2Trigger(action, extras);
+    });
+  });
+
+  var mv2ResetBtn = document.getElementById('mv2-reset');
+  if (mv2ResetBtn) {
+    mv2ResetBtn.addEventListener('click', function() {
+      if (!currentNetwork) return;
+      log('Reset macro state — reloading preview');
+      loadNetwork(currentNetwork);
+    });
+  }
+
+  var mv2DockToggle = document.getElementById('mv2-dock-toggle');
+  if (mv2DockToggle) {
+    mv2DockToggle.addEventListener('click', function() {
+      var dock = document.getElementById('mv2-dock');
+      if (!dock) return;
+      var collapsed = dock.classList.toggle('collapsed');
+      mv2DockToggle.textContent = collapsed ? '+' : '–';
+      mv2DockToggle.title = collapsed ? 'Expand' : 'Collapse';
+    });
+  }
 
   // ========== AUDIO CONTROL ==========
   function dispatchToIframe(eventName, detail) {

@@ -100,7 +100,7 @@ describe('packageForNetworks', () => {
     expect(zipResult!.outputPath).toContain('.zip');
     // HTML output should contain inlined assets
     const html = readFileSync(htmlResult!.outputPath, 'utf-8');
-    expect(html).toContain('window.__zip');
+    expect(html).toContain('window.__plbx_zip');
     expect(html).toContain('mraid.js');
   });
 
@@ -113,10 +113,10 @@ describe('packageForNetworks', () => {
     });
     const htmlPath = result.results[0].outputPath;
     const html = readFileSync(htmlPath, 'utf-8');
-    expect(html).toContain('window.__zip');
-    expect(html).toContain('window.__res');
+    expect(html).toContain('window.__plbx_zip');
+    expect(html).toContain('window.__plbx_res');
     expect(html).toContain('JSZip');
-    expect(html).toContain('XMLHttpRequest');
+    expect(html).toContain('plbx_boot');
   });
 
   it('should validate size limits', async () => {

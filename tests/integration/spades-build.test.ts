@@ -69,9 +69,9 @@ describeIf('Integration: spades-1 build packaging', () => {
     const html = readFileSync(r.outputPath, 'utf-8');
 
     // Verify runtime loader components
-    expect(html).toContain('window.__zip');
-    expect(html).toContain('window.__res');
-    expect(html).toContain('XMLHttpRequest');
+    expect(html).toContain('window.__plbx_zip');
+    expect(html).toContain('window.__plbx_res');
+    expect(html).toContain('plbx_boot');
     expect(html).toContain('mraid.js');
 
     const refPath = join(REF_DIR, 'applovin', 'Spades_applovin.html');

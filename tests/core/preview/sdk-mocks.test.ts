@@ -43,6 +43,21 @@ describe('generatePreviewUtil', () => {
     expect(code).toContain('FbPlayableAd');
   });
 
+  it('tags CTA reports with the expected SDK method per network (no false window.open pass)', () => {
+    // The validator must track the network's REAL CTA method, not a bare
+    // window.open() — otherwise it shows a false success.
+    const applovin = generatePreviewUtil({ networkId: 'applovin', mraid: true, maxSize: 5242880 });
+    expect(applovin).toContain('var _plbxExpectedCta = "mraid.open"');
+    expect(applovin).toContain('data.correct = data.method === _plbxExpectedCta');
+
+    expect(generatePreviewUtil({ networkId: 'facebook', mraid: false, maxSize: 1 })).toContain('var _plbxExpectedCta = "fbplayable"');
+    expect(generatePreviewUtil({ networkId: 'google', mraid: false, maxSize: 1 })).toContain('var _plbxExpectedCta = "exitapi"');
+    expect(generatePreviewUtil({ networkId: 'mintegral', mraid: false, maxSize: 1 })).toContain('var _plbxExpectedCta = "install"');
+    expect(generatePreviewUtil({ networkId: 'tiktok', mraid: false, maxSize: 1 })).toContain('var _plbxExpectedCta = "playable_sdk"');
+    // window.open is the correct CTA only for non-SDK (generic) builds.
+    expect(generatePreviewUtil({ networkId: 'preview', mraid: false, maxSize: 1 })).toContain('var _plbxExpectedCta = "window.open"');
+  });
+
   it('should define lifecycle trackers (gameReady, gameStart, gameClose)', () => {
     const code = generatePreviewUtil({ networkId: 'applovin', mraid: true, maxSize: 5242880 });
     expect(code).toContain('gameReady');

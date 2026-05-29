@@ -107,6 +107,19 @@ describe('Network Adapters', () => {
       expect(html).toContain('mraid.open');
     });
 
+    it('sets window.super_html_channel so super-html-aware games route CTA via super_html.download()', () => {
+      // train-miner et al. detect the build via window.super_html_channel and
+      // call super_html.download() (aliased to plbx_html.download → mraid.open).
+      // Without it they fall to window.open(link), which an MRAID container blocks.
+      const adapter = getAdapter('applovin');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toContain('window.super_html_channel = "applovin"');
+      // super_html must be an alias of plbx_html (so super_html.download works).
+      expect(html).toContain('window.super_html = window.super_html || window.plbx_html');
+    });
+
     it('should inject store URLs', () => {
       const adapter = getAdapter('applovin');
       const builder = new HtmlBuilder(sampleHtml);
@@ -176,6 +189,19 @@ describe('Network Adapters', () => {
       const html = builder.toHtml();
       expect(html).not.toMatch(/FbPlayableAd\.onCTAClick\s*=/);
       expect(html).not.toMatch(/var\s+FbPlayableAd\s*=/);
+    });
+
+    it('defines window.install → FbPlayableAd.onCTAClick (game CTA dispatchers bypass plbx_html.download)', () => {
+      // Some game CTA code calls window.install()/window.open() directly. In FB's
+      // sandboxed frame window.open is blocked ('allow-popups' not set) and the
+      // validator never sees the click. window.install must route to the FB SDK.
+      const adapter = getAdapter('facebook');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toMatch(/window\.install\s*=\s*function/);
+      const installBlock = html.slice(html.indexOf('window.install'));
+      expect(installBlock).toContain('FbPlayableAd.onCTAClick()');
     });
   });
 
