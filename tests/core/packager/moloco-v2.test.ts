@@ -70,6 +70,22 @@ describe('MolocoV2 target', () => {
     expect(payload.trimEnd().endsWith('})();')).toBe(true);
   });
 
+  it('fires the mraid_viewable beacon exactly once (fireOnce, not fire)', async () => {
+    // Regression: fireMraidViewable guards on _fired['mraid_viewable'], but only
+    // fireOnce() writes _fired — a bare fire() leaves the guard permanently false
+    // so the beacon re-fires on every viewableChange / poll tick (Moloco DSP
+    // expects one viewable per session).
+    const r = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['molocoV2'],
+      config: defaultConfig,
+    });
+    const payload = readFileSync(r.results[0].secondaryPath!, 'utf-8');
+    expect(payload).toContain("fireOnce('mraid_viewable')");
+    expect(payload).not.toContain("fire('mraid_viewable')");
+  });
+
   it('launcher contains all required structural elements + macros', async () => {
     const r = await packageForNetworks({
       buildDir: MOCK_BUILD,

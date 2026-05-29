@@ -31,11 +31,19 @@ export function emitUnpack(options: RuntimeLoaderOptions): string {
         var norm = filePath;
         if (norm.indexOf('\\\\') !== -1) norm = norm.split('\\\\').join('/');
         var text = isText(norm);
+        function _done() {
+          pending--;
+          if (pending === 0) { if (DEBUG) console.timeEnd('[plbx] unpack'); delete window.__plbx_zip; plbx_boot(); }
+        }
         z.file(filePath).async(text ? 'string' : 'base64').then(function (content) {
           if (text) { window.__plbx_res[norm] = content; if (/\\.js$/.test(norm)) window.__plbx_js[norm] = content; }
           else window.__plbx_bin[norm] = content;
-          pending--;
-          if (pending === 0) { if (DEBUG) console.timeEnd('[plbx] unpack'); delete window.__plbx_zip; plbx_boot(); }
+          _done();
+        }).catch(function (err) {
+          // One corrupt entry must not strand pending>0 forever (boot never fires
+          // → blank screen). Skip the file, still decrement, still boot.
+          if (DEBUG) console.warn('[plbx] unpack entry failed, skipping:', norm, err);
+          _done();
         });
       })(path);
     }

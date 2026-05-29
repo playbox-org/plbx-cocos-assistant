@@ -1,6 +1,6 @@
 declare const Editor: any;
 
-import { getProjectSettings } from './core/settings';
+import { getProjectSettings, toPackageConfig } from './core/settings';
 import { packageForNetworks } from './core/packager/packager';
 import { resolve } from 'path';
 
@@ -34,11 +34,9 @@ export async function onAfterBuild(options: any, result: any): Promise<void> {
     const buildDir = dest; // use actual build output path
     const outputDir = resolve(projectRoot, settings.outputDir || 'build/plbx-html');
 
-    const config = {
-      storeUrlIos: settings.storeUrlIos,
-      storeUrlAndroid: settings.storeUrlAndroid,
-      orientation: settings.orientation,
-    };
+    // toPackageConfig carries loaderMode/legacyLoaderNetworks so the loader-engine
+    // rollback path is honored in auto-package (not just manual packaging).
+    const config = toPackageConfig(settings);
 
     console.log(`[plbx] Auto-packaging for ${networks.length} networks → ${outputDir}`);
     const result = await packageForNetworks({

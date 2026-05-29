@@ -7,7 +7,7 @@ import { compressAudio, compressAudioToBuffer, isFFmpegAvailable } from './core/
 import { packageForNetworks } from './core/packager/packager';
 import { PlayboxApiClient } from './core/deployer/api-client';
 import { uploadFile } from './core/deployer/uploader';
-import { getProjectSettings, saveProjectSettings, getGlobalToken, saveGlobalToken, sanitizeProjectName } from './core/settings';
+import { getProjectSettings, saveProjectSettings, getGlobalToken, saveGlobalToken, sanitizeProjectName, toPackageConfig } from './core/settings';
 import { startPreviewServer, stopPreviewServer } from './core/preview/server';
 import { getAllNetworks } from './shared/networks';
 import { join, resolve } from 'path';
@@ -214,11 +214,17 @@ export const methods: Record<string, (...args: any[]) => any> = {
     const projectRoot = Editor.Project.path || '';
     const absBuildDir  = resolve(projectRoot, buildDir);
     const absOutputDir = resolve(projectRoot, outputDir);
+    // The panel sends store/orientation but NOT loaderMode/legacyLoaderNetworks
+    // (not UI-exposed — settings.json only). Backfill them from saved settings
+    // so the loader-engine rollback path actually reaches the packager. Explicit
+    // config keys (store/orientation, or a caller that does pass loaderMode) win.
+    const settings = await getProjectSettings();
+    const fullConfig = { ...toPackageConfig(settings), ...config };
     return packageForNetworks({
       buildDir: absBuildDir,
       outputDir: absOutputDir,
       networks: networkIds,
-      config,
+      config: fullConfig,
       outputTemplate,
       templateVariables,
       onProgress: (_id, _status, _msg) => {

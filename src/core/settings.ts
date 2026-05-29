@@ -1,5 +1,7 @@
 declare const Editor: any;
 
+import type { PackageConfig } from '../shared/types';
+
 export interface ProjectSettings {
   selectedNetworks: string[];
   projectName: string;
@@ -37,6 +39,23 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   loaderMode: 'self-contained',
   legacyLoaderNetworks: [],
 };
+
+/**
+ * Map ProjectSettings → PackageConfig, carrying the loader-engine fields
+ * (loaderMode / legacyLoaderNetworks) the rollback path depends on. Both the
+ * panel package handler (via main.ts) and the auto-package hook MUST build
+ * config through this — otherwise a settings.json `legacyLoaderNetworks`
+ * rollback is silently dropped and never reaches the packager.
+ */
+export function toPackageConfig(s: ProjectSettings): PackageConfig {
+  return {
+    storeUrlIos: s.storeUrlIos,
+    storeUrlAndroid: s.storeUrlAndroid,
+    orientation: s.orientation,
+    loaderMode: s.loaderMode,
+    legacyLoaderNetworks: s.legacyLoaderNetworks,
+  };
+}
 
 /** Get project-scoped settings */
 export async function getProjectSettings(): Promise<ProjectSettings> {

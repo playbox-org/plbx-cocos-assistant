@@ -54,10 +54,20 @@ function plbx_install_shims() {
       }
       var raw = a.binary ? atob(a.data) : a.data;
       var resp;
-      switch (this.responseType) {
-        case 'json': resp = JSON.parse(raw); break;
-        case 'arraybuffer': resp = a.binary ? _base64ToArrayBuffer(a.data) : _stringToArrayBuffer(raw); break;
-        default: resp = raw;
+      try {
+        switch (this.responseType) {
+          case 'json': resp = JSON.parse(raw); break;
+          case 'arraybuffer': resp = a.binary ? _base64ToArrayBuffer(a.data) : _stringToArrayBuffer(raw); break;
+          default: resp = raw;
+        }
+      } catch (e) {
+        // Malformed JSON / bad responseType: route to onerror like a miss.
+        // Without this, JSON.parse throws synchronously out of send(), bypassing
+        // onerror and pulling down the engine's async-expecting load path.
+        if (DEBUG) console.warn('[plbx] _XMLLocalRequest parse error (no network):', this._url, e);
+        this.status = 0; this.readyState = 4;
+        setTimeout(function () { if (self._aborted) return; if (self.onerror) self.onerror(); });
+        return;
       }
       this.status = 200; this.readyState = 4; this.response = resp;
       this.responseText = (typeof resp === 'string') ? resp : '';

@@ -134,7 +134,11 @@ window.super_html_channel = window.super_html_channel || "moloco";
 (function() {
   function fireMraidViewable() {
     if (_fired['mraid_viewable']) return;
-    fire('mraid_viewable');
+    // fireOnce (NOT fire) — fire() never writes _fired, so a bare fire() here
+    // would leave the _fired['mraid_viewable'] guard permanently false and the
+    // beacon would re-fire on every viewableChange(true) / poll tick. Moloco DSP
+    // expects exactly one viewable per session.
+    fireOnce('mraid_viewable');
     // Container is on screen — second half of the splash-dismiss condition.
     _splash.viewable = true;
     _trySplashHide();

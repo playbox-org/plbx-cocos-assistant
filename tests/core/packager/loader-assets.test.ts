@@ -40,3 +40,42 @@ describe('emitAssetIO (Facebook-safe)', () => {
     expect(js).toContain('_isExternalUrl(url)');
   });
 });
+
+describe('_XMLLocalRequest parse safety (#7)', () => {
+  // Build the real emitted shim and run it with a synchronous setTimeout so we
+  // can assert behavior, not just source tokens.
+  function makeXHR(findAsset: (url: string) => any): any {
+    const win: any = {};
+    const factory = new Function(
+      'window', '_findAsset', 'atob', 'setTimeout', 'console',
+      emitAssetIO({}) + '\nplbx_install_shims();\nreturn window._XMLLocalRequest;',
+    );
+    return factory(win, findAsset, (s: string) => s, (fn: any) => fn(), console);
+  }
+
+  it('routes malformed JSON to onerror instead of throwing out of send()', () => {
+    const XHR = makeXHR(() => ({ data: '{ not valid json', binary: false }));
+    const xhr = new XHR();
+    xhr.open('GET', 'foo.json');
+    xhr.responseType = 'json';
+    let errored = false, loaded = false;
+    xhr.onerror = () => { errored = true; };
+    xhr.onload = () => { loaded = true; };
+    expect(() => xhr.send()).not.toThrow();
+    expect(errored).toBe(true);
+    expect(loaded).toBe(false);
+  });
+
+  it('parses valid JSON and fires onload with the parsed response', () => {
+    const XHR = makeXHR(() => ({ data: '{"a":1}', binary: false }));
+    const xhr = new XHR();
+    xhr.open('GET', 'ok.json');
+    xhr.responseType = 'json';
+    let loaded = false;
+    xhr.onload = () => { loaded = true; };
+    xhr.send();
+    expect(loaded).toBe(true);
+    expect(xhr.response).toEqual({ a: 1 });
+    expect(xhr.status).toBe(200);
+  });
+});
