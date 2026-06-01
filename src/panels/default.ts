@@ -49,6 +49,9 @@ module.exports = Editor.Panel.define({
     contentPackage:     '#content-package',
     contentDeploy:      '#content-deploy',
     panelVersion:       '#panel-version',
+    panelUpdateBar:     '#panel-update-bar',
+    panelUpdate:        '#panel-update',
+    panelUpdateBtn:     '#panel-update-btn',
 
     // Build Report tab
     btnAnalyze:       '#btn-analyze',
@@ -184,6 +187,9 @@ module.exports = Editor.Panel.define({
         .catch(() => {});
     }
 
+    // Surface a footer banner + Update button when the checkout is behind GitHub.
+    this._initFreshness();
+
     this._initBuildReport();
     this._initCompress();
     this._initPackage();
@@ -194,6 +200,96 @@ module.exports = Editor.Panel.define({
   close() {},
 
   methods: {
+    _initFreshness(this: any) {
+      const bar = this.$.panelUpdateBar as HTMLElement | null;
+      const textEl = this.$.panelUpdate as HTMLElement | null;
+      const btn = this.$.panelUpdateBtn as HTMLButtonElement | null;
+      if (!bar || !textEl) return;
+
+      // Human labels for the update steps (keys match UPDATE_STEPS names).
+      const STEP_LABELS: Record<string, string> = {
+        pull: 'Pulling latest from GitHub',
+        install: 'Installing dependencies',
+        build: 'Compiling extension',
+      };
+
+      const setBar = (message: string, severity: string) => {
+        textEl.textContent = message;
+        bar.className = 'panel-update-bar ' + (severity || 'warn');
+        bar.hidden = false;
+      };
+
+      const renderProgress = (state: any) => {
+        const idx = state.index || 0;
+        const total = state.total || 3;
+        const label = STEP_LABELS[state.step] || state.step || 'Starting…';
+        const done = (state.done || [])
+          .map((d: string) => '✓ ' + (STEP_LABELS[d] || d))
+          .join('   ');
+        const head =
+          state.phase === 'fail'
+            ? `Update failed during: ${label}`
+            : `Updating…  step ${idx}/${total} · ${label}`;
+        setBar(done ? `${head}\n${done}` : head, 'warn');
+      };
+
+      // Wire the one-click update. The button is a tiny state machine so it
+      // can't re-trigger an update after success — once done it switches to
+      // prompting a restart instead.
+      if (btn) {
+        let mode: 'update' | 'restart' = 'update';
+
+        const promptRestart = () => {
+          Editor.Message.request('plbx-cocos-extension', 'promptRestart').catch(() => {});
+        };
+
+        const startUpdate = () => {
+          btn.disabled = true;
+          btn.textContent = 'Updating…';
+          setBar('Updating…  starting', 'warn');
+          Editor.Message.request('plbx-cocos-extension', 'startUpdate').catch(() => {});
+          const poll = setInterval(async () => {
+            let state: any;
+            try {
+              state = await Editor.Message.request('plbx-cocos-extension', 'getUpdateState');
+            } catch {
+              return; // transient; keep polling
+            }
+            if (!state) return;
+            if (state.running) {
+              renderProgress(state);
+              return;
+            }
+            // Finished.
+            clearInterval(poll);
+            const result = state.result || { ok: false, message: 'No result.' };
+            btn.disabled = false;
+            setBar((result.ok ? '✓ ' : '✗ ') + result.message, result.ok ? 'info' : 'warn');
+            if (result.ok) {
+              mode = 'restart';
+              btn.textContent = 'Restart editor';
+              promptRestart(); // auto-prompt once on success
+            } else {
+              mode = 'update';
+              btn.textContent = 'Retry';
+            }
+          }, 1000);
+        };
+
+        btn.addEventListener('click', () => {
+          if (mode === 'restart') promptRestart();
+          else startUpdate();
+        });
+      }
+
+      Editor.Message.request('plbx-cocos-extension', 'checkFreshness')
+        .then((res: any) => {
+          const action = res?.action;
+          if (action?.notify) setBar(action.message, action.severity);
+        })
+        .catch(() => {});
+    },
+
     _initBuildReport(this: any) {
       const btnAnalyze  = this.$.btnAnalyze as HTMLButtonElement;
       const scanStatus  = this.$.scanStatus as HTMLSpanElement;
@@ -1204,13 +1300,23 @@ module.exports = Editor.Panel.define({
           });
         }
 
-        // Check if builds already exist — show Validate button
+        // Check if builds already exist — show Validate button + list them
         if (settings?.outputDir) {
           Editor.Message.request('plbx-cocos-extension', 'check-output-has-builds', settings.outputDir)
             .then((hasBuild: boolean) => {
               if (hasBuild && btnPreview) btnPreview.style.display = '';
             })
             .catch(() => {});
+
+          // List existing builds so they appear on open (no need to Pack first)
+          Editor.Message.request('plbx-cocos-extension', 'list-output-builds', settings.outputDir)
+            .then((rows: any[]) => {
+              if (Array.isArray(rows) && rows.length > 0) {
+                this._renderPackageResults(rows);
+                if (pkgStatus) pkgStatus.textContent = `${rows.length} existing build${rows.length === 1 ? '' : 's'}`;
+              }
+            })
+            .catch((e: any) => { console.warn('[plbx]', e); });
         }
       }).catch((e: any) => { console.warn('[plbx]', e); });
 
@@ -1336,7 +1442,7 @@ module.exports = Editor.Panel.define({
       if (!results || results.length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 5;
+        td.colSpan = 6;
         td.textContent = 'No results';
         tr.appendChild(td);
         tbody.appendChild(tr);
@@ -1361,7 +1467,9 @@ module.exports = Editor.Panel.define({
         const barBg = document.createElement('div');
         barBg.className = 'size-bar-bg';
         const barFill = document.createElement('div');
-        const overLimit = !r.withinLimit || fileSize > (r.maxSize ?? Infinity);
+        // A falsy maxSize (e.g. an existing build for an unknown network) means "no known limit".
+        const limit = r.maxSize ?? r.limit;
+        const overLimit = !r.withinLimit || (!!limit && fileSize > limit);
         barFill.className = 'size-bar-fill' + (overLimit ? ' over-limit' : '');
         barFill.style.width = Math.round((fileSize / maxSize) * 100) + '%';
         barBg.appendChild(barFill);
@@ -1369,7 +1477,12 @@ module.exports = Editor.Panel.define({
 
         const tdLimit = document.createElement('td');
         tdLimit.className = 'col-size';
-        tdLimit.textContent = fmt(r.maxSize ?? r.limit);
+        tdLimit.textContent = limit ? fmt(limit) : '—';
+
+        // Created date/time (populated for existing builds; em dash for fresh packs)
+        const tdCreated = document.createElement('td');
+        tdCreated.className = 'col-created';
+        tdCreated.textContent = r.createdAtLabel ?? '—';
 
         const tdStatus = document.createElement('td');
         if (r.error) {
@@ -1386,6 +1499,7 @@ module.exports = Editor.Panel.define({
         tr.appendChild(tdFmt);
         tr.appendChild(tdSize);
         tr.appendChild(tdLimit);
+        tr.appendChild(tdCreated);
         tr.appendChild(tdStatus);
         tbody.appendChild(tr);
       }

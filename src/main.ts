@@ -5,20 +5,97 @@ import type { QueryDependenciesFn } from './core/build-report/dependency-resolve
 import { compressImage, compressImageToBuffer, getImageMetadata } from './core/compression/image-compressor';
 import { compressAudio, compressAudioToBuffer, isFFmpegAvailable } from './core/compression/audio-compressor';
 import { packageForNetworks } from './core/packager/packager';
+import { buildOutputRows, OutputFileStat } from './core/packager/output-listing';
 import { PlayboxApiClient } from './core/deployer/api-client';
 import { uploadFile } from './core/deployer/uploader';
 import { getProjectSettings, saveProjectSettings, getGlobalToken, saveGlobalToken, sanitizeProjectName, toPackageConfig } from './core/settings';
 import { startPreviewServer, stopPreviewServer } from './core/preview/server';
 import { getAllNetworks } from './shared/networks';
+import { runFreshnessCheck, decideAction } from './core/freshness/freshness-check';
+import { runExtensionUpdate } from './core/updater/update';
 import { join, resolve } from 'path';
 import { existsSync, readFileSync } from 'fs';
 
 let lastBuildResult: any = null;
 let _deployProgress: any = null;
 
+/** Repo root of this extension — symlinked git working tree (dist/ → ..). */
+const REPO_ROOT = join(__dirname, '..');
+
+/** Cached freshness result; GitHub unauth API is 60/hr, so we don't re-check on every panel open. */
+const FRESHNESS_TTL_MS = 10 * 60 * 1000;
+let _freshnessCache: { at: number; verdict: any; action: any } | null = null;
+
+/**
+ * One-click update runs for minutes (npm install + build). A single long IPC
+ * round-trip risks an editor-side timeout, so we expose start + poll instead:
+ * `startUpdate` kicks the job off and returns immediately; the panel polls
+ * `getUpdateState` until `running` is false.
+ */
+let _updateState: {
+  running: boolean;
+  step: string | null;
+  phase: string | null;
+  index: number;
+  total: number;
+  done: string[];
+  result: any | null;
+} = { running: false, step: null, phase: null, index: 0, total: 0, done: [], result: null };
+
+function startExtensionUpdate(): { running: boolean } {
+  if (_updateState.running) return { running: true };
+  _updateState = { running: true, step: null, phase: null, index: 0, total: 0, done: [], result: null };
+
+  void runExtensionUpdate(REPO_ROOT, (e) => {
+    _updateState.step = e.step;
+    _updateState.phase = e.phase;
+    _updateState.index = e.index;
+    _updateState.total = e.total;
+    if (e.phase === 'done' && !_updateState.done.includes(e.step)) _updateState.done.push(e.step);
+    console.log(`[plbx] update ${e.index}/${e.total} ${e.step}: ${e.phase}`);
+  })
+    .then((result) => {
+      _updateState = { ..._updateState, running: false, result };
+      // Refresh the cached freshness verdict so the banner clears after a successful update.
+      if (result.ok) _freshnessCache = null;
+      console.log('[plbx] update:', result.message);
+    })
+    .catch((e) => {
+      _updateState = {
+        ..._updateState,
+        running: false,
+        result: { ok: false, steps: [], message: 'Update crashed: ' + (e?.message || String(e)) },
+      };
+    });
+  return { running: true };
+}
+
+async function getFreshness(force = false): Promise<{ verdict: any; action: any }> {
+  const now = Date.now();
+  if (!force && _freshnessCache && now - _freshnessCache.at < FRESHNESS_TTL_MS) {
+    return { verdict: _freshnessCache.verdict, action: _freshnessCache.action };
+  }
+  const verdict = await runFreshnessCheck(REPO_ROOT);
+  const action = decideAction(verdict);
+  _freshnessCache = { at: now, verdict, action };
+  return { verdict, action };
+}
+
 export const load = function () {
   console.log('[plbx] Extension loaded');
   Editor.Panel.open('plbx-cocos-extension');
+  // Fire-and-forget freshness check — never blocks editor startup.
+  void getFreshness()
+    .then(({ verdict, action }) => {
+      if (action.notify) {
+        console.warn('[plbx] update available:', action.message);
+      } else if (verdict.state === 'unknown') {
+        console.log('[plbx] freshness check skipped:', verdict.reason);
+      } else {
+        console.log('[plbx] extension up to date with', verdict.branch);
+      }
+    })
+    .catch((e) => console.log('[plbx] freshness check failed:', e?.message || e));
 };
 
 export const unload = function () {
@@ -471,6 +548,71 @@ export const methods: Record<string, (...args: any[]) => any> = {
     }
   },
 
+  /**
+   * List existing build entry-point files in the output directory so the panel
+   * can show them on open (without re-running Package). Returns display rows
+   * shaped like fresh PackageResults plus creation date fields. One row per
+   * network: a flat `{networkId}.{ext}` file, or the entry point inside a
+   * `{networkId}/` folder (index.* preferred, else the first html/zip at the
+   * folder root). Nested asset files are ignored.
+   */
+  async listOutputBuilds(outputDir: string) {
+    const { resolve } = require('path');
+    const { existsSync, readdirSync, statSync } = require('fs');
+    const projectRoot = Editor.Project.path || '';
+    const absPath = resolve(projectRoot, outputDir);
+    if (!existsSync(absPath)) return [];
+
+    const BUILD_EXTS = ['.html', '.zip'];
+    const isBuildFile = (name: string) =>
+      BUILD_EXTS.some((ext) => name.toLowerCase().endsWith(ext));
+
+    /** birthtime is unreliable on some filesystems (0) → fall back to mtime. */
+    const createdAtOf = (filePath: string): number => {
+      try {
+        const st = statSync(filePath);
+        return st.birthtimeMs && st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;
+      } catch {
+        return 0;
+      }
+    };
+
+    const stats: OutputFileStat[] = [];
+    try {
+      for (const entry of readdirSync(absPath, { withFileTypes: true })) {
+        if (entry.isFile() && isBuildFile(entry.name)) {
+          // Flat build: {networkId}.{ext}
+          const full = resolve(absPath, entry.name);
+          stats.push({ path: entry.name, size: statSync(full).size, createdAt: createdAtOf(full) });
+        } else if (entry.isDirectory()) {
+          // Per-network folder: pick the entry point (index.* preferred).
+          let names: string[];
+          try {
+            names = readdirSync(resolve(absPath, entry.name), { withFileTypes: true })
+              .filter((e: any) => e.isFile() && isBuildFile(e.name))
+              .map((e: any) => e.name);
+          } catch {
+            continue;
+          }
+          const pick =
+            names.find((n) => /^index\.(html|zip)$/i.test(n)) ??
+            names.find((n) => isBuildFile(n));
+          if (!pick) continue;
+          const full = resolve(absPath, entry.name, pick);
+          stats.push({
+            path: `${entry.name}/${pick}`,
+            size: statSync(full).size,
+            createdAt: createdAtOf(full),
+          });
+        }
+      }
+    } catch {
+      return [];
+    }
+
+    return buildOutputRows(stats);
+  },
+
   async openFolder(folderPath: string) {
     const { resolve } = require('path');
     const { existsSync } = require('fs');
@@ -507,6 +649,60 @@ export const methods: Record<string, (...args: any[]) => any> = {
     } catch {
       return '0.0.0';
     }
+  },
+
+  /**
+   * Report whether this dev-imported checkout is behind the public GitHub repo.
+   * Returns { verdict, action } — both plain JSON. `force` bypasses the cache
+   * (e.g. a manual "check now" button).
+   */
+  async checkFreshness(force?: boolean) {
+    try {
+      return await getFreshness(force === true);
+    } catch (e: any) {
+      return {
+        verdict: { state: 'unknown', behindBy: 0, aheadBy: 0, local: '', branch: '', dirty: false, reason: e?.message || String(e) },
+        action: { notify: false, severity: 'info', message: '' },
+      };
+    }
+  },
+
+  /** Kick off the one-click update (git pull → npm install → npm run build). Returns immediately. */
+  startUpdate() {
+    return startExtensionUpdate();
+  },
+
+  /** Poll target for the panel: { running, result } of the in-flight/last update. */
+  getUpdateState() {
+    return _updateState;
+  },
+
+  /**
+   * After a successful update, prompt the developer to restart so the editor
+   * reloads the rebuilt dist/main.js (Cocos caches the loaded module — there is
+   * no programmatic "reload extension"; only a full quit + reopen, or the
+   * Developer → Reload menu, picks up new main-process code).
+   * Returns { quit: true } if the user chose to quit now.
+   */
+  async promptRestart() {
+    try {
+      const r = await Editor.Dialog.info('Playbox extension updated.', {
+        title: 'Playbox',
+        detail:
+          'Restart Cocos Editor to load the new version.\n' +
+          'Quit now and reopen, or use the Developer → Reload menu.',
+        buttons: ['Quit editor now', 'Later'],
+        default: 1,
+        cancel: 1,
+      });
+      if (r && r.response === 0) {
+        Editor.App.quit();
+        return { quit: true };
+      }
+    } catch (e: any) {
+      console.log('[plbx] promptRestart failed:', e?.message || e);
+    }
+    return { quit: false };
   },
 };
 

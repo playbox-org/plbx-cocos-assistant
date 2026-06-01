@@ -1,6 +1,6 @@
 {
   "package_version": 2,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "name": "plbx-cocos-extension",
   "title": "i18n:plbx-cocos-extension.title",
   "description": "i18n:plbx-cocos-extension.description",
@@ -163,6 +163,11 @@
           "checkOutputHasBuilds"
         ]
       },
+      "list-output-builds": {
+        "methods": [
+          "listOutputBuilds"
+        ]
+      },
       "open-folder": {
         "methods": [
           "openFolder"
@@ -196,6 +201,26 @@
       "plbx-list-deployments": {
         "methods": [
           "plbx-list-deployments"
+        ]
+      },
+      "checkFreshness": {
+        "methods": [
+          "checkFreshness"
+        ]
+      },
+      "startUpdate": {
+        "methods": [
+          "startUpdate"
+        ]
+      },
+      "getUpdateState": {
+        "methods": [
+          "getUpdateState"
+        ]
+      },
+      "promptRestart": {
+        "methods": [
+          "promptRestart"
         ]
       }
     },

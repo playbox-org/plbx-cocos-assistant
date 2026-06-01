@@ -1,4 +1,10 @@
 <div class="panel-root">
+  <!-- Full-width update banner (shown when the checkout is behind GitHub) -->
+  <div id="panel-update-bar" class="panel-update-bar" hidden>
+    <span id="panel-update" class="panel-update-text"></span>
+    <button id="panel-update-btn" class="panel-update-btn">Update now</button>
+  </div>
+
   <!-- Tab Header -->
   <div class="tab-header">
     <button id="tab-build-report" class="tab-btn active">Build Report</button>
@@ -245,12 +251,13 @@
               <th>Format</th>
               <th class="col-size">Size</th>
               <th>Limit</th>
+              <th>Created</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody id="pkg-results-tbody">
             <tr>
-              <td colspan="5">
+              <td colspan="6">
                 <div class="empty-state">
                   <div class="empty-state-icon">📦</div>
                   <span>Select networks and click "Pack All"</span>

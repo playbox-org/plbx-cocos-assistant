@@ -346,6 +346,13 @@ body,
   font-size: 11px;
 }
 
+.data-table .col-created {
+  color: #999999;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* ===== Summary Bar ===== */
 .summary-bar {
   display: flex;
@@ -1186,6 +1193,63 @@ body,
   font-size: 10px;
   color: #555;
   flex-shrink: 0;
+}
+
+/* Full-width update banner bar across the top of the panel. */
+/* `display:flex` would override the UA `[hidden]{display:none}`, so the bar
+   would always show — keep this rule so it stays hidden until there's an update. */
+.panel-update-bar[hidden] {
+  display: none;
+}
+
+.panel-update-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+  flex-shrink: 0;
+}
+
+.panel-update-bar.warn {
+  color: #5a3a00;
+  background: #ffd479;
+}
+
+.panel-update-bar.info {
+  color: #1e4620;
+  background: #c7e7c9;
+}
+
+.panel-update-text {
+  flex: 1 1 auto;
+  line-height: 1.4;
+  white-space: pre-line;
+}
+
+.panel-update-btn {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  background: #2b6cb0;
+  cursor: pointer;
+}
+
+.panel-update-btn:hover:not(:disabled) {
+  background: #2c5d96;
+}
+
+.panel-update-btn:disabled {
+  background: #888;
+  cursor: default;
 }
 
 .report-filter-bar {
