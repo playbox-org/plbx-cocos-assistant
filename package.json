@@ -1,6 +1,6 @@
 {
   "package_version": 2,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "name": "plbx-cocos-extension",
   "title": "i18n:plbx-cocos-extension.title",
   "description": "i18n:plbx-cocos-extension.description",
@@ -221,6 +221,26 @@
       "promptRestart": {
         "methods": [
           "promptRestart"
+        ]
+      },
+      "getShowPanelOnStart": {
+        "methods": [
+          "getShowPanelOnStart"
+        ]
+      },
+      "saveShowPanelOnStart": {
+        "methods": [
+          "saveShowPanelOnStart"
+        ]
+      },
+      "getLanguage": {
+        "methods": [
+          "getLanguage"
+        ]
+      },
+      "saveLanguage": {
+        "methods": [
+          "saveLanguage"
         ]
       }
     },

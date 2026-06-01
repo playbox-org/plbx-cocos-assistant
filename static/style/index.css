@@ -47,6 +47,126 @@ body,
   background-color: #292929;
 }
 
+/* Gear button — right-aligned in the tab header. */
+.tab-gear {
+  margin-left: auto;
+  align-self: center;
+  margin-right: 10px;
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.tab-gear:hover {
+  color: #4a9eff;
+  background-color: #2a2a2a;
+}
+
+/* ===== Settings overlay ===== */
+.settings-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.settings-modal {
+  position: relative;
+  width: 460px;
+  max-width: 90%;
+  max-height: 85%;
+  overflow: auto;
+  background: #262626;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.settings-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #eee;
+}
+
+.settings-body {
+  padding: 8px 18px 18px;
+}
+
+.settings-group {
+  padding: 14px 0;
+  border-bottom: 1px solid #333;
+}
+
+.settings-group:last-child {
+  border-bottom: none;
+}
+
+.settings-group-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+  margin-bottom: 10px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.settings-label {
+  color: #aaa;
+  font-size: 13px;
+}
+
+.settings-value {
+  color: #eee;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-status {
+  font-size: 12px;
+  color: #9aa;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #ddd;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.settings-toggle input {
+  cursor: pointer;
+}
+
 /* ===== Tab Content Area ===== */
 .tab-content {
   flex: 1;

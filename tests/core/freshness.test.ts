@@ -3,9 +3,20 @@ import {
   classify,
   decideAction,
   checkFreshness,
+  formatCheckResult,
   parseSlug,
   stripRemoteRef,
 } from '../../src/core/freshness/freshness-check';
+
+const verdict = (over: Partial<import('../../src/core/freshness/freshness-check').FreshnessVerdict> = {}) => ({
+  state: 'fresh' as const,
+  behindBy: 0,
+  aheadBy: 0,
+  local: 'abc1234',
+  branch: 'master',
+  dirty: false,
+  ...over,
+});
 
 describe('parseSlug', () => {
   it('parses SSH remote url', () => {
@@ -113,6 +124,41 @@ describe('decideAction', () => {
       dirty: true,
     });
     expect(a.notify).toBe(false);
+  });
+});
+
+describe('formatCheckResult (human status for the Settings "Check" button)', () => {
+  it('fresh → up to date, names the branch', () => {
+    const s = formatCheckResult(verdict({ state: 'fresh', branch: 'master' }));
+    expect(s).toMatch(/up to date/i);
+    expect(s).toContain('master');
+  });
+  it('behind → count + branch, plural', () => {
+    const s = formatCheckResult(verdict({ state: 'behind', behindBy: 3, branch: 'master' }));
+    expect(s).toContain('3');
+    expect(s).toMatch(/behind/i);
+    expect(s).toContain('master');
+    expect(s).toContain('commits');
+  });
+  it('behind by 1 → singular commit', () => {
+    const s = formatCheckResult(verdict({ state: 'behind', behindBy: 1 }));
+    expect(s).toContain('1 commit ');
+  });
+  it('ahead → mentions ahead/unpushed', () => {
+    const s = formatCheckResult(verdict({ state: 'ahead', aheadBy: 2 }));
+    expect(s).toMatch(/ahead/i);
+    expect(s).toContain('2');
+  });
+  it('diverged → both counts', () => {
+    const s = formatCheckResult(verdict({ state: 'diverged', behindBy: 5, aheadBy: 2 }));
+    expect(s).toMatch(/diverged/i);
+    expect(s).toContain('5');
+    expect(s).toContain('2');
+  });
+  it('unknown → not a "behind" claim, surfaces it could not check', () => {
+    const s = formatCheckResult(verdict({ state: 'unknown', reason: 'offline' }));
+    expect(s).not.toMatch(/behind/i);
+    expect(s).toMatch(/could ?n.?t|unknown|unavailable/i);
   });
 });
 

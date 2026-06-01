@@ -1,6 +1,7 @@
 declare const Editor: any;
 
 import type { PackageConfig } from '../shared/types';
+import { normalizeLang, DEFAULT_LANG, type Lang } from './i18n/locales';
 
 export interface ProjectSettings {
   selectedNetworks: string[];
@@ -100,6 +101,37 @@ export async function getGlobalToken(): Promise<string> {
 /** Save global PLBX API token */
 export async function saveGlobalToken(token: string): Promise<void> {
   await Editor.Profile.setConfig('plbx-cocos-extension', 'apiKey', token, 'local');
+}
+
+/**
+ * Whether to auto-open the Playbox panel when the editor starts.
+ * Global (per-developer, all projects); defaults to true when never set.
+ */
+export async function getShowPanelOnStart(): Promise<boolean> {
+  try {
+    const v = await Editor.Profile.getConfig('plbx-cocos-extension', 'showPanelOnStart', 'local');
+    return v !== false; // undefined/null → default on
+  } catch {
+    return true;
+  }
+}
+
+export async function saveShowPanelOnStart(show: boolean): Promise<void> {
+  await Editor.Profile.setConfig('plbx-cocos-extension', 'showPanelOnStart', show, 'local');
+}
+
+/** Panel UI language. Global (per-developer); defaults to English. */
+export async function getLanguage(): Promise<Lang> {
+  try {
+    const v = await Editor.Profile.getConfig('plbx-cocos-extension', 'language', 'local');
+    return normalizeLang(v);
+  } catch {
+    return DEFAULT_LANG;
+  }
+}
+
+export async function saveLanguage(lang: string): Promise<void> {
+  await Editor.Profile.setConfig('plbx-cocos-extension', 'language', normalizeLang(lang), 'local');
 }
 
 function getDefaultProjectName(): string {

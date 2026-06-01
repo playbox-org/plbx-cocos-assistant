@@ -2,6 +2,7 @@ declare const Editor: any;
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { translate, normalizeLang } from '../core/i18n/locales';
 
 const template = readFileSync(join(__dirname, '../../static/template/index.html'), 'utf-8');
 const style = readFileSync(join(__dirname, '../../static/style/index.css'), 'utf-8');
@@ -52,6 +53,18 @@ module.exports = Editor.Panel.define({
     panelUpdateBar:     '#panel-update-bar',
     panelUpdate:        '#panel-update',
     panelUpdateBtn:     '#panel-update-btn',
+
+    // Settings overlay
+    btnSettings:         '#btn-settings',
+    settingsOverlay:     '#settings-overlay',
+    settingsBackdrop:    '#settings-backdrop',
+    settingsClose:       '#settings-close',
+    settingsVersion:     '#settings-version',
+    settingsCheck:       '#settings-check',
+    settingsCheckStatus: '#settings-check-status',
+    settingsAutoPackage: '#settings-auto-package',
+    settingsShowOnStart: '#settings-show-on-start',
+    settingsLanguage:    '#settings-language',
 
     // Build Report tab
     btnAnalyze:       '#btn-analyze',
@@ -189,6 +202,8 @@ module.exports = Editor.Panel.define({
 
     // Surface a footer banner + Update button when the checkout is behind GitHub.
     this._initFreshness();
+    this._initSettings();
+    this._initI18n();
 
     this._initBuildReport();
     this._initCompress();
@@ -200,6 +215,107 @@ module.exports = Editor.Panel.define({
   close() {},
 
   methods: {
+    _initI18n(this: any) {
+      // Resolve the panel root (shadow root) from any known element, then
+      // translate every [data-i18n] / [data-i18n-title] / [data-i18n-placeholder]
+      // node under it.
+      const anchor = (this.$.tabBuildReport || this.$.btnSettings) as HTMLElement | null;
+      const root = anchor?.getRootNode?.() as ShadowRoot | Document | null;
+
+      const apply = (lang: string) => {
+        if (!root) return;
+        root.querySelectorAll('[data-i18n]').forEach((el: any) => {
+          const key = el.getAttribute('data-i18n');
+          if (key) el.textContent = translate(lang as any, key);
+        });
+        root.querySelectorAll('[data-i18n-title]').forEach((el: any) => {
+          const key = el.getAttribute('data-i18n-title');
+          if (key) el.title = translate(lang as any, key);
+        });
+        root.querySelectorAll('[data-i18n-placeholder]').forEach((el: any) => {
+          const key = el.getAttribute('data-i18n-placeholder');
+          if (key) el.placeholder = translate(lang as any, key);
+        });
+      };
+      this._applyLocale = apply;
+
+      const sel = this.$.settingsLanguage as HTMLSelectElement | null;
+
+      Editor.Message.request('plbx-cocos-extension', 'getLanguage')
+        .then((lang: string) => {
+          const l = normalizeLang(lang);
+          if (sel) sel.value = l;
+          apply(l);
+        })
+        .catch(() => apply('en'));
+
+      sel?.addEventListener('change', () => {
+        const l = normalizeLang(sel.value);
+        Editor.Message.request('plbx-cocos-extension', 'saveLanguage', l).catch(() => {});
+        apply(l);
+      });
+    },
+
+    _initSettings(this: any) {
+      const overlay = this.$.settingsOverlay as HTMLElement | null;
+      if (!overlay) return;
+
+      const refresh = () => {
+        Editor.Message.request('plbx-cocos-extension', 'getVersion')
+          .then((v: string) => { if (this.$.settingsVersion) this.$.settingsVersion.textContent = 'v' + v; })
+          .catch(() => {});
+        Editor.Message.request('plbx-cocos-extension', 'get-settings')
+          .then((s: any) => {
+            if (this.$.settingsAutoPackage) (this.$.settingsAutoPackage as HTMLInputElement).checked = s?.autoPackage !== false;
+          })
+          .catch(() => {});
+        Editor.Message.request('plbx-cocos-extension', 'getShowPanelOnStart')
+          .then((v: boolean) => {
+            if (this.$.settingsShowOnStart) (this.$.settingsShowOnStart as HTMLInputElement).checked = v !== false;
+          })
+          .catch(() => {});
+        if (this.$.settingsCheckStatus) this.$.settingsCheckStatus.textContent = '';
+      };
+
+      const open = () => { overlay.style.display = 'flex'; refresh(); };
+      const close = () => { overlay.style.display = 'none'; };
+
+      this.$.btnSettings?.addEventListener('click', open);
+      this.$.settingsClose?.addEventListener('click', close);
+      this.$.settingsBackdrop?.addEventListener('click', close);
+
+      // Check for updates (forces a fresh check, bypassing the cache).
+      this.$.settingsCheck?.addEventListener('click', async () => {
+        const btn = this.$.settingsCheck as HTMLButtonElement;
+        const statusEl = this.$.settingsCheckStatus as HTMLElement;
+        btn.disabled = true;
+        if (statusEl) statusEl.textContent = 'Checking…';
+        try {
+          const res = await Editor.Message.request('plbx-cocos-extension', 'checkFreshness', true);
+          if (statusEl) statusEl.textContent = res?.status || '—';
+        } catch {
+          if (statusEl) statusEl.textContent = 'Check failed';
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      // Auto-package toggle — project setting, mirrored to the Package-tab checkbox.
+      const autoCb = this.$.settingsAutoPackage as HTMLInputElement | null;
+      autoCb?.addEventListener('change', () => {
+        const checked = autoCb.checked;
+        Editor.Message.request('plbx-cocos-extension', 'save-settings', { autoPackage: checked }).catch(() => {});
+        const pkgCb = this.$.pkgAutoPackage as HTMLInputElement | null;
+        if (pkgCb) pkgCb.checked = checked;
+      });
+
+      // Show-panel-on-start toggle — global pref.
+      const startCb = this.$.settingsShowOnStart as HTMLInputElement | null;
+      startCb?.addEventListener('change', () => {
+        Editor.Message.request('plbx-cocos-extension', 'saveShowPanelOnStart', startCb.checked).catch(() => {});
+      });
+    },
+
     _initFreshness(this: any) {
       const bar = this.$.panelUpdateBar as HTMLElement | null;
       const textEl = this.$.panelUpdate as HTMLElement | null;

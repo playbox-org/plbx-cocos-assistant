@@ -151,6 +151,23 @@ export function decideAction(v: FreshnessVerdict): FreshnessAction {
 import { execFile } from 'child_process';
 import { get as httpsGet } from 'https';
 
+/** Pure: human-readable one-line status for the Settings "Check for updates" button. */
+export function formatCheckResult(v: FreshnessVerdict): string {
+  const plural = (n: number) => `${n} commit${n === 1 ? '' : 's'}`;
+  switch (v.state) {
+    case 'fresh':
+      return `Up to date with ${v.branch}.`;
+    case 'behind':
+      return `${plural(v.behindBy)} behind ${v.branch}.`;
+    case 'ahead':
+      return `${plural(v.aheadBy)} ahead of ${v.branch} (unpushed).`;
+    case 'diverged':
+      return `Diverged from ${v.branch}: behind ${v.behindBy}, ahead ${v.aheadBy}.`;
+    default:
+      return `Couldn't check update status${v.reason ? ` (${v.reason})` : ''}.`;
+  }
+}
+
 export interface CheckDeps {
   /** Absolute path to the git working tree (the extension repo root). */
   repoRoot: string;

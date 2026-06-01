@@ -8,10 +8,10 @@ import { packageForNetworks } from './core/packager/packager';
 import { buildOutputRows, OutputFileStat } from './core/packager/output-listing';
 import { PlayboxApiClient } from './core/deployer/api-client';
 import { uploadFile } from './core/deployer/uploader';
-import { getProjectSettings, saveProjectSettings, getGlobalToken, saveGlobalToken, sanitizeProjectName, toPackageConfig } from './core/settings';
+import { getProjectSettings, saveProjectSettings, getGlobalToken, saveGlobalToken, getShowPanelOnStart, saveShowPanelOnStart, getLanguage, saveLanguage, sanitizeProjectName, toPackageConfig } from './core/settings';
 import { startPreviewServer, stopPreviewServer } from './core/preview/server';
 import { getAllNetworks } from './shared/networks';
-import { runFreshnessCheck, decideAction } from './core/freshness/freshness-check';
+import { runFreshnessCheck, decideAction, formatCheckResult } from './core/freshness/freshness-check';
 import { runExtensionUpdate } from './core/updater/update';
 import { join, resolve } from 'path';
 import { existsSync, readFileSync } from 'fs';
@@ -24,7 +24,7 @@ const REPO_ROOT = join(__dirname, '..');
 
 /** Cached freshness result; GitHub unauth API is 60/hr, so we don't re-check on every panel open. */
 const FRESHNESS_TTL_MS = 10 * 60 * 1000;
-let _freshnessCache: { at: number; verdict: any; action: any } | null = null;
+let _freshnessCache: { at: number; verdict: any; action: any; status: string } | null = null;
 
 /**
  * One-click update runs for minutes (npm install + build). A single long IPC
@@ -70,20 +70,26 @@ function startExtensionUpdate(): { running: boolean } {
   return { running: true };
 }
 
-async function getFreshness(force = false): Promise<{ verdict: any; action: any }> {
+async function getFreshness(force = false): Promise<{ verdict: any; action: any; status: string }> {
   const now = Date.now();
   if (!force && _freshnessCache && now - _freshnessCache.at < FRESHNESS_TTL_MS) {
-    return { verdict: _freshnessCache.verdict, action: _freshnessCache.action };
+    return { verdict: _freshnessCache.verdict, action: _freshnessCache.action, status: _freshnessCache.status };
   }
   const verdict = await runFreshnessCheck(REPO_ROOT);
   const action = decideAction(verdict);
-  _freshnessCache = { at: now, verdict, action };
-  return { verdict, action };
+  const status = formatCheckResult(verdict);
+  _freshnessCache = { at: now, verdict, action, status };
+  return { verdict, action, status };
 }
 
 export const load = function () {
   console.log('[plbx] Extension loaded');
-  Editor.Panel.open('plbx-cocos-extension');
+  // Open the panel on start unless the developer turned it off (global pref, default on).
+  void getShowPanelOnStart()
+    .then((show) => {
+      if (show) Editor.Panel.open('plbx-cocos-extension');
+    })
+    .catch(() => Editor.Panel.open('plbx-cocos-extension'));
   // Fire-and-forget freshness check — never blocks editor startup.
   void getFreshness()
     .then(({ verdict, action }) => {
@@ -703,6 +709,26 @@ export const methods: Record<string, (...args: any[]) => any> = {
       console.log('[plbx] promptRestart failed:', e?.message || e);
     }
     return { quit: false };
+  },
+
+  /** Global pref: auto-open the panel on editor start (default true). */
+  async getShowPanelOnStart() {
+    return getShowPanelOnStart();
+  },
+
+  async saveShowPanelOnStart(show: boolean) {
+    await saveShowPanelOnStart(show === true);
+    return { ok: true };
+  },
+
+  /** Global pref: panel UI language ('en' | 'ru' | 'zh', default 'en'). */
+  async getLanguage() {
+    return getLanguage();
+  },
+
+  async saveLanguage(lang: string) {
+    await saveLanguage(lang);
+    return { ok: true };
   },
 };
 

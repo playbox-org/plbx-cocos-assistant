@@ -7,10 +7,11 @@
 
   <!-- Tab Header -->
   <div class="tab-header">
-    <button id="tab-build-report" class="tab-btn active">Build Report</button>
-    <button id="tab-compress"     class="tab-btn">Compress</button>
-    <button id="tab-package"      class="tab-btn">Package</button>
-    <button id="tab-deploy"       class="tab-btn">Deploy</button>
+    <button id="tab-build-report" class="tab-btn active" data-i18n="tab.buildReport">Build Report</button>
+    <button id="tab-compress"     class="tab-btn" data-i18n="tab.compress">Compress</button>
+    <button id="tab-package"      class="tab-btn" data-i18n="tab.package">Package</button>
+    <button id="tab-deploy"       class="tab-btn" data-i18n="tab.deploy">Deploy</button>
+    <button id="btn-settings" class="tab-gear" title="Settings" aria-label="Settings" data-i18n-title="settings.title">⚙</button>
   </div>
 
   <!-- Tab Content -->
@@ -19,29 +20,29 @@
     <!-- ===================== BUILD REPORT ===================== -->
     <div id="content-build-report" class="tab-pane">
       <div class="toolbar">
-        <button id="btn-analyze" class="btn">Analyze Project</button>
+        <button id="btn-analyze" class="btn" data-i18n="action.analyze">Analyze Project</button>
         <span id="scan-status" style="color:#777;font-size:12px;margin-left:8px;"></span>
       </div>
 
       <div id="report-summary" class="summary-bar" style="display:none;">
         <div class="summary-item">
-          <span class="summary-label">Total Assets</span>
+          <span class="summary-label" data-i18n="buildReport.totalAssets">Total Assets</span>
           <span id="summary-count" class="summary-value">0</span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">All Project Assets</span>
+          <span class="summary-label" data-i18n="buildReport.allProjectAssets">All Project Assets</span>
           <span id="summary-source-size" class="summary-value">—</span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Build Size real</span>
+          <span class="summary-label" data-i18n="buildReport.buildSizeReal">Build Size real</span>
           <span id="summary-build-size-real" class="summary-value">—</span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Images</span>
+          <span class="summary-label" data-i18n="buildReport.images">Images</span>
           <span id="summary-images" class="summary-value">0</span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Audio</span>
+          <span class="summary-label" data-i18n="buildReport.audio">Audio</span>
           <span id="summary-audio" class="summary-value">0</span>
         </div>
       </div>
@@ -61,7 +62,7 @@
       <div class="report-filter-bar" id="report-filter-bar" style="display:none;">
         <label class="report-filter-label">
           <input type="checkbox" id="report-show-unused">
-          Show unused assets
+          <span data-i18n="buildReport.showUnused">Show unused assets</span>
         </label>
       </div>
 
@@ -69,12 +70,12 @@
         <table class="data-table" id="report-table">
           <thead>
             <tr>
-              <th id="report-th-name" class="sortable-th" data-sort="name">Name <span class="sort-arrow"></span></th>
-              <th id="report-th-type" class="col-type sortable-th" data-sort="type">Type <span class="sort-arrow"></span></th>
-              <th id="report-th-source" class="col-size sortable-th" data-sort="sourceSize">Source Size <span class="sort-arrow"></span></th>
-              <th id="report-th-build" class="col-size sortable-th" data-sort="buildSize">Build Size <span class="sort-arrow"></span></th>
-              <th id="report-th-ext" class="col-type sortable-th" data-sort="extension">Extension <span class="sort-arrow"></span></th>
-              <th class="col-type" title="✓ Confirmed — file found in build (native/import)&#10;~ Predicted — UUID in config.json but packed into .bin&#10;○ Not in build">Status</th>
+              <th id="report-th-name" class="sortable-th" data-sort="name"><span data-i18n="buildReport.colName">Name</span> <span class="sort-arrow"></span></th>
+              <th id="report-th-type" class="col-type sortable-th" data-sort="type"><span data-i18n="common.type">Type</span> <span class="sort-arrow"></span></th>
+              <th id="report-th-source" class="col-size sortable-th" data-sort="sourceSize"><span data-i18n="buildReport.colSourceSize">Source Size</span> <span class="sort-arrow"></span></th>
+              <th id="report-th-build" class="col-size sortable-th" data-sort="buildSize"><span data-i18n="buildReport.colBuildSize">Build Size</span> <span class="sort-arrow"></span></th>
+              <th id="report-th-ext" class="col-type sortable-th" data-sort="extension"><span data-i18n="buildReport.colExtension">Extension</span> <span class="sort-arrow"></span></th>
+              <th class="col-type" title="✓ Confirmed — file found in build (native/import)&#10;~ Predicted — UUID in config.json but packed into .bin&#10;○ Not in build"><span data-i18n="common.status">Status</span></th>
             </tr>
           </thead>
           <tbody id="report-tbody">
@@ -82,7 +83,7 @@
               <td colspan="6">
                 <div class="empty-state">
                   <div class="empty-state-icon">📊</div>
-                  <span>Click "Analyze Project" to scan assets</span>
+                  <span data-i18n="buildReport.emptyState">Click "Analyze Project" to scan assets</span>
                 </div>
               </td>
             </tr>
@@ -95,30 +96,30 @@
     <div id="content-compress" class="tab-pane" style="display:none;">
       <div class="compress-controls">
         <div class="form-row">
-          <span class="form-label">Format</span>
+          <span class="form-label" data-i18n="common.format">Format</span>
           <select id="compress-format" class="form-select" style="max-width:120px;">
             <option value="webp">WebP</option>
             <option value="jpeg">JPEG</option>
             <option value="png">PNG</option>
             <option value="avif">AVIF</option>
           </select>
-          <span class="form-label" style="margin-left:12px;">Quality</span>
+          <span class="form-label" style="margin-left:12px;" data-i18n="common.quality">Quality</span>
           <div class="slider-row" style="flex:1;">
             <input type="range" id="compress-quality" class="form-slider" min="1" max="100" value="80" />
             <span id="compress-quality-val" class="slider-value">80</span>
           </div>
         </div>
         <div class="preset-row">
-          <span class="form-label">Presets:</span>
-          <button id="preset-web" class="btn-preset" data-preset="web">Web Optimized</button>
-          <button id="preset-max" class="btn-preset" data-preset="max">Max Quality</button>
-          <button id="preset-fast" class="btn-preset" data-preset="fast">Fast</button>
-          <button id="preset-high" class="btn-preset" data-preset="high">High Compression</button>
+          <span class="form-label" data-i18n="compress.presets">Presets:</span>
+          <button id="preset-web" class="btn-preset" data-preset="web" data-i18n="compress.presetWeb">Web Optimized</button>
+          <button id="preset-max" class="btn-preset" data-preset="max" data-i18n="compress.presetMax">Max Quality</button>
+          <button id="preset-fast" class="btn-preset" data-preset="fast" data-i18n="compress.presetFast">Fast</button>
+          <button id="preset-high" class="btn-preset" data-preset="high" data-i18n="compress.presetHigh">High Compression</button>
         </div>
         <div class="form-row" style="margin-bottom:0;">
           <span id="ffmpeg-status" style="font-size:11px;color:#777;"></span>
           <div style="flex:1;"></div>
-          <button id="btn-compress-all" class="btn btn-small" style="margin-left:auto;">Compress All</button>
+          <button id="btn-compress-all" class="btn btn-small" style="margin-left:auto;" data-i18n="action.compressAll">Compress All</button>
         </div>
       </div>
 
@@ -126,12 +127,12 @@
         <table class="data-table" id="compress-table">
           <thead>
             <tr>
-              <th id="compress-th-asset" class="sortable-th" data-sort="asset">Asset <span class="sort-arrow"></span></th>
-              <th id="compress-th-type" class="col-type sortable-th" data-sort="type">Type <span class="sort-arrow"></span></th>
-              <th id="compress-th-original" class="col-size sortable-th" data-sort="original">Original <span class="sort-arrow"></span></th>
-              <th class="col-size">Compressed</th>
-              <th class="col-size">Savings</th>
-              <th>Status</th>
+              <th id="compress-th-asset" class="sortable-th" data-sort="asset"><span data-i18n="compress.colAsset">Asset</span> <span class="sort-arrow"></span></th>
+              <th id="compress-th-type" class="col-type sortable-th" data-sort="type"><span data-i18n="common.type">Type</span> <span class="sort-arrow"></span></th>
+              <th id="compress-th-original" class="col-size sortable-th" data-sort="original"><span data-i18n="compress.colOriginal">Original</span> <span class="sort-arrow"></span></th>
+              <th class="col-size" data-i18n="compress.colCompressed">Compressed</th>
+              <th class="col-size" data-i18n="compress.colSavings">Savings</th>
+              <th data-i18n="common.status">Status</th>
               <th></th>
             </tr>
           </thead>
@@ -140,7 +141,7 @@
               <td colspan="7">
                 <div class="empty-state">
                   <div class="empty-state-icon">🗜</div>
-                  <span>Run "Analyze Project" in Build Report tab first</span>
+                  <span data-i18n="compress.emptyState">Run "Analyze Project" in Build Report tab first</span>
                 </div>
               </td>
             </tr>
@@ -155,17 +156,17 @@
       <!-- ── Networks ── -->
       <div class="pkg-section" style="flex-shrink:0;">
         <div class="pkg-section-bar">
-          <span class="section-header" style="margin:0;border:none;padding:0;">Networks</span>
+          <span class="section-header" style="margin:0;border:none;padding:0;" data-i18n="package.networks">Networks</span>
           <div class="pkg-net-actions">
-            <button class="btn-chip" data-net-action="all">All</button>
-            <button class="btn-chip" data-net-action="none">None</button>
+            <button class="btn-chip" data-net-action="all" data-i18n="package.netAll">All</button>
+            <button class="btn-chip" data-net-action="none" data-i18n="package.netNone">None</button>
             <button class="btn-chip" data-net-action="html">HTML</button>
             <button class="btn-chip" data-net-action="zip">ZIP</button>
           </div>
         </div>
         <div id="network-grid" class="network-grid network-grid-compact"></div>
         <div id="network-more-wrap" class="pkg-more-wrap" style="display:none;">
-          <button id="btn-toggle-more-nets" class="btn-more-toggle">More networks <span class="more-arrow">&#9662;</span></button>
+          <button id="btn-toggle-more-nets" class="btn-more-toggle"><span data-i18n="package.moreNetworks">More networks</span> <span class="more-arrow">&#9662;</span></button>
           <div id="network-grid-more" class="network-grid network-grid-compact" style="display:none;"></div>
         </div>
       </div>
@@ -175,43 +176,43 @@
 
         <!-- Left: Build Settings -->
         <div class="pkg-settings-col">
-          <div class="section-header">Build Settings</div>
+          <div class="section-header" data-i18n="package.buildSettings">Build Settings</div>
           <div class="form-group">
-            <span class="form-label">Orientation</span>
+            <span class="form-label" data-i18n="package.orientation">Orientation</span>
             <div class="radio-group">
-              <label class="radio-label"><input type="radio" name="orientation" value="portrait" checked /> Portrait</label>
-              <label class="radio-label"><input type="radio" name="orientation" value="landscape" /> Landscape</label>
-              <label class="radio-label"><input type="radio" name="orientation" value="auto" /> Auto</label>
+              <label class="radio-label"><input type="radio" name="orientation" value="portrait" checked /> <span data-i18n="package.portrait">Portrait</span></label>
+              <label class="radio-label"><input type="radio" name="orientation" value="landscape" /> <span data-i18n="package.landscape">Landscape</span></label>
+              <label class="radio-label"><input type="radio" name="orientation" value="auto" /> <span data-i18n="package.auto">Auto</span></label>
             </div>
           </div>
           <div class="form-group">
-            <span class="form-label">iOS Store URL</span>
+            <span class="form-label" data-i18n="package.iosStoreUrl">iOS Store URL</span>
             <input type="text" id="pkg-store-ios" class="form-input" placeholder="https://apps.apple.com/..." />
           </div>
           <div class="form-group">
-            <span class="form-label">Android Store URL</span>
+            <span class="form-label" data-i18n="package.androidStoreUrl">Android Store URL</span>
             <input type="text" id="pkg-store-android" class="form-input" placeholder="https://play.google.com/..." />
           </div>
         </div>
 
         <!-- Right: Output Settings -->
         <div class="pkg-settings-col">
-          <div class="section-header">Output</div>
+          <div class="section-header" data-i18n="package.output">Output</div>
           <div class="form-group">
-            <span class="form-label">Build Directory</span>
+            <span class="form-label" data-i18n="package.buildDirectory">Build Directory</span>
             <input type="text" id="pkg-build-dir" class="form-input" value="build/web-mobile" placeholder="build/web-mobile" />
           </div>
           <div class="form-group">
-            <span class="form-label">Output Directory</span>
+            <span class="form-label" data-i18n="package.outputDirectory">Output Directory</span>
             <input type="text" id="pkg-output-dir" class="form-input" value="build/plbx-html" placeholder="build/plbx-html" />
           </div>
           <div class="form-group">
-            <span class="form-label">Output Naming</span>
+            <span class="form-label" data-i18n="package.outputNaming">Output Naming</span>
             <div style="display:flex;gap:6px;">
               <select id="pkg-template-preset" class="form-select" style="max-width:100px;">
-                <option value="standard">Standard</option>
-                <option value="flat">Flat</option>
-                <option value="custom">Custom</option>
+                <option value="standard" data-i18n="package.tplStandard">Standard</option>
+                <option value="flat" data-i18n="package.tplFlat">Flat</option>
+                <option value="custom" data-i18n="package.tplCustom">Custom</option>
               </select>
               <input type="text" id="pkg-output-template" class="form-input" value="{networkId}/index.{ext}" placeholder="{networkId}/index.{ext}" />
             </div>
@@ -227,7 +228,7 @@
           <div class="form-group">
             <label class="toggle-label">
               <input type="checkbox" id="pkg-auto-package" checked />
-              <span>Auto-package after build</span>
+              <span data-i18n="settings.autoPackage">Auto-package after build</span>
             </label>
           </div>
         </div>
@@ -235,10 +236,10 @@
 
       <!-- ── Actions ── -->
       <div class="toolbar" style="flex-shrink:0;">
-        <button id="btn-preview" class="btn btn-danger" style="display:none;">Validate</button>
-        <button id="btn-build-all" class="btn">Pack All</button>
-        <button id="btn-open-output" class="btn btn-secondary">Open Output Folder</button>
-        <button id="btn-generate-adapter" class="btn btn-secondary">Generate plbx_html.ts</button>
+        <button id="btn-preview" class="btn btn-danger" style="display:none;" data-i18n="package.validate">Validate</button>
+        <button id="btn-build-all" class="btn" data-i18n="package.packAll">Pack All</button>
+        <button id="btn-open-output" class="btn btn-secondary" data-i18n="package.openOutput">Open Output Folder</button>
+        <button id="btn-generate-adapter" class="btn btn-secondary" data-i18n="package.generateAdapter">Generate plbx_html.ts</button>
         <span id="pkg-status" style="color:#777;font-size:12px;margin-left:8px;"></span>
       </div>
 
@@ -247,12 +248,12 @@
         <table class="data-table" id="pkg-results-table">
           <thead>
             <tr>
-              <th>Network</th>
-              <th>Format</th>
-              <th class="col-size">Size</th>
-              <th>Limit</th>
-              <th>Created</th>
-              <th>Status</th>
+              <th data-i18n="package.colNetwork">Network</th>
+              <th data-i18n="common.format">Format</th>
+              <th class="col-size" data-i18n="package.colSize">Size</th>
+              <th data-i18n="package.colLimit">Limit</th>
+              <th data-i18n="package.colCreated">Created</th>
+              <th data-i18n="common.status">Status</th>
             </tr>
           </thead>
           <tbody id="pkg-results-tbody">
@@ -260,7 +261,7 @@
               <td colspan="6">
                 <div class="empty-state">
                   <div class="empty-state-icon">📦</div>
-                  <span>Select networks and click "Pack All"</span>
+                  <span data-i18n="package.emptyState">Select networks and click "Pack All"</span>
                 </div>
               </td>
             </tr>
@@ -273,11 +274,11 @@
     <div id="content-deploy" class="tab-pane" style="display:none;">
       <!-- Auth card -->
       <div class="login-card" style="flex-shrink:0;">
-        <div class="section-header" style="margin-top:0;">Authentication</div>
+        <div class="section-header" style="margin-top:0;" data-i18n="deploy.authentication">Authentication</div>
         <div class="form-row">
-          <span class="form-label">API Token</span>
-          <input type="password" id="deploy-token" class="form-input" placeholder="Paste your PLBX API token..." />
-          <button id="btn-save-token" class="btn btn-small">Save &amp; Login</button>
+          <span class="form-label" data-i18n="deploy.apiToken">API Token</span>
+          <input type="password" id="deploy-token" class="form-input" placeholder="Paste your PLBX API token..." data-i18n-placeholder="deploy.apiTokenPlaceholder" />
+          <button id="btn-save-token" class="btn btn-small" data-i18n="deploy.saveLogin">Save &amp; Login</button>
         </div>
         <div id="login-status" class="login-status disconnected">Not connected</div>
       </div>
@@ -285,33 +286,33 @@
       <!-- Deploy config (hidden until authenticated) -->
       <div id="deploy-body" style="display:none;">
       <div style="flex-shrink:0;background:#333;border:1px solid #3a3a3a;border-radius:4px;padding:12px;margin-bottom:10px;">
-        <div class="section-header" style="margin-top:0;">Deployment</div>
+        <div class="section-header" style="margin-top:0;" data-i18n="deploy.deployment">Deployment</div>
         <div class="form-row">
-          <span class="form-label">Project</span>
+          <span class="form-label" data-i18n="deploy.project">Project</span>
           <div class="combobox" id="deploy-project-combo">
-            <input type="text" id="deploy-project-input" class="form-input" placeholder="Search or select project..." autocomplete="off" />
+            <input type="text" id="deploy-project-input" class="form-input" placeholder="Search or select project..." autocomplete="off" data-i18n-placeholder="deploy.projectPlaceholder" />
             <div class="combobox-dropdown" id="deploy-project-dropdown"></div>
           </div>
           <input type="hidden" id="deploy-project" value="" />
-          <button id="btn-refresh-projects" class="btn btn-secondary btn-small">Refresh</button>
-          <button id="btn-new-project" class="btn btn-secondary btn-small">+ New</button>
+          <button id="btn-refresh-projects" class="btn btn-secondary btn-small" data-i18n="deploy.refresh">Refresh</button>
+          <button id="btn-new-project" class="btn btn-secondary btn-small" data-i18n="deploy.newShort">+ New</button>
         </div>
         <div id="deploy-new-project-row" class="form-row" style="display:none;">
-          <span class="form-label">New Project</span>
+          <span class="form-label" data-i18n="deploy.newProject">New Project</span>
           <input type="text" id="deploy-project-name" class="form-input" placeholder="my-game" />
-          <button id="btn-cancel-new-project" class="btn btn-secondary btn-small">Cancel</button>
+          <button id="btn-cancel-new-project" class="btn btn-secondary btn-small" data-i18n="common.cancel">Cancel</button>
         </div>
         <div id="deploy-existing" class="deploy-existing" style="display:none;">
-          <div class="deploy-existing-label">Existing deployments</div>
+          <div class="deploy-existing-label" data-i18n="deploy.existingDeployments">Existing deployments</div>
           <div id="deploy-existing-list" class="deploy-existing-list"></div>
         </div>
         <div class="form-row">
-          <span class="form-label">Deployment Name</span>
+          <span class="form-label" data-i18n="deploy.deploymentName">Deployment Name</span>
           <input type="text" id="deploy-name" class="form-input" placeholder="v1-0-0" />
           <span id="deploy-name-hint" style="font-size:11px;color:#777;margin-left:6px;"></span>
         </div>
         <div class="form-row">
-          <span class="form-label">Network Build</span>
+          <span class="form-label" data-i18n="deploy.networkBuild">Network Build</span>
           <select id="deploy-network" class="form-select" style="max-width:200px;">
             <option value="ironsource">ironSource</option>
             <option value="applovin">AppLovin</option>
@@ -321,28 +322,28 @@
           </select>
         </div>
         <div class="form-row">
-          <span class="form-label">Orientation</span>
+          <span class="form-label" data-i18n="package.orientation">Orientation</span>
           <div class="radio-group">
-            <label class="radio-label"><input type="checkbox" name="deploy-orientation" value="portrait" checked /> Portrait</label>
-            <label class="radio-label"><input type="checkbox" name="deploy-orientation" value="landscape" checked /> Landscape</label>
+            <label class="radio-label"><input type="checkbox" name="deploy-orientation" value="portrait" checked /> <span data-i18n="package.portrait">Portrait</span></label>
+            <label class="radio-label"><input type="checkbox" name="deploy-orientation" value="landscape" checked /> <span data-i18n="package.landscape">Landscape</span></label>
           </div>
         </div>
         <div class="form-row">
-          <span class="form-label">Build Path</span>
+          <span class="form-label" data-i18n="deploy.buildPath">Build Path</span>
           <input type="text" id="deploy-build-path" class="form-input" value="build/plbx-html" placeholder="build/plbx-html" />
         </div>
         <div class="form-row" style="margin-bottom:0;">
-          <button id="btn-deploy" class="btn" style="min-width:100px;">Deploy</button>
+          <button id="btn-deploy" class="btn" style="min-width:100px;" data-i18n="deploy.deploy">Deploy</button>
           <span id="deploy-status" style="color:#777;font-size:12px;margin-left:12px;"></span>
         </div>
       </div>
 
       <!-- Result -->
       <div id="deploy-result" style="display:none;flex-shrink:0;background:#333;border:1px solid #3a3a3a;border-radius:4px;padding:12px;">
-        <div class="section-header" style="margin-top:0;">Result</div>
+        <div class="section-header" style="margin-top:0;" data-i18n="deploy.result">Result</div>
         <div class="result-url-row">
           <span id="deploy-result-url" class="result-url">—</span>
-          <button id="btn-copy-url" class="btn btn-secondary btn-small">Copy</button>
+          <button id="btn-copy-url" class="btn btn-secondary btn-small" data-i18n="common.copy">Copy</button>
         </div>
       </div>
       </div><!-- /deploy-body -->
@@ -351,6 +352,55 @@
   </div><!-- end .tab-content -->
 
   <div id="panel-footer" class="panel-footer">Playbox v<span id="panel-version">—</span></div>
+
+  <!-- ===================== SETTINGS OVERLAY ===================== -->
+  <div id="settings-overlay" class="settings-overlay" style="display:none;">
+    <div class="settings-backdrop" id="settings-backdrop"></div>
+    <div class="settings-modal">
+      <div class="settings-header">
+        <span class="settings-title" data-i18n="settings.title">Settings</span>
+        <button id="settings-close" class="preview-close-btn">&times;</button>
+      </div>
+      <div class="settings-body">
+
+        <div class="settings-group">
+          <div class="settings-group-title" data-i18n="settings.updates">Updates</div>
+          <div class="settings-row">
+            <span class="settings-label" data-i18n="settings.version">Version</span>
+            <span id="settings-version" class="settings-value">—</span>
+          </div>
+          <div class="settings-row">
+            <button id="settings-check" class="btn btn-small" data-i18n="settings.checkUpdates">Check for updates</button>
+            <span id="settings-check-status" class="settings-status"></span>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title" data-i18n="settings.behavior">Behavior</div>
+          <label class="settings-toggle">
+            <input type="checkbox" id="settings-auto-package" />
+            <span data-i18n="settings.autoPackage">Auto-package after build</span>
+          </label>
+          <label class="settings-toggle">
+            <input type="checkbox" id="settings-show-on-start" />
+            <span data-i18n="settings.showOnStart">Show Playbox panel on editor start</span>
+          </label>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title" data-i18n="settings.language">Language</div>
+          <div class="settings-row">
+            <select id="settings-language" class="form-select" style="max-width:160px;">
+              <option value="en">English</option>
+              <option value="ru">Русский</option>
+              <option value="zh">中文</option>
+            </select>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
 
   <!-- ===================== PREVIEW OVERLAY ===================== -->
   <div id="preview-overlay" class="preview-overlay" style="display:none;">
@@ -362,12 +412,12 @@
       </div>
       <div class="preview-body">
         <div class="preview-side">
-          <div class="preview-label">ORIGINAL</div>
+          <div class="preview-label" data-i18n="preview.original">ORIGINAL</div>
           <div class="preview-media-wrap" id="preview-orig-wrap"></div>
           <div class="preview-meta" id="preview-orig-meta"></div>
         </div>
         <div class="preview-side">
-          <div class="preview-label">COMPRESSED</div>
+          <div class="preview-label" data-i18n="preview.compressed">COMPRESSED</div>
           <div class="preview-media-wrap" id="preview-comp-wrap">
             <span class="spinner" id="preview-spinner" style="display:none;"></span>
           </div>
@@ -375,22 +425,22 @@
         </div>
       </div>
       <div class="preview-controls">
-        <span class="form-label">Format</span>
+        <span class="form-label" data-i18n="common.format">Format</span>
         <select id="preview-format" class="form-select" style="max-width:120px;">
           <option value="webp">WebP</option>
           <option value="jpeg">JPEG</option>
           <option value="png">PNG</option>
           <option value="avif">AVIF</option>
         </select>
-        <span class="form-label" style="margin-left:12px;">Quality</span>
+        <span class="form-label" style="margin-left:12px;" data-i18n="common.quality">Quality</span>
         <div class="slider-row" style="flex:1;">
           <input type="range" id="preview-quality" class="form-slider" min="1" max="100" value="80" />
           <span id="preview-quality-val" class="slider-value">80</span>
         </div>
       </div>
       <div class="preview-actions">
-        <button id="preview-apply" class="btn">Apply</button>
-        <button id="preview-cancel" class="btn btn-secondary">Cancel</button>
+        <button id="preview-apply" class="btn" data-i18n="preview.apply">Apply</button>
+        <button id="preview-cancel" class="btn btn-secondary" data-i18n="common.cancel">Cancel</button>
       </div>
     </div>
   </div>
