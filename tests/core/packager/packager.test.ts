@@ -219,3 +219,103 @@ describe('validator-forbidden string enforcement', () => {
     expect(result.results[0].outputSize).toBeGreaterThan(0);
   });
 });
+
+describe('startup version banner', () => {
+  it('injects the assistant name + version banner into the HTML output', async () => {
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['applovin'],
+      config: defaultConfig,
+      packagerVersion: '0.2.3',
+    });
+    const html = readFileSync(result.results[0].outputPath, 'utf-8');
+    expect(html).toContain('@playbox-org/plbx-cocos-assistant');
+    expect(html).toContain('v0.2.3');
+    expect(html).toContain('https://github.com/playbox-org/plbx-cocos-assistant');
+  });
+});
+
+describe('store URL <head> comment (validator parity with super-html)', () => {
+  it('mirrors a PackageConfig store URL as a plaintext <head> comment', async () => {
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['unity'],
+      config: defaultConfig,
+    });
+    const html = readFileSync(result.results[0].outputPath, 'utf-8');
+    const head = html.match(/<head>([\s\S]*?)<\/head>/)?.[1] ?? '';
+    expect(head).toContain('<!-- https://play.google.com/store/apps/details?id=com.test -->');
+  });
+
+  it('extracts a store URL from the build source (set_google_play_url) into a <head> comment', async () => {
+    const extractBuild = join(FIXTURES, 'extract-build');
+    mkdirSync(extractBuild, { recursive: true });
+    writeFileSync(
+      join(extractBuild, 'index.html'),
+      '<!DOCTYPE html><html><head><title>Game</title></head><body><script src="main.js"></script></body></html>',
+    );
+    writeFileSync(
+      join(extractBuild, 'main.js'),
+      'plbx.set_google_play_url("https://play.google.com/store/apps/details?id=com.extracted.game");',
+    );
+    try {
+      const result = await packageForNetworks({
+        buildDir: extractBuild,
+        outputDir: PACK_OUTPUT,
+        networks: ['unity'],
+        // No store URL in config — must come from the extracted code literal.
+        config: { orientation: 'portrait' as const },
+      });
+      const html = readFileSync(result.results[0].outputPath, 'utf-8');
+      const head = html.match(/<head>([\s\S]*?)<\/head>/)?.[1] ?? '';
+      expect(head).toContain('<!-- https://play.google.com/store/apps/details?id=com.extracted.game -->');
+      expect(result.results[0].warnings ?? []).toHaveLength(0);
+    } finally {
+      rmSync(extractBuild, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('Google Play URL warning (requiresStoreUrl networks)', () => {
+  it('warns (does not fail) when Unity build has no Google Play Store URL', async () => {
+    const onProgress = vi.fn();
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD, // main.js has no store URL
+      outputDir: PACK_OUTPUT,
+      networks: ['unity'],
+      config: { orientation: 'portrait' as const }, // no store URLs
+      onProgress,
+    });
+    // Build still succeeds (non-fatal)
+    expect(result.results[0].outputPath).not.toBe('');
+    expect(result.results[0].outputSize).toBeGreaterThan(0);
+    // Warning is surfaced on the result and via onProgress
+    const warnings = result.results[0].warnings ?? [];
+    expect(warnings.some((w) => w.includes('Google Play Store URL'))).toBe(true);
+    expect(onProgress).toHaveBeenCalledWith('unity', 'done');
+    const warnCall = onProgress.mock.calls.find(([, phase, msg]) => phase === 'processing' && /Google Play/.test(msg ?? ''));
+    expect(warnCall).toBeDefined();
+  });
+
+  it('does NOT warn for Unity when a Google Play URL is present', async () => {
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['unity'],
+      config: defaultConfig, // has play.google URL
+    });
+    expect(result.results[0].warnings ?? []).toHaveLength(0);
+  });
+
+  it('does NOT warn for non-requiresStoreUrl networks (applovin) without a store URL', async () => {
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['applovin'],
+      config: { orientation: 'portrait' as const },
+    });
+    expect(result.results[0].warnings ?? []).toHaveLength(0);
+  });
+});

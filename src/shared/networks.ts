@@ -29,6 +29,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     maxSize: MB5,
     mraid: true,
     inlineAssets: true,
+    requiresStoreUrl: true,
   },
   ironsource: {
     id: 'ironsource',

@@ -43,6 +43,11 @@ export class HtmlBuilder {
     this.$('head').append(`<meta name="${name}" content="${content}">\n`);
   }
 
+  /** Inject a raw HTML comment into <head> (validator-friendly plaintext, super-html parity). */
+  injectHeadComment(text: string): void {
+    this.$('head').prepend(`<!-- ${text} -->\n`);
+  }
+
   /** Replace a script src with a new src */
   replaceScriptSrc(oldSrc: string, newSrc: string): boolean {
     const script = this.$(`script[src="${oldSrc}"]`);

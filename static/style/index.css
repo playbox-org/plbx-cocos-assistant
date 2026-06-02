@@ -325,6 +325,20 @@ body,
   color: #666666;
 }
 
+.form-input:disabled {
+  background-color: #2e2e2e;
+  color: #9a9a9a;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+
+.form-hint {
+  color: #777777;
+  font-size: 11px;
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
 .form-select {
   background-color: #3a3a3a;
   border: 1px solid #555555;

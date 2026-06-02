@@ -11,7 +11,25 @@ import { rewriteCocosJs, shouldRewriteCocosJs } from './cocos-js-rewriter';
 import { generateFullHtml, generatePayloadJs } from './runtime-loader';
 import { buildLauncher, fillLauncherPayloadUrl } from './launcher-builder';
 import { resolveTemplate } from './template-resolver';
+import { extractStoreUrls } from './store-url-extractor';
+import { buildVersionBanner } from './version-banner';
 import CleanCSS from 'clean-css';
+
+/** Substring that identifies a usable Google Play Store URL (what Unity's
+ *  Creative Pack validator greps the raw HTML for). */
+const GOOGLE_PLAY_MARKER = 'play.google.com/store/apps/details';
+
+/** Resolve the packager version for the startup banner. Prefer the explicitly
+ *  passed value; otherwise read package.json; finally fall back to '0.0.0'. */
+function resolvePackagerVersion(explicit?: string): string {
+  if (explicit) return explicit;
+  try {
+    const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf-8'));
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
 
 export async function packageForNetworks(options: PackagerOptions): Promise<PackagerResult> {
   const startTime = Date.now();
@@ -23,6 +41,24 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
     throw new Error(`Build HTML not found: ${htmlPath}`);
   }
   const baseHtml = readFileSync(htmlPath, 'utf-8');
+
+  // Startup version banner injected into every build (console.log on run).
+  const versionBanner = buildVersionBanner(resolvePackagerVersion(options.packagerVersion));
+
+  // Store URLs to mirror as plaintext <head> comments so network validators
+  // (e.g. Unity Creative Pack) that grep the raw HTML can find them. Sources:
+  //   1. Programmatic PackageConfig.storeUrl* (CLI/back-compat).
+  //   2. Literals extracted from the build's source — covers the primary path
+  //      where game code calls set_google_play_url("...") (otherwise buried in
+  //      the base64 asset ZIP and invisible to a plaintext validator scan).
+  const headStoreUrls = Array.from(
+    new Set(
+      [options.config.storeUrlAndroid, options.config.storeUrlIos, ...extractStoreUrls(options.buildDir)].filter(
+        (u): u is string => !!u,
+      ),
+    ),
+  );
+  const hasGooglePlayUrl = headStoreUrls.some((u) => u.includes(GOOGLE_PLAY_MARKER));
 
   for (const networkId of options.networks) {
     options.onProgress?.(networkId, 'starting');
@@ -38,6 +74,26 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
       // Clone HTML and apply network adapter
       const builder = new HtmlBuilder(baseHtml);
       adapter.transform(builder, options.config);
+
+      // Startup version banner + plaintext store-URL <head> comments (super-html parity).
+      builder.injectBodyScript(versionBanner);
+      for (const url of headStoreUrls) {
+        builder.injectHeadComment(url);
+      }
+
+      // Non-fatal warning: a network whose validator requires a Google Play Store
+      // URL (e.g. Unity) but none was found in the build. We don't abort — the
+      // missing URL will surface at the network's own validation step.
+      const warnings: string[] = [];
+      if (network.requiresStoreUrl && !hasGooglePlayUrl) {
+        const w =
+          `${network.name}: no Google Play Store URL found in the build — the network validator ` +
+          `will reject this creative. Set it in game code via ` +
+          `set_google_play_url("https://play.google.com/store/apps/details?id=...").`;
+        warnings.push(w);
+        console.warn(`[plbx] ${w}`);
+        options.onProgress?.(networkId, 'processing', w);
+      }
 
       if (network.format === 'launcher-payload') {
         options.onProgress?.(networkId, 'processing', 'Building launcher + payload...');
@@ -138,6 +194,7 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
           secondarySize: payloadSize,
           secondaryMaxSize: lpConfig.payloadMaxSize,
           secondaryWithinLimit: payloadSize <= lpConfig.payloadMaxSize,
+          warnings: warnings.length ? warnings : undefined,
         });
 
         options.onProgress?.(networkId, 'done');
@@ -288,6 +345,7 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
           maxSize: network.maxSize,
           withinLimit: outputSize <= network.maxSize,
           format,
+          warnings: warnings.length ? warnings : undefined,
         });
       }
 

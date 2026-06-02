@@ -94,4 +94,28 @@ describe('HtmlBuilder', () => {
     builder.setTitle('My Playable Ad');
     expect(builder.toHtml()).toContain('<title>My Playable Ad</title>');
   });
+
+  it('should inject head comment with store URL inside head', () => {
+    const builder = new HtmlBuilder(sampleHtml);
+    const url = 'https://play.google.com/store/apps/details?id=com.test';
+    builder.injectHeadComment(url);
+    const html = builder.toHtml();
+    expect(html).toContain(`<!-- ${url} -->`);
+    // Comment should land inside <head>
+    const headContent = html.match(/<head>([\s\S]*?)<\/head>/)?.[1] || '';
+    expect(headContent).toContain(url);
+  });
+
+  it('should NOT HTML-escape special chars in head comment', () => {
+    const builder = new HtmlBuilder(sampleHtml);
+    const url = 'https://play.google.com/store/apps/details?id=com.test';
+    builder.injectHeadComment(url);
+    const html = builder.toHtml();
+    const headContent = html.match(/<head>([\s\S]*?)<\/head>/)?.[1] || '';
+    // Special chars must survive verbatim, not entity-escaped
+    expect(headContent).toContain('?id=com.test');
+    expect(headContent).not.toContain('&#63;');
+    expect(headContent).not.toContain('&quest;');
+    expect(headContent).not.toContain('&#61;');
+  });
 });

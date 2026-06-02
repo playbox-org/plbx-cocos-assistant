@@ -9,8 +9,6 @@ export interface ProjectSettings {
   deploymentName: string;
   deployProjectId: string;
   defaultDeployNetwork: string;
-  storeUrlIos: string;
-  storeUrlAndroid: string;
   orientation: 'portrait' | 'landscape' | 'auto';
   autoPackage: boolean;
   buildDir: string;
@@ -29,8 +27,6 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   deploymentName: '',
   deployProjectId: '',
   defaultDeployNetwork: 'ironsource',
-  storeUrlIos: '',
-  storeUrlAndroid: '',
   orientation: 'auto',
   autoPackage: true,
   buildDir: 'build/web-mobile',
@@ -50,8 +46,6 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
  */
 export function toPackageConfig(s: ProjectSettings): PackageConfig {
   return {
-    storeUrlIos: s.storeUrlIos,
-    storeUrlAndroid: s.storeUrlAndroid,
     orientation: s.orientation,
     loaderMode: s.loaderMode,
     legacyLoaderNetworks: s.legacyLoaderNetworks,

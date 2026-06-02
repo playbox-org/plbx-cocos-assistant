@@ -25,11 +25,17 @@ export interface NetworkConfig {
   singleFileZip?: boolean;   // ZIP containing a single fully-inlined HTML (e.g. Mintegral)
   dualFormat?: boolean;      // whether the network supports both html and zip output
   launcherPayload?: LauncherPayloadConfig; // launcher-payload format config
+  /** Network whose validator requires a Google Play Store URL in the build (e.g. Unity
+   *  Creative Pack). Packager warns (does not fail) if none is found in the build. */
+  requiresStoreUrl?: boolean;
 }
 
 export interface PackageConfig {
-  storeUrlIos: string;
-  storeUrlAndroid: string;
+  /** @deprecated Store URLs now flow from game code (set_google_play_url / set_app_store_url)
+   *  and are mirrored to <head> by the packager. Kept optional for programmatic (CLI) callers. */
+  storeUrlIos?: string;
+  /** @deprecated see storeUrlIos */
+  storeUrlAndroid?: string;
   orientation: Orientation;
   customInjectHead?: string;
   customInjectBody?: string;
@@ -105,6 +111,9 @@ export interface PackageResult {
   secondaryMaxSize?: number;
   /** Only set for launcher-payload format: whether payload fits within limit */
   secondaryWithinLimit?: boolean;
+  /** Non-fatal packaging warnings surfaced to the user (e.g. missing Google Play
+   *  Store URL for a network whose validator requires it). */
+  warnings?: string[];
 }
 
 export interface DeployResult {

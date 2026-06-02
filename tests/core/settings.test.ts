@@ -18,14 +18,10 @@ describe('toPackageConfig', () => {
       ...DEFAULT_SETTINGS,
       loaderMode: 'systemjs',
       legacyLoaderNetworks: ['facebook', 'molocoV2'],
-      storeUrlIos: 'ios://x',
-      storeUrlAndroid: 'and://y',
       orientation: 'landscape',
     });
     expect(config.loaderMode).toBe('systemjs');
     expect(config.legacyLoaderNetworks).toEqual(['facebook', 'molocoV2']);
-    expect(config.storeUrlIos).toBe('ios://x');
-    expect(config.storeUrlAndroid).toBe('and://y');
     expect(config.orientation).toBe('landscape');
   });
 });

@@ -1370,17 +1370,33 @@ module.exports = Editor.Panel.define({
 
       updateTemplatePreview();
 
+      // Populate the read-only store-URL fields from URLs the game sets in code
+      // (set_google_play_url / set_app_store_url), detected by scanning the build.
+      const refreshDetectedStoreUrls = (buildDir?: string) => {
+        const androidInput = this.$.pkgStoreAndroid as HTMLInputElement | null;
+        const iosInput = this.$.pkgStoreIos as HTMLInputElement | null;
+        const dir = (buildDir ?? (this.$.pkgBuildDir as HTMLInputElement)?.value ?? '').trim();
+        if (!dir) {
+          if (androidInput) androidInput.value = '';
+          if (iosInput) iosInput.value = '';
+          return;
+        }
+        Editor.Message.request('plbx-cocos-extension', 'detect-store-urls', dir)
+          .then((res: any) => {
+            if (androidInput) androidInput.value = res?.googlePlayUrl ?? '';
+            if (iosInput) iosInput.value = res?.appStoreUrl ?? '';
+          })
+          .catch((e: any) => { console.warn('[plbx]', e); });
+      };
+
       // --- Restore settings ---
       Editor.Message.request('plbx-cocos-extension', 'get-settings').then((settings: any) => {
-        const iosInput     = this.$.pkgStoreIos as HTMLInputElement;
-        const androidInput = this.$.pkgStoreAndroid as HTMLInputElement;
         const buildDirInput = this.$.pkgBuildDir as HTMLInputElement;
         const outputDirInput = this.$.pkgOutputDir as HTMLInputElement;
         const autoPackageCb = this.$.pkgAutoPackage as HTMLInputElement;
 
-        if (iosInput)     iosInput.value     = settings?.storeUrlIos ?? '';
-        if (androidInput) androidInput.value = settings?.storeUrlAndroid ?? '';
         if (buildDirInput && settings?.buildDir) buildDirInput.value = settings.buildDir;
+        refreshDetectedStoreUrls(settings?.buildDir);
         if (outputDirInput && settings?.outputDir) outputDirInput.value = settings.outputDir;
         if (autoPackageCb) autoPackageCb.checked = settings?.autoPackage !== false;
 
@@ -1443,12 +1459,15 @@ module.exports = Editor.Panel.define({
           .catch((e: any) => { console.warn('[plbx]', e); });
       });
 
+      // Re-detect store URLs when the build directory changes.
+      (this.$.pkgBuildDir as HTMLInputElement)?.addEventListener('change', () => {
+        refreshDetectedStoreUrls();
+      });
+
       // --- Build All ---
       btnBuildAll?.addEventListener('click', async () => {
         const buildDir  = (this.$.pkgBuildDir as HTMLInputElement)?.value.trim() ?? '';
         const outputDir = (this.$.pkgOutputDir as HTMLInputElement)?.value.trim() ?? '';
-        const storeIos  = (this.$.pkgStoreIos as HTMLInputElement)?.value.trim() ?? '';
-        const storeAnd  = (this.$.pkgStoreAndroid as HTMLInputElement)?.value.trim() ?? '';
         const orientation = (((this.$.contentPackage as HTMLElement | null)?.querySelector('input[name="orientation"]:checked') as HTMLInputElement | null)?.value ?? 'portrait') as any;
         const outputTemplate = templateInput?.value.trim() || '{networkId}/index.{ext}';
 
@@ -1472,8 +1491,6 @@ module.exports = Editor.Panel.define({
 
         await Editor.Message.request('plbx-cocos-extension', 'save-settings', {
           selectedNetworks: selected,
-          storeUrlIos: storeIos,
-          storeUrlAndroid: storeAnd,
           orientation,
           buildDir,
           outputDir,
@@ -1484,7 +1501,7 @@ module.exports = Editor.Panel.define({
         btnBuildAll.disabled = true;
         if (pkgStatus) pkgStatus.textContent = 'Packing…';
 
-        const config = { storeUrlIos: storeIos, storeUrlAndroid: storeAnd, orientation };
+        const config = { orientation };
         try {
           const response = await Editor.Message.request(
             'plbx-cocos-extension', 'package-networks',
@@ -1492,6 +1509,7 @@ module.exports = Editor.Panel.define({
           );
           const results = Array.isArray(response) ? response : response?.results ?? [];
           this._renderPackageResults(results);
+          refreshDetectedStoreUrls(buildDir);
           if (pkgStatus) pkgStatus.textContent = 'Pack complete';
           if (btnPreview) btnPreview.style.display = '';
         } catch (e: any) {
@@ -1601,12 +1619,17 @@ module.exports = Editor.Panel.define({
         tdCreated.textContent = r.createdAtLabel ?? '—';
 
         const tdStatus = document.createElement('td');
+        const warnings: string[] = Array.isArray(r.warnings) ? r.warnings : [];
         if (r.error) {
           const b = makeBadge('badge-fail', 'error');
           b.title = r.error;
           tdStatus.appendChild(b);
         } else if (overLimit) {
           tdStatus.appendChild(makeBadge('badge-warn', 'over limit'));
+        } else if (warnings.length) {
+          const b = makeBadge('badge-warn', 'warning');
+          b.title = warnings.join('\n');
+          tdStatus.appendChild(b);
         } else {
           tdStatus.appendChild(makeBadge('badge-pass', 'pass'));
         }

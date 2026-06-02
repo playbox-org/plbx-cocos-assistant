@@ -186,13 +186,14 @@
             </div>
           </div>
           <div class="form-group">
-            <span class="form-label" data-i18n="package.iosStoreUrl">iOS Store URL</span>
-            <input type="text" id="pkg-store-ios" class="form-input" placeholder="https://apps.apple.com/..." />
+            <span class="form-label" data-i18n="package.androidStoreUrl">Android Store URL</span>
+            <input type="text" id="pkg-store-android" class="form-input" disabled placeholder="—" data-i18n-placeholder="package.storeUrlFromCode" title="Set in game code via set_google_play_url(...)" />
           </div>
           <div class="form-group">
-            <span class="form-label" data-i18n="package.androidStoreUrl">Android Store URL</span>
-            <input type="text" id="pkg-store-android" class="form-input" placeholder="https://play.google.com/..." />
+            <span class="form-label" data-i18n="package.iosStoreUrl">iOS Store URL</span>
+            <input type="text" id="pkg-store-ios" class="form-input" disabled placeholder="—" data-i18n-placeholder="package.storeUrlFromCode" title="Set in game code via set_app_store_url(...)" />
           </div>
+          <div class="form-hint" data-i18n="package.storeUrlHint">Detected from game code (set_google_play_url / set_app_store_url)</div>
         </div>
 
         <!-- Right: Output Settings -->

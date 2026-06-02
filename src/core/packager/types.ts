@@ -13,6 +13,9 @@ export interface PackagerOptions {
   outputTemplate?: string;
   /** User-defined template variables */
   templateVariables?: Record<string, string>;
+  /** Extension/packager version, injected as a startup console banner into builds.
+   *  Falls back to reading package.json (then '0.0.0') when omitted. */
+  packagerVersion?: string;
   /** Progress callback */
   onProgress?: (networkId: string, status: 'starting' | 'processing' | 'done' | 'error', message?: string) => void;
 }

@@ -5,6 +5,7 @@ import type { QueryDependenciesFn } from './core/build-report/dependency-resolve
 import { compressImage, compressImageToBuffer, getImageMetadata } from './core/compression/image-compressor';
 import { compressAudio, compressAudioToBuffer, isFFmpegAvailable } from './core/compression/audio-compressor';
 import { packageForNetworks } from './core/packager/packager';
+import { extractStoreUrls } from './core/packager/store-url-extractor';
 import { buildOutputRows, OutputFileStat } from './core/packager/output-listing';
 import { PlayboxApiClient } from './core/deployer/api-client';
 import { uploadFile } from './core/deployer/uploader';
@@ -317,6 +318,26 @@ export const methods: Record<string, (...args: any[]) => any> = {
         // Editor.Message.send('plbx-cocos-extension', 'package-progress', _id, _status, _msg);
       },
     });
+  },
+
+  /**
+   * Detect store URLs the game sets via code (set_google_play_url /
+   * set_app_store_url) by scanning the build's source for literals. Used by the
+   * Package panel to show the detected links in read-only fields. Returns empty
+   * strings when none found (e.g. build not produced yet or URLs set dynamically).
+   */
+  detectStoreUrls(buildDir: string) {
+    try {
+      const { resolve } = require('path');
+      const absBuildDir = resolve(Editor.Project.path || '', buildDir || '');
+      const urls = extractStoreUrls(absBuildDir);
+      return {
+        googlePlayUrl: urls.find((u) => u.includes('play.google.com')) ?? '',
+        appStoreUrl: urls.find((u) => u.includes('apple.com')) ?? '',
+      };
+    } catch {
+      return { googlePlayUrl: '', appStoreUrl: '' };
+    }
   },
 
   getNetworks() {
