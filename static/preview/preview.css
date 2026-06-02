@@ -376,6 +376,8 @@ h3 {
   color: rgba(255, 255, 255, 0.4);
   font-size: 11px;
   margin-top: 2px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .check-hint {
@@ -387,6 +389,8 @@ h3 {
   font-size: 11px;
   line-height: 1.5;
   color: rgba(255, 255, 255, 0.55);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .check.fail .check-hint {

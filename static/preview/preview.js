@@ -354,6 +354,16 @@
     setCheck('no_external', 'pass', 'No external requests detected');
     setCheck('no_errors', 'pass', 'No exceptions');
 
+    // Store URL literals — static check against the built HTML (Unity Creative Pack
+    // greps the raw markup). Set from server-side scan; checks only exist for
+    // networks flagged requiresStoreUrl.
+    if (net && net.requiresStoreUrl) {
+      setCheck('google_play_url', net.hasGooglePlayUrl ? 'pass' : 'fail',
+        net.hasGooglePlayUrl ? 'Found in build' : 'MISSING — set via set_google_play_url(...) in game code');
+      setCheck('app_store_url', net.hasAppStoreUrl ? 'pass' : 'fail',
+        net.hasAppStoreUrl ? 'Found in build' : 'MISSING — set via set_app_store_url(...) in game code');
+    }
+
     // Axon Events: fetch expected events for AppLovin
     axonExpected = [];
     axonFired = {};

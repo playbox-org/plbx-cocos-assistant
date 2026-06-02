@@ -55,6 +55,35 @@ async function extractHtmlFromZip(zipPath: string): Promise<string> {
   return indexFile.async('string');
 }
 
+/** Substrings identifying store URLs — what validators (e.g. Unity Creative
+ *  Pack) grep the raw HTML for. */
+const GOOGLE_PLAY_MARKER = 'play.google.com/store/apps/details';
+const APP_STORE_MARKERS = ['apps.apple.com/', 'itunes.apple.com/'];
+
+/**
+ * Static validator: does the BUILT HTML carry the store URLs as plaintext?
+ * Networks like Unity grep the raw markup; a URL set only in game code
+ * (set_google_play_url / set_app_store_url) is buried in the base64 asset ZIP
+ * and won't be found there — the packager mirrors it into a <head> comment,
+ * which is what this scans for. Reads the built HTML (zip-aware).
+ */
+async function buildStoreUrlPresence(
+  outputDir: string,
+  networkId: string,
+): Promise<{ google: boolean; apple: boolean }> {
+  try {
+    const file = findBuildFile(outputDir, networkId);
+    if (!file) return { google: false, apple: false };
+    const html = file.isZip ? await extractHtmlFromZip(file.path) : readFileSync(file.path, 'utf-8');
+    return {
+      google: html.includes(GOOGLE_PLAY_MARKER),
+      apple: APP_STORE_MARKERS.some((m) => html.includes(m)),
+    };
+  } catch {
+    return { google: false, apple: false };
+  }
+}
+
 function injectPreviewUtil(html: string, utilScript: string): string {
   const headIdx = html.indexOf('<head>');
   if (headIdx === -1) {
@@ -198,6 +227,22 @@ function getNetworkChecks(networkId: string, mraid: boolean): CheckDef[] {
       id: 'mraid_ready',
       label: 'MRAID ready',
       hint: 'MRAID SDK must initialize. PLBX injects mraid.js mock automatically. If not firing, check that your code listens for mraid "ready" event.',
+    });
+  }
+
+  // Store URL literals — required by networks whose validator greps the raw HTML
+  // for them (e.g. Unity Creative Pack). Evaluated statically against the built
+  // HTML server-side (see buildStoreUrlPresence / net.hasGooglePlayUrl + hasAppStoreUrl).
+  if (getNetwork(networkId)?.requiresStoreUrl) {
+    checks.push({
+      id: 'google_play_url',
+      label: 'Google Play Store URL present',
+      hint: 'The build must contain a Google Play Store URL as plaintext — validators grep the raw HTML. Set it in game code via set_google_play_url("https://play.google.com/store/apps/details?id=...") so the packager mirrors it into the build.',
+    });
+    checks.push({
+      id: 'app_store_url',
+      label: 'App Store URL present',
+      hint: 'The build must contain an App Store URL as plaintext — validators grep the raw HTML. Set it in game code via set_app_store_url("https://apps.apple.com/app/id...") so the packager mirrors it into the build.',
     });
   }
 
@@ -533,20 +578,30 @@ export async function startPreviewServer(options: {
             pangle: 'https://ads.tiktok.com/help/article/playable-ad-specifications',
           };
 
-          const result = networks.map((id) => {
-            const config = getNetwork(id);
-            const checks = getNetworkChecks(id, config?.mraid || false);
-            return {
-              id,
-              name: config?.name || id,
-              format: config?.format || 'html',
-              mraid: config?.mraid || false,
-              maxSize: config?.maxSize || 0,
-              size: getBuildSize(outputDir, id),
-              checks,
-              validatorUrl: VALIDATOR_URLS[id] || null,
-            };
-          });
+          const result = await Promise.all(
+            networks.map(async (id) => {
+              const config = getNetwork(id);
+              const checks = getNetworkChecks(id, config?.mraid || false);
+              const requiresStoreUrl = config?.requiresStoreUrl || false;
+              // Static literal checks against the built HTML (Unity Creative Pack).
+              const store = requiresStoreUrl
+                ? await buildStoreUrlPresence(outputDir, id)
+                : { google: false, apple: false };
+              return {
+                id,
+                name: config?.name || id,
+                format: config?.format || 'html',
+                mraid: config?.mraid || false,
+                maxSize: config?.maxSize || 0,
+                size: getBuildSize(outputDir, id),
+                requiresStoreUrl,
+                hasGooglePlayUrl: store.google,
+                hasAppStoreUrl: store.apple,
+                checks,
+                validatorUrl: VALIDATOR_URLS[id] || null,
+              };
+            }),
+          );
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(result));
           return;
