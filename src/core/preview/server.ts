@@ -4,6 +4,7 @@ import { existsSync, readFileSync, statSync, readdirSync } from 'fs';
 import JSZip from 'jszip';
 import { generatePreviewUtil } from './sdk-mocks';
 import { getNetwork } from '../../shared/networks';
+import { validateLauncher, LauncherCheck } from '../packager/launcher-builder';
 
 let _server: http.Server | null = null;
 let _port = 0;
@@ -81,6 +82,24 @@ async function buildStoreUrlPresence(
     };
   } catch {
     return { google: false, apple: false };
+  }
+}
+
+/**
+ * Static launcher checks for the Validate window (launcher-payload networks only).
+ * Runs the shared validateLauncher() against the production launcher.html so the
+ * window mirrors what the package-time gate enforces — wrong macro values,
+ * malformed ASSET_REVISION, relative payload, size, etc. Returns [] for non
+ * launcher-payload networks or when no launcher.html exists yet.
+ */
+function buildLauncherChecks(outputDir: string, networkId: string): LauncherCheck[] {
+  try {
+    if (getNetwork(networkId)?.format !== 'launcher-payload') return [];
+    const launcherPath = join(outputDir, networkId, 'launcher.html');
+    if (!existsSync(launcherPath)) return [];
+    return validateLauncher(readFileSync(launcherPath, 'utf-8'));
+  } catch {
+    return [];
   }
 }
 
@@ -414,6 +433,7 @@ body { background: #1a1a2e; color: #e0e0e0; font-family: -apple-system, BlinkMac
       var check = checks[key];
       var item = document.createElement('div');
       item.className = 'check-item';
+      if (check.detail && check.status === 'fail') item.title = check.detail;
       var icon = document.createElement('div');
       icon.className = 'check-icon ' + check.status;
       icon.textContent = check.status === 'pass' ? '\u2713' : check.status === 'fail' ? '\u2717' : '\u2022';
@@ -444,9 +464,12 @@ body { background: #1a1a2e; color: #e0e0e0; font-family: -apple-system, BlinkMac
 
   function loadNetwork(id) {
     currentNetwork = id;
-    // Reset checks
+    // Reset checks; drop launcher checks (lc_*) from the previously-selected network.
     var keys = Object.keys(checks);
-    for (var i = 0; i < keys.length; i++) checks[keys[i]].status = 'pending';
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i].indexOf('lc_') === 0) { delete checks[keys[i]]; continue; }
+      checks[keys[i]].status = 'pending';
+    }
 
     // Check file size
     var net = null;
@@ -456,6 +479,21 @@ body { background: #1a1a2e; color: #e0e0e0; font-family: -apple-system, BlinkMac
     if (net) {
       setCheck('file_size', net.size <= net.maxSize ? 'pass' : 'fail');
       log('File size: ' + (net.size / 1024).toFixed(1) + ' KB / ' + (net.maxSize / 1024 / 1024).toFixed(1) + ' MB max', net.size <= net.maxSize ? 'success' : 'error');
+    }
+
+    // Static launcher structural checks (launcher-payload networks, e.g. molocoV2):
+    // macro values match Moloco spec, ASSET_REVISION format, no relative payload, size.
+    // Pre-evaluated server-side — render with their pass/fail status immediately.
+    if (net && net.launcherChecks && net.launcherChecks.length) {
+      for (var lci = 0; lci < net.launcherChecks.length; lci++) {
+        var lc = net.launcherChecks[lci];
+        checks['lc_' + lc.id] = {
+          label: 'Launcher: ' + lc.label,
+          status: lc.ok ? 'pass' : 'fail',
+          detail: lc.detail || '',
+        };
+        if (!lc.ok) log('Launcher check failed: ' + lc.label + (lc.detail ? ' — ' + lc.detail : ''), 'error');
+      }
     }
 
     // Set no_external and no_errors to pass initially
@@ -587,6 +625,8 @@ export async function startPreviewServer(options: {
               const store = requiresStoreUrl
                 ? await buildStoreUrlPresence(outputDir, id)
                 : { google: false, apple: false };
+              // Static launcher structural checks (launcher-payload networks).
+              const launcherChecks = buildLauncherChecks(outputDir, id);
               return {
                 id,
                 name: config?.name || id,
@@ -598,6 +638,7 @@ export async function startPreviewServer(options: {
                 hasGooglePlayUrl: store.google,
                 hasAppStoreUrl: store.apple,
                 checks,
+                launcherChecks,
                 validatorUrl: VALIDATOR_URLS[id] || null,
               };
             }),

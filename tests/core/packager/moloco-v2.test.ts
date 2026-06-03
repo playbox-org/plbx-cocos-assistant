@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { packageForNetworks } from '../../../src/core/packager/packager';
-import { buildLauncher, fillLauncherPayloadUrl } from '../../../src/core/packager/launcher-builder';
+import {
+  buildLauncher,
+  fillLauncherPayloadUrl,
+  validateLauncher,
+  MOLOCO_V2_MACRO_SPEC,
+} from '../../../src/core/packager/launcher-builder';
 import { join } from 'path';
 import { mkdirSync, writeFileSync, existsSync, rmSync, readFileSync } from 'fs';
 
@@ -323,5 +328,59 @@ describe('plbx_html stub additions regression', () => {
       expect(result.outputSize).toBeGreaterThan(0);
       expect(result.withinLimit).toBe(true);
     }
+  });
+});
+
+describe('validateLauncher (spec compliance gate)', () => {
+  const baseOpts = {
+    assetProvider: 'Playbox',
+    assetTitle: 'Test Game',
+    assetRevision: '20260603.00',
+    assetVersion: '2.0',
+    payloadUrl: '#PAYLOAD_URL#',
+    includeSplash: false,
+  };
+
+  function fail(html: string, id: string): string | undefined {
+    return validateLauncher(html).find((c) => c.id === id && !c.ok)?.detail;
+  }
+
+  it('passes a freshly built launcher on every check', () => {
+    const checks = validateLauncher(buildLauncher(baseOpts));
+    const failed = checks.filter((c) => !c.ok);
+    expect(failed, JSON.stringify(failed)).toHaveLength(0);
+  });
+
+  it('emits exactly the Moloco spec placeholder tokens', () => {
+    const launcher = buildLauncher(baseOpts);
+    for (const m of MOLOCO_V2_MACRO_SPEC) {
+      expect(launcher).toContain(`${m.key}:"${m.placeholder}"`);
+    }
+  });
+
+  it('flags a non-spec macro value (the v0.2.4 regression)', () => {
+    const bad = buildLauncher(baseOpts).replace('#CLICK_TEMPLATE_ESC#', '#CLICK#');
+    expect(fail(bad, 'macro_values')).toContain('click');
+  });
+
+  it('flags a malformed ASSET_REVISION (ISO instead of YYYYMMDD.NN)', () => {
+    const bad = buildLauncher({ ...baseOpts, assetRevision: '2026-06-03' });
+    expect(fail(bad, 'asset_revision')).toBeTruthy();
+  });
+
+  it('accepts the #PAYLOAD_URL# placeholder and an absolute payload URL', () => {
+    expect(fail(buildLauncher(baseOpts), 'no_relative_payload')).toBeUndefined();
+    const filled = fillLauncherPayloadUrl(buildLauncher(baseOpts), 'https://cdn-f.adsmoloco.com/x/p.js');
+    expect(fail(filled, 'no_relative_payload')).toBeUndefined();
+  });
+
+  it('flags a relative payload <script src> (but not mraid.js)', () => {
+    const bad = buildLauncher(baseOpts).replace('#PAYLOAD_URL#', 'payload.js');
+    expect(fail(bad, 'no_relative_payload')).toContain('payload.js');
+  });
+
+  it('flags IMP_BEACON that is not last before </body>', () => {
+    const bad = buildLauncher(baseOpts).replace('%{IMP_BEACON}</body>', '%{IMP_BEACON}<div></div></body>');
+    expect(fail(bad, 'imp_beacon')).toBeTruthy();
   });
 });

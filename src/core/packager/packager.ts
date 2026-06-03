@@ -9,7 +9,7 @@ import { PackagerOptions, PackagerResult } from './types';
 import { packDirectoryToZip } from './asset-inliner';
 import { rewriteCocosJs, shouldRewriteCocosJs } from './cocos-js-rewriter';
 import { generateFullHtml, generatePayloadJs } from './runtime-loader';
-import { buildLauncher, fillLauncherPayloadUrl } from './launcher-builder';
+import { buildLauncher, fillLauncherPayloadUrl, validateLauncher } from './launcher-builder';
 import { resolveTemplate } from './template-resolver';
 import { extractStoreUrls } from './store-url-extractor';
 import { buildVersionBanner } from './version-banner';
@@ -134,7 +134,9 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
           options.templateVariables?.projectName ||
           deriveProjectNameFromBuildDir(options.buildDir) ||
           network.name;
-        const assetRevision = new Date().toISOString().slice(0, 10);
+        // Moloco spec v2.0 §2.2.1: ASSET_REVISION must be YYYYMMDD.NN (UTC),
+        // NN = revision within the day from 00. ISO "YYYY-MM-DD" is rejected by QA.
+        const assetRevision = new Date().toISOString().slice(0, 10).replace(/-/g, '') + '.00';
         const launcher = buildLauncher({
           assetProvider: lpConfig.assetProvider,
           assetTitle,
@@ -434,32 +436,13 @@ function deriveProjectNameFromBuildDir(buildDir: string): string | null {
  * Structural sanity checks for a Moloco V2 launcher.html.
  * Catches issues a substring search can't — element placement, ordering, etc.
  */
+// Package-time gate — delegates to the shared validateLauncher (single source of
+// truth, also drives the preview "Validate" window) and surfaces failures as
+// error strings so the build aborts on a malformed launcher.
 function validateLauncherStructure(html: string): string[] {
-  const errors: string[] = [];
-  if (!/<!--\s*ASSET_PROVIDER=/.test(html)) {
-    errors.push('metadata comment header missing ASSET_PROVIDER=');
-  }
-  if (!/<script\s+src=["']?mraid\.js["']?[^>]*>/i.test(html)) {
-    errors.push('<script src="mraid.js"> missing');
-  }
-  if (!/window\.MOLOCO_MACROS\s*=/.test(html)) {
-    errors.push('window.MOLOCO_MACROS object not declared');
-  }
-  // At least four required macros — Moloco DSP requires these key names
-  for (const macro of ['mraid_viewable', 'game_viewable', 'click', 'final_url']) {
-    if (!html.includes(macro)) {
-      errors.push(`MOLOCO_MACROS missing required key: ${macro}`);
-    }
-  }
-  if (!/%\{IMP_BEACON\}/.test(html)) {
-    errors.push('%{IMP_BEACON} placeholder missing');
-  }
-  // IMP_BEACON must sit just before </body> per spec (Moloco substitutes the
-  // tracking pixel as the last DOM hit before page unload)
-  if (!/%\{IMP_BEACON\}\s*<\/body>/i.test(html)) {
-    errors.push('%{IMP_BEACON} must be the last content before </body>');
-  }
-  return errors;
+  return validateLauncher(html)
+    .filter((c) => !c.ok)
+    .map((c) => c.detail || c.label);
 }
 
 /**

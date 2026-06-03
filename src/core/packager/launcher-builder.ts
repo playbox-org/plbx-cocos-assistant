@@ -27,6 +27,37 @@ export interface LauncherBuildOptions {
 const PAYLOAD_URL_PLACEHOLDER = '#PAYLOAD_URL#';
 
 /**
+ * Canonical Moloco V2.0 macro spec (Partner Guide §2.2.2).
+ *
+ * SINGLE SOURCE OF TRUTH: buildLauncher() generates the MOLOCO_MACROS object
+ * from this list, and validateLauncher() verifies a built launcher against it.
+ * The placeholder TOKENS are Moloco-defined — the DSP only expands these exact
+ * strings at bid time. Emitting our own tokens (the v0.2.4 bug) means the DSP
+ * never substitutes them and the launcher ships literal "#...#" → dead beacons
+ * + dead CTA. Keys are our use-case names; values are fixed by Moloco.
+ */
+export const MOLOCO_V2_MACRO_SPEC: ReadonlyArray<{ key: string; placeholder: string }> = [
+  { key: 'mraid_viewable', placeholder: '#IMP_TRACE_MRAID_VIEWABLE_ESC#' },
+  { key: 'game_viewable', placeholder: '#IMP_TRACE_GAME_VIEWABLE_ESC#' },
+  { key: 'click', placeholder: '#CLICK_TEMPLATE_ESC#' },
+  { key: 'engagement', placeholder: '#PLAYABLE_ENGAGEMENT_ESC#' },
+  { key: 'complete', placeholder: '#IMP_TRACE_COMPLETE_ESC#' },
+  { key: 'redirection', placeholder: '#PLAYABLE_REDIRECTION_ESC#' },
+  { key: 'final_url', placeholder: '#FINAL_LANDING_URL_ESC#' },
+  { key: 'start_muted', placeholder: '#START_MUTED#' },
+  { key: 'taps_for_engagement', placeholder: '#PLAYABLE_TAPS_FOR_ENGAGEMENT#' },
+  { key: 'taps_for_redirection', placeholder: '#PLAYABLE_TAPS_FOR_REDIRECTION#' },
+  { key: 'cachebuster', placeholder: '#CACHEBUSTER#' },
+  { key: 'draw_custom_close_button', placeholder: '#DRAW_CUSTOM_CLOSE_BUTTON#' },
+];
+
+/** ASSET_REVISION must be YYYYMMDD.NN (UTC) per Moloco spec §2.2.1. */
+export const ASSET_REVISION_RE = /^\d{8}\.\d{2}$/;
+
+/** Spec version this packager targets (§2.2.1 ASSET_VERSION). */
+export const MOLOCO_V2_ASSET_VERSION = '2.0';
+
+/**
  * PLBX brand mark: four circles in a diamond, swept by a rainbow gradient.
  * Minified to fit the 3 KB launcher budget — the stop list is defined once on
  * #g0 and inherited via href by #g1–#g3, which only override the gradient axis
@@ -66,24 +97,10 @@ export function buildLauncher(opts: LauncherBuildOptions): string {
     `ASSET_VERSION=${escapeHtml(opts.assetVersion)}-->`;
 
   // Moloco macros — DSP substitutes the #...# placeholders server-side at bid time.
-  // Four are validator-required (mraid_viewable, game_viewable, click, final_url);
-  // engagement/complete/redirection drive lifecycle beacons; start_muted controls audio;
-  // taps_for_engagement/redirection are per-campaign thresholds the adapter reads at tap
-  // time; cachebuster + draw_custom_close_button are DSP-side toggles.
+  // Generated from MOLOCO_V2_MACRO_SPEC (single source of truth; see validateLauncher).
   const macros =
     'window.MOLOCO_MACROS={' +
-    'mraid_viewable:"#MRAID_VIEWABLE#",' +
-    'game_viewable:"#GAME_VIEWABLE#",' +
-    'click:"#CLICK#",' +
-    'engagement:"#ENGAGEMENT#",' +
-    'complete:"#COMPLETE#",' +
-    'redirection:"#REDIRECTION#",' +
-    'final_url:"#FINAL_URL#",' +
-    'start_muted:"#START_MUTED#",' +
-    'taps_for_engagement:"#TAPS_FOR_ENGAGEMENT#",' +
-    'taps_for_redirection:"#TAPS_FOR_REDIRECTION#",' +
-    'cachebuster:"#CACHEBUSTER#",' +
-    'draw_custom_close_button:"#DRAW_CLOSE#"' +
+    MOLOCO_V2_MACRO_SPEC.map((m) => `${m.key}:"${m.placeholder}"`).join(',') +
     '};';
 
   const baseStyle = 'html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden}';
@@ -146,4 +163,110 @@ export function buildLauncher(opts: LauncherBuildOptions): string {
  */
 export function fillLauncherPayloadUrl(launcherHtml: string, payloadUrl: string): string {
   return launcherHtml.split(PAYLOAD_URL_PLACEHOLDER).join(payloadUrl);
+}
+
+/** One launcher validation result. `detail` is filled only on failure. */
+export interface LauncherCheck {
+  id: string;
+  label: string;
+  ok: boolean;
+  detail?: string;
+}
+
+/** Strict launcher byte ceiling (Moloco spec §2.1). */
+export const LAUNCHER_MAX_BYTES = 3 * 1024;
+
+/**
+ * Validate a built Moloco V2 launcher against spec v2.0. Shared by the package-time
+ * gate (validateLauncherStructure → build aborts on failure) and the preview
+ * "Validate" window (rendered as a pass/fail checklist).
+ *
+ * Catches the regressions this validator previously missed: wrong macro *values*
+ * (only keys were checked before), malformed ASSET_REVISION, and a relative
+ * payload <script src> (breaks once Moloco serves the launcher standalone).
+ *
+ * @param launcherHtml the built launcher.html / launcher-final.html
+ */
+export function validateLauncher(launcherHtml: string): LauncherCheck[] {
+  const html = launcherHtml;
+  const checks: LauncherCheck[] = [];
+  const add = (id: string, label: string, ok: boolean, detail?: string) =>
+    checks.push({ id, label, ok, detail: ok ? undefined : detail });
+
+  // --- Metadata header (§2.2.1) ---
+  add('asset_provider', 'ASSET_PROVIDER metadata present', /<!--[\s\S]*?ASSET_PROVIDER=/.test(html),
+    'metadata comment header missing ASSET_PROVIDER=');
+
+  add('asset_version', `ASSET_VERSION=${MOLOCO_V2_ASSET_VERSION}`,
+    new RegExp(`ASSET_VERSION=${MOLOCO_V2_ASSET_VERSION.replace('.', '\\.')}\\b`).test(html),
+    `ASSET_VERSION must be ${MOLOCO_V2_ASSET_VERSION}`);
+
+  const revMatch = html.match(/ASSET_REVISION=([^\s;>-]+)/);
+  const revVal = revMatch ? revMatch[1] : '';
+  add('asset_revision', 'ASSET_REVISION format YYYYMMDD.NN',
+    !!revVal && ASSET_REVISION_RE.test(revVal),
+    `ASSET_REVISION="${revVal}" must match YYYYMMDD.NN (§2.2.1)`);
+
+  // --- Loader (§2.2.2 / §2.2.3) ---
+  add('mraid_js', '<script src="mraid.js"> present', /<script\s+src=["']?mraid\.js["']?[^>]*>/i.test(html),
+    '<script src="mraid.js"> missing');
+
+  add('macros_declared', 'MOLOCO_MACROS declared', /MOLOCO_MACROS\s*=/.test(html),
+    'window.MOLOCO_MACROS object not declared');
+
+  // Macro VALUES — the core fix. Each key must carry Moloco's exact placeholder
+  // token (not just be present). A wrong/invented value never expands at bid time.
+  const wrongMacros: string[] = [];
+  for (const m of MOLOCO_V2_MACRO_SPEC) {
+    // Match  key : "placeholder"  with flexible quoting/spacing.
+    const re = new RegExp(`["']?${m.key}["']?\\s*:\\s*["']${escapeRegExp(m.placeholder)}["']`);
+    if (!re.test(html)) wrongMacros.push(m.key);
+  }
+  add('macro_values', 'All macros use Moloco spec placeholders', wrongMacros.length === 0,
+    `macro key(s) missing or with non-spec value: ${wrongMacros.join(', ')}`);
+
+  // --- Impression beacon (§2.2.4) ---
+  add('imp_beacon', '%{IMP_BEACON} present + last before </body>',
+    /%\{IMP_BEACON\}\s*<\/body>/i.test(html),
+    /%\{IMP_BEACON\}/.test(html)
+      ? '%{IMP_BEACON} must be the last content before </body>'
+      : '%{IMP_BEACON} placeholder missing');
+
+  // --- Payload reference: must NOT be a relative path (§2.3 / hosting). The
+  // launcher ships standalone — a relative payload .js has no sibling to resolve.
+  // Allowed: #PAYLOAD_URL# placeholder, an absolute http(s) URL, or inline (no src).
+  // mraid.js is the one permitted relative script and is excluded here.
+  const relPayload = findRelativePayloadSrc(html);
+  add('no_relative_payload', 'No relative payload script', relPayload === null,
+    `payload <script src="${relPayload}"> is relative — use absolute CDN URL or #PAYLOAD_URL#`);
+
+  // --- Size ceiling (§2.1). Only meaningful for the production launcher (placeholder
+  // or absolute URL); the inline launcher-local is exempt and skipped by the caller.
+  const bytes = Buffer.byteLength(html, 'utf-8');
+  add('size', `Launcher < ${LAUNCHER_MAX_BYTES} B`, bytes <= LAUNCHER_MAX_BYTES,
+    `launcher is ${bytes} B, exceeds ${LAUNCHER_MAX_BYTES} B`);
+
+  return checks;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Returns the first relative <script src> that looks like a payload (a .js that is
+ * not mraid.js, not the #PAYLOAD_URL# placeholder, not an absolute URL), or null.
+ */
+function findRelativePayloadSrc(html: string): string | null {
+  const re = /<script[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const src = m[1];
+    if (src === 'mraid.js') continue;
+    if (src === PAYLOAD_URL_PLACEHOLDER) continue;
+    if (/^https?:\/\//i.test(src)) continue;
+    if (/^data:/i.test(src)) continue;
+    if (/\.js(\?|$)/i.test(src)) return src;
+  }
+  return null;
 }
