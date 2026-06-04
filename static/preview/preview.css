@@ -534,6 +534,7 @@ h3 {
   padding: 5px 0;
   font-size: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  cursor: help;
 }
 
 .axon-verdict .icon {

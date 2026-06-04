@@ -219,16 +219,27 @@
   var AXON_MIN_CHALLENGE_MS = 50;
   function isChallengeEvt(n) { return n.indexOf('CHALLENGE_') === 0; }
 
+  var AXON_HINTS = {
+    all_conformant: 'All Axon events fired with valid names, in lifecycle order, deduped, and correctly spaced \u2014 per the AppLovin Axon spec.',
+    displayed: 'Fire ALPlayableAnalytics.trackEvent(\'DISPLAYED\') once the creative is shown and ready for interaction. It is the only mandatory Axon event.',
+    no_unknown: 'Use only the 12 predefined Axon event names \u2014 AppLovin does not track custom names. Rename or remove non-spec events.',
+    loaded: 'LOADING and LOADED are a pair \u2014 fire LOADING when in-playable loading starts and LOADED when it finishes, or fire neither.',
+    challenge_completion: 'After CHALLENGE_STARTED, fire one of CHALLENGE_SOLVED / CHALLENGE_FAILED / CHALLENGE_RETRY when the challenge resolves.',
+    order: 'Fire events in lifecycle order: LOADING \u2192 LOADED \u2192 DISPLAYED \u2192 CHALLENGE_* \u2192 CHALLENGE_SOLVED \u2192 ENDCARD_SHOWN. CTA_CLICKED may fire any time after DISPLAYED.',
+    dedup: 'Fire-once events (LOADING, LOADED, DISPLAYED, ENDCARD_SHOWN, CHALLENGE_STARTED, CTA_CLICKED) must each fire exactly once per session.',
+    challenge_spacing: 'Leave \u226550ms between CHALLENGE_* events \u2014 AppLovin forbids simultaneous dispatch; each must mark a distinct gameplay moment.',
+  };
+
   function computeAxonChecks() {
     // Before anything fires: a pending checklist so the user sees what's checked.
     if (axonSequence.length === 0) {
       return [
-        { id: 'all_conformant', label: 'Waiting for events\u2026', status: 'pending' },
-        { id: 'displayed', label: 'DISPLAYED fired (required)', status: 'pending' },
-        { id: 'no_unknown', label: 'Valid spec event names', status: 'pending' },
-        { id: 'order', label: 'Lifecycle call order', status: 'pending' },
-        { id: 'dedup', label: 'No duplicate fire-once events', status: 'pending' },
-        { id: 'challenge_spacing', label: 'CHALLENGE_* \u226550ms apart', status: 'pending' },
+        { id: 'all_conformant', label: 'Waiting for events\u2026', status: 'pending', hint: AXON_HINTS.all_conformant },
+        { id: 'displayed', label: 'DISPLAYED fired (required)', status: 'pending', hint: AXON_HINTS.displayed },
+        { id: 'no_unknown', label: 'Valid spec event names', status: 'pending', hint: AXON_HINTS.no_unknown },
+        { id: 'order', label: 'Lifecycle call order', status: 'pending', hint: AXON_HINTS.order },
+        { id: 'dedup', label: 'No duplicate fire-once events', status: 'pending', hint: AXON_HINTS.dedup },
+        { id: 'challenge_spacing', label: 'CHALLENGE_* \u226550ms apart', status: 'pending', hint: AXON_HINTS.challenge_spacing },
       ];
     }
 
@@ -239,20 +250,22 @@
     AXON_SPEC_EVENTS.forEach(function(e) { specSet[e] = true; });
 
     checks.push({ id: 'displayed', label: 'DISPLAYED fired (required)', ok: !!has['DISPLAYED'], level: 'warn',
-      detail: 'DISPLAYED is the only mandatory Axon event.' });
+      detail: 'Not fired yet.', hint: AXON_HINTS.displayed });
 
     var unknown = Object.keys(has).filter(function(e) { return !specSet[e]; });
     checks.push({ id: 'no_unknown', label: 'Valid spec event names', ok: unknown.length === 0, level: 'error',
-      detail: 'AppLovin rejects custom event names: ' + unknown.join(', ') });
+      detail: 'AppLovin rejects custom event names: ' + unknown.join(', '), hint: AXON_HINTS.no_unknown });
 
     if (has['LOADING'] || has['LOADED']) {
+      var loadedFiredSide = has['LOADING'] ? 'LOADING' : 'LOADED';
+      var loadedMissingSide = has['LOADING'] ? 'LOADED' : 'LOADING';
       checks.push({ id: 'loaded', label: 'LOADING and LOADED both fired', ok: !!has['LOADING'] && !!has['LOADED'], level: 'warn',
-        detail: 'LOADING and LOADED are a pair — fire both (LOADING → LOADED → DISPLAYED) or neither.' });
+        detail: 'Only ' + loadedFiredSide + ' fired \u2014 ' + loadedMissingSide + ' missing.', hint: AXON_HINTS.loaded });
     }
     if (has['CHALLENGE_STARTED']) {
       var done = AXON_CHALLENGE_COMPLETION.some(function(e) { return has[e]; });
       checks.push({ id: 'challenge_completion', label: 'Challenge completion fired', ok: done, level: 'warn',
-        detail: 'Fire one of CHALLENGE_SOLVED / FAILED / RETRY.' });
+        detail: 'CHALLENGE_STARTED fired but no completion event.', hint: AXON_HINTS.challenge_completion });
     }
 
     var firstIdx = {};
@@ -264,13 +277,13 @@
       }
     });
     checks.push({ id: 'order', label: 'Lifecycle call order', ok: ov.length === 0, level: 'warn',
-      detail: 'out of order \u2014 ' + ov.join(', ') });
+      detail: 'out of order \u2014 ' + ov.join(', '), hint: AXON_HINTS.order });
 
     var counts = {};
     axonSequence.forEach(function(e) { counts[e] = (counts[e] || 0) + 1; });
     var dups = AXON_DEDUP_ONCE.filter(function(e) { return counts[e] > 1; });
     checks.push({ id: 'dedup', label: 'Fire-once events fired once', ok: dups.length === 0, level: 'warn',
-      detail: 'fired more than once \u2014 ' + dups.map(function(e) { return e + '\u00d7' + counts[e]; }).join(', ') });
+      detail: 'fired more than once \u2014 ' + dups.map(function(e) { return e + '\u00d7' + counts[e]; }).join(', '), hint: AXON_HINTS.dedup });
 
     var chal = [];
     axonSequence.forEach(function(e, i) { if (isChallengeEvt(e)) chal.push({ e: e, ts: axonTimestamps[i] }); });
@@ -281,7 +294,7 @@
         if (dt < AXON_MIN_CHALLENGE_MS) close.push(chal[i - 1].e + '\u2192' + chal[i].e + ' ' + Math.round(dt) + 'ms');
       }
       checks.push({ id: 'challenge_spacing', label: 'CHALLENGE_* \u226550ms apart', ok: close.length === 0, level: 'warn',
-        detail: 'fired too close (no simultaneous CHALLENGE_*) \u2014 ' + close.join(', ') });
+        detail: 'fired too close (no simultaneous CHALLENGE_*) \u2014 ' + close.join(', '), hint: AXON_HINTS.challenge_spacing });
     }
 
     var failures = checks.filter(function(c) { return !c.ok; });
@@ -289,7 +302,8 @@
       label: failures.length === 0 ? 'All events conform to spec' : (failures.length + ' spec issue(s)'),
       ok: failures.length === 0,
       level: failures.some(function(c) { return c.level === 'error'; }) ? 'error' : 'warn',
-      detail: failures.map(function(c) { return c.label; }).join('; ') });
+      detail: failures.map(function(c) { return c.label; }).join('; '),
+      hint: AXON_HINTS.all_conformant });
     return checks;
   }
 
@@ -308,6 +322,7 @@
       var status = axonCheckStatus(check);
       var div = document.createElement('div');
       div.className = 'axon-verdict ' + status + (check.id === 'all_conformant' ? ' aggregate' : '');
+      if (check.hint) div.title = check.hint;
       var icon = document.createElement('span');
       icon.className = 'icon';
       icon.textContent = status === 'pass' ? '\u2713' : status === 'fail' ? '\u2717' : status === 'pending' ? '\u00b7' : '!';
@@ -495,6 +510,15 @@
         net.hasGooglePlayUrl ? 'Found in build' : 'MISSING — set via set_google_play_url(...) in game code');
       setCheck('app_store_url', net.hasAppStoreUrl ? 'pass' : 'fail',
         net.hasAppStoreUrl ? 'Found in build' : 'MISSING — set via set_app_store_url(...) in game code');
+    }
+
+    // Regional/localization params in the store URL — should be absent for global
+    // delivery (all networks). The check def exists only when the build has a store
+    // URL; setCheck is a no-op otherwise.
+    if (net && net.regional && net.regional.length) {
+      setCheck('store_url_regional', 'warn', net.regional.join('; '));
+    } else {
+      setCheck('store_url_regional', 'pass', 'No regional params');
     }
 
     // Axon Events (AppLovin): runtime-fired events are checked client-side

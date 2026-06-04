@@ -339,6 +339,13 @@ body,
   line-height: 1.4;
 }
 
+.form-warning {
+  color: #f87171;
+  font-size: 11px;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
 .form-select {
   background-color: #3a3a3a;
   border: 1px solid #555555;

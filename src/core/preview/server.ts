@@ -6,6 +6,7 @@ import { generatePreviewUtil } from './sdk-mocks';
 import { getNetwork } from '../../shared/networks';
 import { validateLauncher, LauncherCheck } from '../packager/launcher-builder';
 import { AXON_EVENTS } from '../packager/axon-events';
+import { detectRegionalParams } from '../packager/store-url-extractor';
 
 let _server: http.Server | null = null;
 let _port = 0;
@@ -83,6 +84,39 @@ async function buildStoreUrlPresence(
     };
   } catch {
     return { google: false, apple: false };
+  }
+}
+
+/** Full store-URL literals in the built HTML (the plaintext head-comment mirror —
+ *  base64-zipped game code isn't matched). */
+const STORE_URL_RE =
+  /https?:\/\/[^\s"'<>)\\]*(?:play\.google\.com|apps\.apple\.com|itunes\.apple\.com)[^\s"'<>)\\]*/gi;
+
+/**
+ * Static validator: do the build's store URLs carry regional/localization params
+ * (gl/hl, Apple /us/ country path, …)? They should be absent so the creative
+ * serves globally. `present` = the build has any store URL at all (so the preview
+ * shows the check as a pass when clean, instead of a silent N/A). Reads the built
+ * HTML (zip-aware); mirrors the package-time regional gate (packager.ts).
+ */
+async function buildStoreUrlRegional(
+  outputDir: string,
+  networkId: string,
+): Promise<{ present: boolean; warnings: string[] }> {
+  try {
+    const file = findBuildFile(outputDir, networkId);
+    if (!file) return { present: false, warnings: [] };
+    const html = file.isZip ? await extractHtmlFromZip(file.path) : readFileSync(file.path, 'utf-8');
+    const urls = Array.from(new Set(html.match(STORE_URL_RE) || []));
+    if (urls.length === 0) return { present: false, warnings: [] };
+    const warnings: string[] = [];
+    for (const u of urls) {
+      const params = detectRegionalParams(u);
+      if (params.length) warnings.push(`${u} → ${params.join(', ')}`);
+    }
+    return { present: true, warnings };
+  } catch {
+    return { present: false, warnings: [] };
   }
 }
 
@@ -615,6 +649,17 @@ export async function startPreviewServer(options: {
                 : { google: false, apple: false };
               // Static launcher structural checks (launcher-payload networks).
               const launcherChecks = buildLauncherChecks(outputDir, id);
+              // Regional/localization params in the store URL — applies to every
+              // network (the creative must serve globally). Add the checklist line
+              // only when the build actually carries a store URL.
+              const regional = await buildStoreUrlRegional(outputDir, id);
+              if (regional.present) {
+                checks.push({
+                  id: 'store_url_regional',
+                  label: 'No regional store-URL params',
+                  hint: 'Remove regional/localization parameters (gl/hl, Apple /us/ country path, …) from the store URL — the creative must serve globally. Set a clean URL via set_google_play_url / set_app_store_url.',
+                });
+              }
               return {
                 id,
                 name: config?.name || id,
@@ -625,6 +670,7 @@ export async function startPreviewServer(options: {
                 requiresStoreUrl,
                 hasGooglePlayUrl: store.google,
                 hasAppStoreUrl: store.apple,
+                regional: regional.warnings,
                 checks,
                 launcherChecks,
                 // Canonical Axon event spec — the client renders these as the

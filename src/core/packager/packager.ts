@@ -128,7 +128,10 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
       if (networkId === 'applovin') {
         for (const c of validateAxonEvents(axonUsage)) {
           if (c.ok) continue;
-          const w = `AppLovin Axon events — ${c.label}: ${c.detail}`;
+          // Use the detail (a self-contained problem statement); the label is the
+          // desired-state name ("Axon analytics integrated") and reads as a
+          // contradiction when prefixed to a failure ("…integrated: No … found").
+          const w = `AppLovin Axon events — ${c.detail || c.label}`;
           warnings.push(w);
           console.warn(`[plbx] ${w}`);
           options.onProgress?.(networkId, 'processing', w);

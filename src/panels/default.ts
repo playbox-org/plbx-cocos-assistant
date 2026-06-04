@@ -100,6 +100,7 @@ module.exports = Editor.Panel.define({
     pkgStatus:        '#pkg-status',
     pkgStoreIos:      '#pkg-store-ios',
     pkgStoreAndroid:  '#pkg-store-android',
+    pkgStoreRegional: '#pkg-store-regional',
     pkgBuildDir:      '#pkg-build-dir',
     pkgOutputDir:     '#pkg-output-dir',
     pkgResultsTbody:  '#pkg-results-tbody',
@@ -225,6 +226,7 @@ module.exports = Editor.Panel.define({
       const root = anchor?.getRootNode?.() as ShadowRoot | Document | null;
 
       const apply = (lang: string) => {
+        this._lang = lang;
         if (!root) return;
         root.querySelectorAll('[data-i18n]').forEach((el: any) => {
           const key = el.getAttribute('data-i18n');
@@ -291,12 +293,12 @@ module.exports = Editor.Panel.define({
         const btn = this.$.settingsCheck as HTMLButtonElement;
         const statusEl = this.$.settingsCheckStatus as HTMLElement;
         btn.disabled = true;
-        if (statusEl) statusEl.textContent = 'Checking…';
+        if (statusEl) statusEl.textContent = translate(this._lang || 'en', 'settings.checking');
         try {
           const res = await Editor.Message.request('plbx-cocos-extension', 'checkFreshness', true);
           if (statusEl) statusEl.textContent = res?.status || '—';
         } catch {
-          if (statusEl) statusEl.textContent = 'Check failed';
+          if (statusEl) statusEl.textContent = translate(this._lang || 'en', 'settings.checkFailed');
         } finally {
           btn.disabled = false;
         }
@@ -363,8 +365,8 @@ module.exports = Editor.Panel.define({
 
         const startUpdate = () => {
           btn.disabled = true;
-          btn.textContent = 'Updating…';
-          setBar('Updating…  starting', 'warn');
+          btn.textContent = translate(this._lang || 'en', 'settings.updating');
+          setBar(translate(this._lang || 'en', 'settings.updating') + '  starting', 'warn');
           Editor.Message.request('plbx-cocos-extension', 'startUpdate').catch(() => {});
           const poll = setInterval(async () => {
             let state: any;
@@ -385,11 +387,11 @@ module.exports = Editor.Panel.define({
             setBar((result.ok ? '✓ ' : '✗ ') + result.message, result.ok ? 'info' : 'warn');
             if (result.ok) {
               mode = 'restart';
-              btn.textContent = 'Restart editor';
+              btn.textContent = translate(this._lang || 'en', 'settings.restartEditor');
               promptRestart(); // auto-prompt once on success
             } else {
               mode = 'update';
-              btn.textContent = 'Retry';
+              btn.textContent = translate(this._lang || 'en', 'settings.retry');
             }
           }, 1000);
         };
@@ -417,7 +419,7 @@ module.exports = Editor.Panel.define({
 
       btnAnalyze?.addEventListener('click', async () => {
         btnAnalyze.disabled = true;
-        if (scanStatus) scanStatus.textContent = 'Scanning…';
+        if (scanStatus) scanStatus.textContent = translate(this._lang || 'en', 'status.scanning');
         try {
           const report = await Editor.Message.request('plbx-cocos-extension', 'scan-assets-hybrid');
           this._reportData = report;
@@ -425,7 +427,7 @@ module.exports = Editor.Panel.define({
           if (scanStatus) scanStatus.textContent = '';
           this._populateCompressTable(report);
         } catch (e: any) {
-          if (scanStatus) scanStatus.textContent = 'Error: ' + (e?.message || e);
+          if (scanStatus) scanStatus.textContent = translate(this._lang || 'en', 'status.error').replace('{msg}', String(e?.message || e));
         } finally {
           btnAnalyze.disabled = false;
         }
@@ -532,7 +534,7 @@ module.exports = Editor.Panel.define({
         td.colSpan = 6;
         const es = document.createElement('div');
         es.className = 'empty-state';
-        es.textContent = 'No assets found';
+        es.textContent = translate(this._lang || 'en', 'buildReport.noAssetsFound');
         td.appendChild(es);
         tr.appendChild(td);
         tbody.appendChild(tr);
@@ -564,9 +566,9 @@ module.exports = Editor.Panel.define({
         const displayBuildSize = (asset as any).actualBuildSize ?? asset.buildSize ?? asset.sourceSize;
         tdBuild.textContent = fmt(displayBuildSize);
         if ((asset as any).actualBuildSize != null) {
-          tdBuild.title = 'Real size from build';
+          tdBuild.title = translate(this._lang || 'en', 'buildReport.realSizeTitle');
         } else {
-          tdBuild.title = 'Estimated';
+          tdBuild.title = translate(this._lang || 'en', 'buildReport.estimatedTitle');
         }
 
         const tdExt = document.createElement('td');
@@ -580,15 +582,15 @@ module.exports = Editor.Panel.define({
         if (status === 'confirmed') {
           tdStatus.textContent = '✓';
           tdStatus.style.color = '#4caf50';
-          tdStatus.title = 'Confirmed in build';
+          tdStatus.title = translate(this._lang || 'en', 'buildReport.confirmedTitle');
         } else if (status === 'predicted') {
           tdStatus.textContent = '~';
           tdStatus.style.color = '#ff9800';
-          tdStatus.title = 'Predicted (referenced by scene)';
+          tdStatus.title = translate(this._lang || 'en', 'buildReport.predictedTitle');
         } else {
           tdStatus.textContent = '○';
           tdStatus.style.color = '#999';
-          tdStatus.title = 'Not used in build';
+          tdStatus.title = translate(this._lang || 'en', 'buildReport.unusedTitle');
         }
 
         tr.appendChild(tdName);
@@ -625,7 +627,7 @@ module.exports = Editor.Panel.define({
 
       // Update title with total
       const total = report.totalActualBuildSize ?? 0;
-      if (bdTitle) bdTitle.textContent = `Build Details · ${fmt(total)}`;
+      if (bdTitle) bdTitle.textContent = translate(this._lang || 'en', 'buildReport.buildDetailsTitle').replace('{size}', fmt(total));
 
       // Wire collapse toggle once
       if (header && !header.dataset['wired']) {
@@ -690,7 +692,7 @@ module.exports = Editor.Panel.define({
 
       const sectionLabel = document.createElement('div');
       sectionLabel.className = 'bd-section-label';
-      sectionLabel.textContent = 'Packed HTML per network';
+      sectionLabel.textContent = translate(this._lang || 'en', 'buildReport.packedHtmlPerNetwork');
       bdHtmls.appendChild(sectionLabel);
 
       const maxHtmlSize = Math.max(...htmls.map((h: any) => h.size), 1);
@@ -724,7 +726,7 @@ module.exports = Editor.Panel.define({
         if (overLimit) {
           const warn = document.createElement('span');
           warn.className = 'bd-html-warn';
-          warn.textContent = '⚠ >5MB';
+          warn.textContent = translate(this._lang || 'en', 'buildReport.overSizeWarning');
           row.appendChild(warn);
         }
 
@@ -756,8 +758,8 @@ module.exports = Editor.Panel.define({
       Editor.Message.request('plbx-cocos-extension', 'check-ffmpeg').then((ok: boolean) => {
         if (ffmpegStatus) {
           ffmpegStatus.textContent = ok
-            ? 'FFmpeg: available (audio compression enabled)'
-            : 'FFmpeg: not found (audio compression disabled)';
+            ? translate(this._lang || 'en', 'compress.ffmpegAvailable')
+            : translate(this._lang || 'en', 'compress.ffmpegMissing');
           ffmpegStatus.style.color = ok ? '#4caf50' : '#ff9800';
         }
       }).catch((e: any) => { console.warn('[plbx]', e); });
@@ -844,7 +846,7 @@ module.exports = Editor.Panel.define({
         td.colSpan = 7;
         const es = document.createElement('div');
         es.className = 'empty-state';
-        es.textContent = 'No compressible assets found';
+        es.textContent = translate(this._lang || 'en', 'buildReport.noCompressibleAssets');
         td.appendChild(es);
         tr.appendChild(td);
         tbody.appendChild(tr);
@@ -887,7 +889,7 @@ module.exports = Editor.Panel.define({
         const tdAction = document.createElement('td');
         const btn = document.createElement('button');
         btn.className = 'btn btn-small';
-        btn.textContent = 'Compress';
+        btn.textContent = translate(this._lang || 'en', 'compress.compressBtn');
         btn.addEventListener('click', () => {
           const format  = (this.$.compressFormat as HTMLSelectElement)?.value ?? 'webp';
           const quality = parseInt((this.$.compressQuality as HTMLInputElement)?.value ?? '80', 10);
@@ -990,7 +992,7 @@ module.exports = Editor.Panel.define({
       const isAudio = /\.(mp3|ogg|wav|m4a)$/i.test(asset.name ?? '');
 
       const title = this.$.previewTitle as HTMLElement;
-      if (title) title.textContent = 'Preview: ' + (asset.name ?? '\u2014');
+      if (title) title.textContent = translate(this._lang || 'en', 'compress.previewTitle').replace('{name}', asset.name ?? '\u2014');
 
       const mainFormat  = (this.$.compressFormat as HTMLSelectElement)?.value ?? 'webp';
       const mainQuality = (this.$.compressQuality as HTMLInputElement)?.value ?? '80';
@@ -1017,7 +1019,7 @@ module.exports = Editor.Panel.define({
       const origWrap = this.$.previewOrigWrap as HTMLElement;
       const origMeta = this.$.previewOrigMeta as HTMLElement;
       if (origWrap) clearChildren(origWrap);
-      if (origMeta) origMeta.textContent = 'Loading...';
+      if (origMeta) origMeta.textContent = translate(this._lang || 'en', 'compress.loading');
 
       overlay.style.display = 'flex';
 
@@ -1045,7 +1047,7 @@ module.exports = Editor.Panel.define({
         }
       } catch (e: any) {
         console.warn('[plbx] preview original load error:', e);
-        if (origMeta) origMeta.textContent = 'Failed to load';
+        if (origMeta) origMeta.textContent = translate(this._lang || 'en', 'compress.failedToLoad');
       }
 
       this._updatePreview();
@@ -1069,7 +1071,7 @@ module.exports = Editor.Panel.define({
         });
       }
       if (spinner) spinner.style.display = '';
-      if (compMeta) compMeta.textContent = 'Compressing...';
+      if (compMeta) compMeta.textContent = translate(this._lang || 'en', 'compress.compressing');
 
       try {
         let result: any;
@@ -1108,7 +1110,7 @@ module.exports = Editor.Panel.define({
         }
       } catch (e: any) {
         if (spinner) spinner.style.display = 'none';
-        if (compMeta) compMeta.textContent = 'Error: ' + (e?.message ?? e);
+        if (compMeta) compMeta.textContent = translate(this._lang || 'en', 'compress.error').replace('{msg}', String(e?.message ?? e));
         console.warn('[plbx] preview compress error:', e);
       }
     },
@@ -1142,7 +1144,7 @@ module.exports = Editor.Panel.define({
       const quality = parseInt((this.$.previewQuality as HTMLInputElement)?.value ?? '80', 10);
 
       const applyBtn = this.$.previewApply as HTMLButtonElement;
-      if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = 'Applying...'; }
+      if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = translate(this._lang || 'en', 'compress.applying'); }
 
       try {
         let result: any;
@@ -1169,7 +1171,7 @@ module.exports = Editor.Panel.define({
       } catch (e: any) {
         console.warn('[plbx] preview apply error:', e);
       } finally {
-        if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'Apply'; }
+        if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = translate(this._lang || 'en', 'compress.applyBtn'); }
       }
     },
 
@@ -1249,7 +1251,7 @@ module.exports = Editor.Panel.define({
         }
       }).catch((e: any) => {
         console.warn('[plbx]', e);
-        if (pkgStatus) pkgStatus.textContent = 'Could not load networks';
+        if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.couldNotLoadNetworks');
       });
 
       // --- More networks toggle ---
@@ -1307,7 +1309,7 @@ module.exports = Editor.Panel.define({
           if (key[0] === key[0].toUpperCase() && key[0] !== key[0].toLowerCase()) return vals.cap;
           return vals.lower;
         });
-        templatePreview.textContent = 'Preview: ' + preview;
+        templatePreview.textContent = translate(this._lang || 'en', 'package.tplPreview').replace('{preview}', preview);
 
         // Detect user variables
         const allVars = (tmpl.match(/\{(\w+)\}/g) || []).map((v: string) => v.slice(1, -1));
@@ -1324,7 +1326,7 @@ module.exports = Editor.Panel.define({
             input.type = 'text';
             input.className = 'form-input';
             input.dataset.templateVar = varName;
-            input.placeholder = `Value for {${varName}}`;
+            input.placeholder = translate(this._lang || 'en', 'package.varPlaceholder').replace('{var}', varName);
             group.appendChild(label);
             group.appendChild(input);
             userVarsContainer.appendChild(group);
@@ -1383,10 +1385,24 @@ module.exports = Editor.Panel.define({
           if (iosInput) iosInput.value = '';
           return;
         }
+        const regionalEl = this.$.pkgStoreRegional as HTMLElement | null;
         Editor.Message.request('plbx-cocos-extension', 'detect-store-urls', dir)
           .then((res: any) => {
             if (androidInput) androidInput.value = res?.googlePlayUrl ?? '';
             if (iosInput) iosInput.value = res?.appStoreUrl ?? '';
+            // Regional/localization params in the store URL — flag inline (should
+            // be absent so the creative serves globally; same rule the packager warns on).
+            const regional: string[] = Array.isArray(res?.regional) ? res.regional : [];
+            if (regionalEl) {
+              if (regional.length) {
+                regionalEl.textContent =
+                  '⚠ ' + translate(this._lang || 'en', 'package.storeUrlRegional') + ': ' + regional.join('; ');
+                regionalEl.style.display = '';
+              } else {
+                regionalEl.textContent = '';
+                regionalEl.style.display = 'none';
+              }
+            }
           })
           .catch((e: any) => { console.warn('[plbx]', e); });
       };
@@ -1466,7 +1482,7 @@ module.exports = Editor.Panel.define({
             .then((rows: any[]) => {
               if (Array.isArray(rows) && rows.length > 0) {
                 this._renderPackageResults(rows);
-                if (pkgStatus) pkgStatus.textContent = `${rows.length} existing build${rows.length === 1 ? '' : 's'}`;
+                if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.existingBuilds').replace('{n}', String(rows.length));
                 // _renderPackageResults clears the warnings box; re-run the Axon
                 // advisory so it survives the existing-builds render.
                 refreshAxonAdvisory(settings?.buildDir, settings?.selectedNetworks);
@@ -1510,9 +1526,9 @@ module.exports = Editor.Panel.define({
           contentPkg?.querySelectorAll('input[name="network"]:checked') ?? []
         ).map((cb: any) => (cb as HTMLInputElement).value);
 
-        if (!buildDir)        { if (pkgStatus) pkgStatus.textContent = 'Set build directory first';    return; }
-        if (!outputDir)       { if (pkgStatus) pkgStatus.textContent = 'Set output directory first';   return; }
-        if (!selected.length) { if (pkgStatus) pkgStatus.textContent = 'Select at least one network'; return; }
+        if (!buildDir)        { if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.setBuildDir');    return; }
+        if (!outputDir)       { if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.setOutputDir');   return; }
+        if (!selected.length) { if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.selectNetwork'); return; }
 
         await Editor.Message.request('plbx-cocos-extension', 'save-settings', {
           selectedNetworks: selected,
@@ -1524,7 +1540,7 @@ module.exports = Editor.Panel.define({
         }).catch((e: any) => { console.warn('[plbx]', e); });
 
         btnBuildAll.disabled = true;
-        if (pkgStatus) pkgStatus.textContent = 'Packing…';
+        if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.packing');
 
         const config = { orientation };
         try {
@@ -1535,10 +1551,10 @@ module.exports = Editor.Panel.define({
           const results = Array.isArray(response) ? response : response?.results ?? [];
           this._renderPackageResults(results);
           refreshDetectedStoreUrls(buildDir);
-          if (pkgStatus) pkgStatus.textContent = 'Pack complete';
+          if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.packComplete');
           if (btnPreview) btnPreview.style.display = '';
         } catch (e: any) {
-          if (pkgStatus) pkgStatus.textContent = 'Error: ' + (e?.message ?? e);
+          if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.error').replace('{msg}', String(e?.message ?? e));
         } finally {
           btnBuildAll.disabled = false;
         }
@@ -1550,7 +1566,7 @@ module.exports = Editor.Panel.define({
         try {
           await Editor.Message.request('plbx-cocos-extension', 'open-folder', outputDir);
         } catch (e: any) {
-          if (pkgStatus) pkgStatus.textContent = 'Error: ' + (e?.message ?? e);
+          if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.error').replace('{msg}', String(e?.message ?? e));
         }
       });
 
@@ -1561,14 +1577,14 @@ module.exports = Editor.Panel.define({
           const networkIds = Array.from(
             contentPkg?.querySelectorAll('input[name="network"]:checked') ?? []
           ).map((cb: any) => (cb as HTMLInputElement).value);
-          if (!outputDir) { if (pkgStatus) pkgStatus.textContent = 'Set output directory first'; return; }
-          if (!networkIds.length) { if (pkgStatus) pkgStatus.textContent = 'Select at least one network'; return; }
+          if (!outputDir) { if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.setOutputDir'); return; }
+          if (!networkIds.length) { if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.selectNetwork'); return; }
           const result = await Editor.Message.request('plbx-cocos-extension', 'start-preview', outputDir, networkIds);
           console.log('[plbx] Preview opened:', result.url);
-          if (pkgStatus) pkgStatus.textContent = 'Preview: ' + result.url;
+          if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.previewUrl').replace('{url}', result.url);
         } catch (err: any) {
           console.error('[plbx] Preview failed:', err.message || err);
-          if (pkgStatus) pkgStatus.textContent = 'Preview error: ' + (err?.message ?? err);
+          if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.previewError').replace('{msg}', String(err?.message ?? err));
         } finally {
           btnPreview.disabled = false;
         }
@@ -1581,12 +1597,12 @@ module.exports = Editor.Panel.define({
         try {
           const result = await Editor.Message.request('plbx-cocos-extension', 'generate-adapter');
           if (result.created) {
-            if (pkgStatus) pkgStatus.textContent = 'Created: ' + result.path.split('/').slice(-3).join('/');
+            if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.createdPath').replace('{path}', result.path.split('/').slice(-3).join('/'));
           } else {
-            if (pkgStatus) pkgStatus.textContent = 'Already exists: ' + result.path.split('/').slice(-3).join('/');
+            if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.alreadyExists').replace('{path}', result.path.split('/').slice(-3).join('/'));
           }
         } catch (e: any) {
-          if (pkgStatus) pkgStatus.textContent = 'Error: ' + (e?.message ?? e);
+          if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.error').replace('{msg}', String(e?.message ?? e));
         } finally {
           btnGenAdapter.disabled = false;
         }
@@ -1602,7 +1618,7 @@ module.exports = Editor.Panel.define({
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = 6;
-        td.textContent = 'No results';
+        td.textContent = translate(this._lang || 'en', 'status.noResults');
         tr.appendChild(td);
         tbody.appendChild(tr);
         return;
@@ -1686,7 +1702,22 @@ module.exports = Editor.Panel.define({
         }))
         .filter((g) => g.warnings.length > 0);
 
-      if (groups.length === 0) {
+      // De-duplicate identical messages across networks. A store-URL/regional
+      // warning is the same for every network (it's a property of the URL, not the
+      // network), so list it once labelled "All networks" instead of repeating it
+      // per network. Network-specific warnings (e.g. Axon) keep their own label.
+      // First-seen order preserved.
+      const order: string[] = [];
+      const byMsg = new Map<string, Set<string>>();
+      for (const g of groups) {
+        for (const w of g.warnings) {
+          let nets = byMsg.get(w);
+          if (!nets) { nets = new Set(); byMsg.set(w, nets); order.push(w); }
+          nets.add(g.name);
+        }
+      }
+
+      if (order.length === 0) {
         box.style.display = 'none';
         return;
       }
@@ -1694,24 +1725,22 @@ module.exports = Editor.Panel.define({
 
       const header = document.createElement('div');
       header.className = 'pkg-warnings-title';
-      const total = groups.reduce((n, g) => n + g.warnings.length, 0);
-      header.textContent = `⚠ ${total} advisory warning${total === 1 ? '' : 's'}`;
+      header.textContent = '⚠ ' + translate(this._lang || 'en', 'package.advisoryWarnings').replace('{n}', String(order.length));
       box.appendChild(header);
 
-      for (const g of groups) {
-        for (const w of g.warnings) {
-          const item = document.createElement('div');
-          item.className = 'pkg-warning-item';
-          const net = document.createElement('span');
-          net.className = 'pkg-warning-net';
-          net.textContent = g.name;
-          const msg = document.createElement('span');
-          msg.className = 'pkg-warning-msg';
-          msg.textContent = w;
-          item.appendChild(net);
-          item.appendChild(msg);
-          box.appendChild(item);
-        }
+      for (const w of order) {
+        const nets = byMsg.get(w)!;
+        const item = document.createElement('div');
+        item.className = 'pkg-warning-item';
+        const net = document.createElement('span');
+        net.className = 'pkg-warning-net';
+        net.textContent = nets.size === 1 ? Array.from(nets)[0] : translate(this._lang || 'en', 'package.allNetworks');
+        const msg = document.createElement('span');
+        msg.className = 'pkg-warning-msg';
+        msg.textContent = w;
+        item.appendChild(net);
+        item.appendChild(msg);
+        box.appendChild(item);
       }
 
       // Link to the Axon event spec when any AppLovin/Axon advisory is shown.
@@ -1724,7 +1753,7 @@ module.exports = Editor.Panel.define({
         link.href = AXON_SPEC_URL;
         link.target = '_blank';
         link.rel = 'noopener';
-        link.textContent = 'AppLovin Axon event spec ↗';
+        link.textContent = translate(this._lang || 'en', 'package.axonSpecLink');
         box.appendChild(link);
       }
     },
@@ -1825,7 +1854,7 @@ module.exports = Editor.Panel.define({
         projectHidden.value = '__new__';
         projectHidden.dataset.slug = '';
         projectInput.value = '';
-        projectInput.placeholder = 'New project will be created';
+        projectInput.placeholder = translate(this._lang || 'en', 'deploy.newProjectWillBeCreated');
         projectInput.disabled = true;
         if (newProjectRow) newProjectRow.style.display = '';
         const existingEl = this.$.deployExisting as HTMLElement;
@@ -1837,7 +1866,7 @@ module.exports = Editor.Panel.define({
         projectHidden.value = '';
         projectHidden.dataset.slug = '';
         projectInput.value = '';
-        projectInput.placeholder = 'Search or select project...';
+        projectInput.placeholder = translate(this._lang || 'en', 'deploy.projectPlaceholder');
         projectInput.disabled = false;
         if (newProjectRow) newProjectRow.style.display = 'none';
         this._checkDeployBuild?.();
@@ -1854,7 +1883,7 @@ module.exports = Editor.Panel.define({
           deployNameInput.value = val;
           if (deployNameHint) {
             deployNameHint.style.color = '#e8a040';
-            deployNameHint.textContent = 'Non-Latin characters removed (only a-z, 0-9, dashes)';
+            deployNameHint.textContent = translate(this._lang || 'en', 'deploy.nonLatinRemoved');
           }
           setTimeout(() => { if (deployNameHint) { deployNameHint.textContent = ''; deployNameHint.style.color = ''; } }, 3000);
         }
@@ -1862,7 +1891,7 @@ module.exports = Editor.Panel.define({
           deployNameInput.value = val.replace(/\./g, '-');
           if (deployNameHint) {
             deployNameHint.style.color = '#e8a040';
-            deployNameHint.textContent = 'Dots replaced with dashes (URL slug)';
+            deployNameHint.textContent = translate(this._lang || 'en', 'deploy.dotsReplaced');
           }
           setTimeout(() => { if (deployNameHint) { deployNameHint.textContent = ''; deployNameHint.style.color = ''; } }, 2000);
         }
@@ -1875,20 +1904,20 @@ module.exports = Editor.Panel.define({
         if (!token) return;
         btnSaveToken.disabled = true;
         if (loginStatus) {
-          loginStatus.textContent = 'Connecting…';
+          loginStatus.textContent = translate(this._lang || 'en', 'deploy.connecting');
           loginStatus.className = 'login-status';
         }
         try {
           const user = await Editor.Message.request('plbx-cocos-extension', 'plbx-login', token);
           if (loginStatus) {
-            loginStatus.textContent = 'Connected as ' + (user?.organizations?.[0]?.name ?? user?.userId ?? 'user');
+            loginStatus.textContent = translate(this._lang || 'en', 'deploy.connectedAs').replace('{name}', user?.organizations?.[0]?.name ?? user?.userId ?? 'user');
             loginStatus.className = 'login-status connected';
           }
           this._setDeployAuth(true);
           this._loadProjects();
         } catch (e: any) {
           if (loginStatus) {
-            loginStatus.textContent = 'Login failed: ' + (e?.message ?? e);
+            loginStatus.textContent = translate(this._lang || 'en', 'deploy.loginFailed').replace('{msg}', String(e?.message ?? e));
             loginStatus.className = 'login-status disconnected';
           }
           this._setDeployAuth(false);
@@ -1905,36 +1934,36 @@ module.exports = Editor.Panel.define({
         const newName = projectNameInput?.value.trim() ?? '';
         const hasProject = pid && (pid !== '__new__' || newName);
         if (!hasProject) {
-          if (btnDeploy) { btnDeploy.disabled = true; btnDeploy.title = 'Select a project first'; }
-          if (deployStatus) deployStatus.textContent = 'Select a project';
+          if (btnDeploy) { btnDeploy.disabled = true; btnDeploy.title = translate(this._lang || 'en', 'deploy.selectProjectFirst'); }
+          if (deployStatus) deployStatus.textContent = translate(this._lang || 'en', 'deploy.selectProject');
           return;
         }
         if (pid === '__new__' && newName) {
           const duplicate = this._projectsList?.find((p: any) => p.name.toLowerCase() === newName.toLowerCase());
           if (duplicate) {
-            if (btnDeploy) { btnDeploy.disabled = true; btnDeploy.title = 'Project with this name already exists'; }
-            if (deployStatus) deployStatus.textContent = `Project "${duplicate.name}" already exists — select it from the list`;
+            if (btnDeploy) { btnDeploy.disabled = true; btnDeploy.title = translate(this._lang || 'en', 'deploy.projectNameExists'); }
+            if (deployStatus) deployStatus.textContent = translate(this._lang || 'en', 'deploy.projectExists').replace('{name}', duplicate.name);
             return;
           }
         }
         const name = deployNameInput?.value.trim() ?? '';
         if (!name) {
-          if (btnDeploy) { btnDeploy.disabled = true; btnDeploy.title = 'Enter a deployment name'; }
-          if (deployStatus) deployStatus.textContent = 'Enter a deployment name';
+          if (btnDeploy) { btnDeploy.disabled = true; btnDeploy.title = translate(this._lang || 'en', 'deploy.enterDeployNameTitle'); }
+          if (deployStatus) deployStatus.textContent = translate(this._lang || 'en', 'deploy.enterDeployName');
           return;
         }
         const buildPath = buildPathInput?.value.trim() ?? '';
         const network = networkSel?.value ?? '';
         if (!buildPath || !network) {
-          if (btnDeploy) { btnDeploy.disabled = true; btnDeploy.title = 'Select network and build path'; }
-          if (deployStatus) deployStatus.textContent = 'Select network and build path';
+          if (btnDeploy) { btnDeploy.disabled = true; btnDeploy.title = translate(this._lang || 'en', 'deploy.selectNetworkBuildTitle'); }
+          if (deployStatus) deployStatus.textContent = translate(this._lang || 'en', 'deploy.selectNetworkBuild');
           return;
         }
         const fullPath = buildPath + '/' + network;
         try {
           const exists = await Editor.Message.request('plbx-cocos-extension', 'check-path-exists', fullPath);
-          if (btnDeploy) { btnDeploy.disabled = !exists; btnDeploy.title = exists ? '' : 'Build not found'; }
-          if (deployStatus) deployStatus.textContent = exists ? '' : `Build not found: ${fullPath} — run Package first`;
+          if (btnDeploy) { btnDeploy.disabled = !exists; btnDeploy.title = exists ? '' : translate(this._lang || 'en', 'deploy.buildNotFoundTitle'); }
+          if (deployStatus) deployStatus.textContent = exists ? '' : translate(this._lang || 'en', 'deploy.buildNotFound').replace('{path}', fullPath);
         } catch {
           if (btnDeploy) btnDeploy.disabled = false;
           if (deployStatus) deployStatus.textContent = '';
@@ -1958,12 +1987,12 @@ module.exports = Editor.Panel.define({
         ).map((cb: any) => (cb as HTMLInputElement).value);
 
         if (!projectId || projectId === '__new__' && !projectName) {
-          if (deployStatus) deployStatus.textContent = projectId === '__new__' ? 'Enter project name' : 'Select a project';
+          if (deployStatus) deployStatus.textContent = projectId === '__new__' ? translate(this._lang || 'en', 'deploy.enterProjectName') : translate(this._lang || 'en', 'deploy.selectProject');
           return;
         }
-        if (!name)      { if (deployStatus) deployStatus.textContent = 'Enter a deployment name'; return; }
-        if (!buildPath) { if (deployStatus) deployStatus.textContent = 'Enter build path';        return; }
-        if (!orientations.length) { if (deployStatus) deployStatus.textContent = 'Select at least one orientation'; return; }
+        if (!name)      { if (deployStatus) deployStatus.textContent = translate(this._lang || 'en', 'deploy.enterDeployName'); return; }
+        if (!buildPath) { if (deployStatus) deployStatus.textContent = translate(this._lang || 'en', 'deploy.enterBuildPath');  return; }
+        if (!orientations.length) { if (deployStatus) deployStatus.textContent = translate(this._lang || 'en', 'deploy.selectOrientation'); return; }
 
         if (projectId === '__new__') {
           const looksLikePath = projectName && /[\\/]|^[A-Za-z]:/.test(projectName);
@@ -1977,7 +2006,7 @@ module.exports = Editor.Panel.define({
             cancel: 1,
           }).catch(() => null);
           if (!dlg || dlg.response !== 0) {
-            if (deployStatus) deployStatus.textContent = 'Cancelled';
+            if (deployStatus) deployStatus.textContent = translate(this._lang || 'en', 'deploy.cancelled');
             return;
           }
         }
@@ -1990,7 +2019,7 @@ module.exports = Editor.Panel.define({
         }).catch((e: any) => { console.warn('[plbx]', e); });
 
         if (btnDeploy) btnDeploy.disabled = true;
-        if (deployStatus) deployStatus.textContent = 'Deploying…';
+        if (deployStatus) deployStatus.textContent = translate(this._lang || 'en', 'deploy.deploying');
         if (resultDiv) resultDiv.style.display = 'none';
 
         // Poll deploy progress from main process every 500ms
@@ -1999,9 +2028,9 @@ module.exports = Editor.Panel.define({
             const p = await Editor.Message.request('plbx-cocos-extension', 'get-deploy-progress');
             if (!p || !deployStatus) return;
             if (p.stage === 'uploading') {
-              deployStatus.textContent = `Uploading ${p.detail}…`;
+              deployStatus.textContent = translate(this._lang || 'en', 'deploy.uploadingDetail').replace('{detail}', p.detail);
             } else if (p.stage === 'finalizing') {
-              deployStatus.textContent = 'Finalizing…';
+              deployStatus.textContent = translate(this._lang || 'en', 'deploy.finalizing');
             }
           } catch {}
         }, 500);
@@ -2025,9 +2054,9 @@ module.exports = Editor.Panel.define({
             }
           }
           if (resultDiv) resultDiv.style.display = 'block';
-          if (deployStatus) deployStatus.textContent = 'Done';
+          if (deployStatus) deployStatus.textContent = translate(this._lang || 'en', 'deploy.done');
         } catch (e: any) {
-          if (deployStatus) deployStatus.textContent = 'Error: ' + (e?.message ?? e);
+          if (deployStatus) deployStatus.textContent = translate(this._lang || 'en', 'status.error').replace('{msg}', String(e?.message ?? e));
         } finally {
           clearInterval(progressTimer);
           if (btnDeploy) btnDeploy.disabled = false;
@@ -2051,14 +2080,14 @@ module.exports = Editor.Panel.define({
       try {
         const user = await Editor.Message.request('plbx-cocos-extension', 'plbx-login', token);
         if (statusEl) {
-          statusEl.textContent = 'Connected as ' + (user?.organizations?.[0]?.name ?? user?.userId ?? 'user');
+          statusEl.textContent = translate(this._lang || 'en', 'deploy.connectedAs').replace('{name}', user?.organizations?.[0]?.name ?? user?.userId ?? 'user');
           statusEl.className = 'login-status connected';
         }
         this._setDeployAuth(true);
         this._loadProjects();
       } catch {
         if (statusEl) {
-          statusEl.textContent = 'Token saved (not verified)';
+          statusEl.textContent = translate(this._lang || 'en', 'settings.tokenSaved');
           statusEl.className = 'login-status';
         }
         this._setDeployAuth(false);

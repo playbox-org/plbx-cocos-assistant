@@ -5,7 +5,7 @@ import type { QueryDependenciesFn } from './core/build-report/dependency-resolve
 import { compressImage, compressImageToBuffer, getImageMetadata } from './core/compression/image-compressor';
 import { compressAudio, compressAudioToBuffer, isFFmpegAvailable } from './core/compression/audio-compressor';
 import { packageForNetworks } from './core/packager/packager';
-import { extractStoreUrls } from './core/packager/store-url-extractor';
+import { extractStoreUrls, detectRegionalParams } from './core/packager/store-url-extractor';
 import { extractAxonUsage, validateAxonEvents } from './core/packager/axon-events';
 import { buildOutputRows, OutputFileStat } from './core/packager/output-listing';
 import { PlayboxApiClient } from './core/deployer/api-client';
@@ -332,12 +332,19 @@ export const methods: Record<string, (...args: any[]) => any> = {
       const { resolve } = require('path');
       const absBuildDir = resolve(Editor.Project.path || '', buildDir || '');
       const urls = extractStoreUrls(absBuildDir);
-      return {
-        googlePlayUrl: urls.find((u) => u.includes('play.google.com')) ?? '',
-        appStoreUrl: urls.find((u) => u.includes('apple.com')) ?? '',
-      };
+      const googlePlayUrl = urls.find((u) => u.includes('play.google.com')) ?? '';
+      const appStoreUrl = urls.find((u) => u.includes('apple.com')) ?? '';
+      // Regional/localization params (gl/hl, Apple /us/ country path, …) should be
+      // absent so the creative serves globally. Surface inline in the panel.
+      const regional: string[] = [];
+      for (const u of [googlePlayUrl, appStoreUrl]) {
+        if (!u) continue;
+        const params = detectRegionalParams(u);
+        if (params.length) regional.push(`${u} → ${params.join(', ')}`);
+      }
+      return { googlePlayUrl, appStoreUrl, regional };
     } catch {
-      return { googlePlayUrl: '', appStoreUrl: '' };
+      return { googlePlayUrl: '', appStoreUrl: '', regional: [] };
     }
   },
 
@@ -352,9 +359,12 @@ export const methods: Record<string, (...args: any[]) => any> = {
       const { resolve } = require('path');
       const absBuildDir = resolve(Editor.Project.path || '', buildDir || '');
       const usage = extractAxonUsage(absBuildDir);
+      // Use the detail (self-contained problem statement); the label is the
+      // desired-state name and reads as a contradiction when prefixed to a
+      // failure (e.g. "Axon analytics integrated: No … calls found").
       const warnings = validateAxonEvents(usage)
         .filter((c) => !c.ok)
-        .map((c) => `${c.label}: ${c.detail}`);
+        .map((c) => c.detail || c.label);
       return { warnings };
     } catch {
       return { warnings: [] as string[] };
