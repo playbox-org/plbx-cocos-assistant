@@ -511,6 +511,13 @@ h3 {
   color: #fbbf24;
 }
 
+/* Non-spec event AppLovin rejects — red so it reads as an error, not a valid amber event. */
+.axon-event.invalid .icon,
+.axon-event.invalid.fired .name,
+.axon-event.invalid.fired .count {
+  color: #f87171;
+}
+
 .axon-empty {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.3);

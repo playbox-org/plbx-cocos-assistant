@@ -16,7 +16,7 @@ import { join, extname } from 'path';
  *     track custom events") — any other literal is a typo or an unsupported
  *     custom event.
  *   - DISPLAYED is the only mandatory event.
- *   - LOADED is required once LOADING is used.
+ *   - LOADING and LOADED are a pair: fire both, or neither.
  *   - If CHALLENGE_STARTED is used, at least one of CHALLENGE_SOLVED /
  *     CHALLENGE_FAILED / CHALLENGE_RETRY must be used.
  *   - The creative must NOT define ALPlayableAnalytics itself — the SDK does.
@@ -183,13 +183,13 @@ export function validateAxonEvents(usage: AxonUsage): AxonCheck[] {
     detail: `AppLovin does not accept custom event names: ${unknown.join(', ')}`,
   });
 
-  if (set.has('LOADING')) {
+  if (set.has('LOADING') || set.has('LOADED')) {
     checks.push({
       id: 'loaded_requires_loading',
-      label: 'LOADED present (required with LOADING)',
-      ok: set.has('LOADED'),
+      label: 'LOADING and LOADED both present',
+      ok: set.has('LOADING') && set.has('LOADED'),
       level: 'warn',
-      detail: 'Once LOADING is implemented, LOADED must also be fired.',
+      detail: 'LOADING and LOADED are a pair — fire both (LOADING → LOADED → DISPLAYED) or neither.',
     });
   }
 

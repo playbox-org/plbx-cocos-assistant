@@ -23,6 +23,11 @@ export interface NetworkConfig {
   metaTags?: Record<string, string>; // meta tags to inject
   inlineAssets: boolean;     // whether to inline all assets into HTML
   singleFileZip?: boolean;   // ZIP containing a single fully-inlined HTML (e.g. Mintegral)
+  /** Name the inner HTML after the outer .zip basename instead of index.html.
+   *  Mintegral's 2026 zip-naming rule requires the file inside the archive to
+   *  match the playable filename (e.g. RISE_play036_01.html). Only meaningful
+   *  with singleFileZip. Falls back to index.html when the basename is "index". */
+  htmlMatchesZipName?: boolean;
   dualFormat?: boolean;      // whether the network supports both html and zip output
   launcherPayload?: LauncherPayloadConfig; // launcher-payload format config
   /** Network whose validator requires a Google Play Store URL in the build (e.g. Unity

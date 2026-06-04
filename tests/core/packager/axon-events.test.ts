@@ -128,7 +128,18 @@ describe('validateAxonEvents', () => {
     expect(failed(checks)).toContain('loaded_requires_loading');
   });
 
-  it('does not raise the LOADED rule when LOADING is absent', () => {
+  it('warns when LOADED is fired without LOADING (pair is symmetric)', () => {
+    const checks = validateAxonEvents({ events: ['DISPLAYED', 'LOADED'], redefinesAnalytics: false });
+    expect(failed(checks)).toContain('loaded_requires_loading');
+  });
+
+  it('passes the LOADING/LOADED pair rule when both are present', () => {
+    const checks = validateAxonEvents({ events: ['DISPLAYED', 'LOADING', 'LOADED'], redefinesAnalytics: false });
+    const pair = checks.find((c) => c.id === 'loaded_requires_loading');
+    expect(pair?.ok).toBe(true);
+  });
+
+  it('does not raise the LOADING/LOADED pair rule when neither is present', () => {
     const checks = validateAxonEvents({ events: ['DISPLAYED'], redefinesAnalytics: false });
     expect(checks.find((c) => c.id === 'loaded_requires_loading')).toBeUndefined();
   });

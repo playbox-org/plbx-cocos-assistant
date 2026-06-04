@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import JSZip from 'jszip';
 import { packageForNetworks } from '../../../src/core/packager/packager';
 import { join } from 'path';
 import { mkdirSync, writeFileSync, existsSync, rmSync, readFileSync } from 'fs';
@@ -377,5 +378,73 @@ describe('Regional store-URL warnings', () => {
       },
     });
     expect(regional(result.results[0])).toHaveLength(0);
+  });
+});
+
+describe('Mintegral inner HTML filename (matches outer ZIP name)', () => {
+  const innerNames = async (outputPath: string): Promise<string[]> => {
+    const zip = await JSZip.loadAsync(readFileSync(outputPath));
+    return Object.keys(zip.files).filter((p) => !zip.files[p].dir);
+  };
+
+  it('names the inner HTML after the outer .zip basename when template is explicit (Mintegral 2026 rule)', async () => {
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['mintegral'],
+      config: defaultConfig,
+      outputTemplate: '{networkId}/RISE_play036_01.{ext}',
+    });
+    const r = result.results.find((x) => x.networkId === 'mintegral')!;
+    expect(r.outputPath).toContain('RISE_play036_01.zip');
+    const names = await innerNames(r.outputPath);
+    expect(names).toContain('RISE_play036_01.html');
+    expect(names).not.toContain('index.html');
+  });
+
+  it('auto-names zip + inner HTML after the playable (build dir) with the DEFAULT template — works out of the box', async () => {
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['mintegral'],
+      config: defaultConfig,
+      // no outputTemplate → default {networkId}/index.{ext}; must NOT stay index
+    });
+    const r = result.results.find((x) => x.networkId === 'mintegral')!;
+    // MOCK_BUILD's folder name ("mock-build") is the derived playable name
+    expect(r.outputPath).toContain('mock-build.zip');
+    expect(r.outputPath).not.toContain('index.zip');
+    const names = await innerNames(r.outputPath);
+    expect(names).toContain('mock-build.html');
+    expect(names).not.toContain('index.html');
+  });
+
+  it('lets templateVariables.assetTitle override the derived playable name (default template)', async () => {
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['mintegral'],
+      config: defaultConfig,
+      templateVariables: { assetTitle: 'RISE_play036_01' },
+    });
+    const r = result.results.find((x) => x.networkId === 'mintegral')!;
+    expect(r.outputPath).toContain('RISE_play036_01.zip');
+    const names = await innerNames(r.outputPath);
+    expect(names).toContain('RISE_play036_01.html');
+    expect(names).not.toContain('index.html');
+  });
+
+  it('does NOT rename inner HTML for other singleFileZip networks (scope = Mintegral only)', async () => {
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['mytarget'],
+      config: defaultConfig,
+      outputTemplate: '{networkId}/RISE_play036_01.{ext}',
+    });
+    const r = result.results.find((x) => x.networkId === 'mytarget')!;
+    const names = await innerNames(r.outputPath);
+    expect(names).toContain('index.html');
+    expect(names).not.toContain('RISE_play036_01.html');
   });
 });

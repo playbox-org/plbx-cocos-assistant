@@ -245,9 +245,9 @@
     checks.push({ id: 'no_unknown', label: 'Valid spec event names', ok: unknown.length === 0, level: 'error',
       detail: 'AppLovin rejects custom event names: ' + unknown.join(', ') });
 
-    if (has['LOADING']) {
-      checks.push({ id: 'loaded', label: 'LOADED fired (required with LOADING)', ok: !!has['LOADED'], level: 'warn',
-        detail: 'LOADED must fire once LOADING is used.' });
+    if (has['LOADING'] || has['LOADED']) {
+      checks.push({ id: 'loaded', label: 'LOADING and LOADED both fired', ok: !!has['LOADING'] && !!has['LOADED'], level: 'warn',
+        detail: 'LOADING and LOADED are a pair — fire both (LOADING → LOADED → DISPLAYED) or neither.' });
     }
     if (has['CHALLENGE_STARTED']) {
       var done = AXON_CHALLENGE_COMPLETION.some(function(e) { return has[e]; });
@@ -357,7 +357,10 @@
       var count = axonFired[name] || 0;
       var isSpec = AXON_SPEC_EVENTS.indexOf(name) !== -1;
       var div = document.createElement('div');
-      div.className = 'axon-event fired';
+      div.className = isSpec ? 'axon-event fired' : 'axon-event fired invalid';
+      if (!isSpec) {
+        div.title = 'Not a valid Axon spec event — AppLovin rejects custom event names';
+      }
 
       var icon = document.createElement('span');
       icon.className = 'icon';

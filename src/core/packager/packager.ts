@@ -1,5 +1,5 @@
 import { readFileSync, mkdirSync, existsSync, writeFileSync, cpSync, rmSync, readdirSync, statSync } from 'fs';
-import { join, relative, extname, dirname } from 'path';
+import { join, relative, extname, dirname, basename } from 'path';
 import { HtmlBuilder } from './html-builder';
 import { getAdapter } from './network-adapters';
 import { buildZip } from './zip-builder';
@@ -317,7 +317,30 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
             // Wrap the single HTML in a ZIP (+ optional config.json)
             const tempDir = join(dirname(outputPath), `_temp_${networkId}`);
             mkdirSync(tempDir, { recursive: true });
-            writeFileSync(join(tempDir, 'index.html'), finalHtml);
+            // Some networks (Mintegral, per their 2026 zip-naming rule) require the
+            // inner HTML to match the playable filename — i.e. the outer .zip
+            // basename — rather than the generic index.html, or the load fails.
+            let innerHtmlName = 'index.html';
+            if (network.htmlMatchesZipName) {
+              let zipBase = basename(outputPath, extname(outputPath));
+              // Default template leaves the basename as "index" — auto-name after
+              // the playable (assetTitle / projectName override, else the build
+              // folder name) so it works out of the box without a custom template.
+              if (!zipBase || zipBase === 'index') {
+                const playable = sanitizeFileBase(
+                  options.templateVariables?.assetTitle ||
+                    options.templateVariables?.projectName ||
+                    deriveProjectNameFromBuildDir(options.buildDir) ||
+                    '',
+                );
+                if (playable) {
+                  zipBase = playable;
+                  outputPath = join(dirname(outputPath), `${playable}${extname(outputPath)}`);
+                }
+              }
+              if (zipBase && zipBase !== 'index') innerHtmlName = `${zipBase}.html`;
+            }
+            writeFileSync(join(tempDir, innerHtmlName), finalHtml);
 
             const extraFiles: Array<{ zipPath: string; content: string }> = [];
             const zipConfig = adapter.getZipConfig(options.config);
@@ -444,6 +467,15 @@ function assertHasRequiredStrings(html: string, required: string[], networkName:
       missing.map((s) => `"${s}"`).join(', ') +
       `. Build is broken — aborting.`,
   );
+}
+
+/**
+ * Make a string safe to use as a ZIP-entry / file basename: keep letters,
+ * digits, dot, underscore and dash; collapse everything else to underscore.
+ * Preserves case (Mintegral playable names like "RISE_play036_01" are mixed-case).
+ */
+function sanitizeFileBase(name: string): string {
+  return name.trim().replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
 }
 
 /**

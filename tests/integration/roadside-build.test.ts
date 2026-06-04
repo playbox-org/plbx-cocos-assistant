@@ -139,15 +139,17 @@ describeIf('Integration: roadside build packaging', () => {
     expect(r.outputSize).toBeGreaterThan(0);
     expect(r.outputSize).toBeLessThanOrEqual(5 * 1024 * 1024); // 5MB limit
 
-    // Verify ZIP contains exactly one index.html
+    // Verify ZIP contains exactly one HTML, auto-named after the playable
+    // (build dir "roadside-build") per Mintegral's 2026 zip-naming rule — not index.html.
     const JSZip = (await import('jszip')).default;
     const zipData = readFileSync(r.outputPath);
     const zip = await JSZip.loadAsync(zipData);
     const fileNames = Object.keys(zip.files).filter(f => !zip.files[f].dir);
-    expect(fileNames).toEqual(['index.html']);
+    expect(fileNames).toEqual(['roadside-build.html']);
+    expect(r.outputPath).toContain('roadside-build.zip');
 
     // Verify HTML content
-    const html = await zip.file('index.html')!.async('string');
+    const html = await zip.file(fileNames[0])!.async('string');
 
     // Scripts should be in <body>, not <head>
     const headContent = html.match(/<head>([\s\S]*?)<\/head>/)?.[1] || '';

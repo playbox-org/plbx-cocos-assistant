@@ -194,6 +194,9 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     mraid: false,
     singleFileZip: true,
     inlineAssets: false,
+    // Mintegral 2026 rule: the HTML inside the zip must match the playable
+    // filename (the outer .zip basename), not index.html — else load fails.
+    htmlMatchesZipName: true,
   },
   adikteev: {
     id: 'adikteev',
