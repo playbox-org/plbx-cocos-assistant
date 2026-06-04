@@ -450,6 +450,16 @@ h3 {
   color: #fbbf24;
 }
 
+.axon-spec-link {
+  font-size: 11px;
+  font-weight: 400;
+  margin-left: 8px;
+  color: #7ec8e3;
+  text-decoration: none;
+}
+
+.axon-spec-link:hover { text-decoration: underline; }
+
 .axon-event {
   display: flex;
   flex-direction: row;
@@ -493,6 +503,44 @@ h3 {
   color: rgba(255, 255, 255, 0.3);
   padding: 8px 0;
   font-style: italic;
+}
+
+/* Spec-conformance verdicts (computed from runtime-fired events). */
+.axon-verdict {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.axon-verdict .icon {
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.axon-verdict.pass .icon { color: #34d399; }
+.axon-verdict.warn .icon { color: #fbbf24; }
+.axon-verdict.fail .icon { color: #f87171; }
+
+.axon-verdict.aggregate {
+  font-weight: 600;
+  margin-bottom: 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.axon-verdict .text { color: rgba(255, 255, 255, 0.75); }
+.axon-verdict.fail .text,
+.axon-verdict.warn .text { color: rgba(255, 255, 255, 0.95); }
+.axon-verdict .detail {
+  display: block;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  margin-top: 1px;
 }
 
 /* ========== CTA TOAST ========== */

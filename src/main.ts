@@ -6,6 +6,7 @@ import { compressImage, compressImageToBuffer, getImageMetadata } from './core/c
 import { compressAudio, compressAudioToBuffer, isFFmpegAvailable } from './core/compression/audio-compressor';
 import { packageForNetworks } from './core/packager/packager';
 import { extractStoreUrls } from './core/packager/store-url-extractor';
+import { extractAxonUsage, validateAxonEvents } from './core/packager/axon-events';
 import { buildOutputRows, OutputFileStat } from './core/packager/output-listing';
 import { PlayboxApiClient } from './core/deployer/api-client';
 import { uploadFile } from './core/deployer/uploader';
@@ -337,6 +338,26 @@ export const methods: Record<string, (...args: any[]) => any> = {
       };
     } catch {
       return { googlePlayUrl: '', appStoreUrl: '' };
+    }
+  },
+
+  /**
+   * Scan the build source for AppLovin "Axon" playable-analytics events and
+   * return spec-conformance warnings (advisory — see axon-events.ts). Used by
+   * the Package panel to surface event issues after a build/scan, without
+   * waiting for the network's own validator. Returns [] on any error.
+   */
+  scanAxonEvents(buildDir: string) {
+    try {
+      const { resolve } = require('path');
+      const absBuildDir = resolve(Editor.Project.path || '', buildDir || '');
+      const usage = extractAxonUsage(absBuildDir);
+      const warnings = validateAxonEvents(usage)
+        .filter((c) => !c.ok)
+        .map((c) => `${c.label}: ${c.detail}`);
+      return { warnings };
+    } catch {
+      return { warnings: [] as string[] };
     }
   },
 

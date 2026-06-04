@@ -341,7 +341,10 @@ export function generatePreviewUtil(params: PreviewUtilParams): string {
   // ALPlayableAnalytics mock — intercept Axon Events
   window.ALPlayableAnalytics = window.ALPlayableAnalytics || {
     trackEvent: function(name) {
-      report('axon_event', { name: name });
+      report('axon_event', {
+        name: name,
+        ts: (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(),
+      });
     }
   };
 `);

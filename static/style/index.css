@@ -552,6 +552,54 @@ body,
   border: 1px solid rgba(74, 158, 255, 0.4);
 }
 
+/* ===== Package advisory warnings (spec conformance, e.g. Axon events) ===== */
+.pkg-warnings {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 152, 0, 0.4);
+  border-radius: 4px;
+  background-color: rgba(255, 152, 0, 0.08);
+}
+
+.pkg-warnings-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ff9800;
+  margin-bottom: 6px;
+}
+
+.pkg-warning-item {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 2px 0;
+}
+
+.pkg-warning-net {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: #ffb74d;
+  min-width: 84px;
+}
+
+.pkg-warning-msg {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.pkg-warnings-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #4a9eff;
+  text-decoration: none;
+}
+
+.pkg-warnings-link:hover {
+  text-decoration: underline;
+}
+
 /* ===== Package Tab Layout ===== */
 .pkg-section {
   margin-bottom: 10px;

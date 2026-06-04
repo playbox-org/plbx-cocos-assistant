@@ -316,6 +316,36 @@ describe('Google Play URL warning (requiresStoreUrl networks)', () => {
       networks: ['applovin'],
       config: { orientation: 'portrait' as const },
     });
-    expect(result.results[0].warnings ?? []).toHaveLength(0);
+    // applovin is not requiresStoreUrl → no Google Play Store URL warning.
+    // (Axon advisory warnings may still appear and are asserted separately.)
+    const storeWarnings = (result.results[0].warnings ?? []).filter((w) => w.includes('Google Play Store URL'));
+    expect(storeWarnings).toHaveLength(0);
+  });
+});
+
+describe('AppLovin Axon event-spec warnings', () => {
+  it('warns (non-fatally) when the build fires no Axon events', async () => {
+    // MOCK_BUILD's main.js has no trackEvent() calls.
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['applovin'],
+      config: defaultConfig,
+    });
+    const axonWarnings = (result.results[0].warnings ?? []).filter((w) => w.includes('Axon'));
+    expect(axonWarnings.length).toBeGreaterThan(0);
+    // Non-fatal: the build still succeeds.
+    expect(result.results[0].outputSize).toBeGreaterThan(0);
+  });
+
+  it('does NOT warn about Axon for non-AppLovin networks', async () => {
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['unity'],
+      config: defaultConfig,
+    });
+    const axonWarnings = (result.results[0].warnings ?? []).filter((w) => w.includes('Axon'));
+    expect(axonWarnings).toHaveLength(0);
   });
 });

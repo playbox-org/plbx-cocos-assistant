@@ -5,6 +5,7 @@ import JSZip from 'jszip';
 import { generatePreviewUtil } from './sdk-mocks';
 import { getNetwork } from '../../shared/networks';
 import { validateLauncher, LauncherCheck } from '../packager/launcher-builder';
+import { AXON_EVENTS, validateAxonSequence } from '../packager/axon-events';
 
 let _server: http.Server | null = null;
 let _port = 0;
@@ -349,19 +350,6 @@ function getNetworkChecks(networkId: string, mraid: boolean): CheckDef[] {
   return checks;
 }
 
-function extractAxonEvents(html: string): string[] {
-  const events = new Set<string>();
-  // Match trackEvent('name'), trackEvent("name"), trackEvent(`name`)
-  const patterns = [/trackEvent\s*\(\s*['"]([^'"]+)['"]\s*\)/g, /trackEvent\s*\(\s*`([^`]+)`\s*\)/g];
-  for (const pattern of patterns) {
-    let match;
-    while ((match = pattern.exec(html)) !== null) {
-      events.add(match[1]);
-    }
-  }
-  return Array.from(events);
-}
-
 function getValidatorHtml(): string {
   // Check for static file first
   const staticPath = join(__dirname, '../../../static/preview/index.html');
@@ -639,6 +627,9 @@ export async function startPreviewServer(options: {
                 hasAppStoreUrl: store.apple,
                 checks,
                 launcherChecks,
+                // Canonical Axon event spec — the client renders these as the
+                // expected set and checks runtime-fired events against them.
+                axonEvents: id === 'applovin' ? AXON_EVENTS : null,
                 validatorUrl: VALIDATOR_URLS[id] || null,
               };
             }),
@@ -648,25 +639,21 @@ export async function startPreviewServer(options: {
           return;
         }
 
-        // GET /api/axon-events/{networkId} — extract trackEvent calls from source
-        const axonMatch = url.match(/^\/api\/axon-events\/([a-zA-Z0-9_-]+)$/);
-        if (axonMatch) {
-          const networkId = axonMatch[1];
-          const buildFile = findBuildFile(outputDir, networkId);
-          if (!buildFile) {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ events: [] }));
-            return;
-          }
-          let html: string;
-          if (buildFile.isZip) {
-            html = await extractHtmlFromZip(buildFile.path);
-          } else {
-            html = readFileSync(buildFile.path, 'utf-8');
-          }
-          const events = extractAxonEvents(html);
+        // GET /api/axon-validate?events=A,B,C — validate a runtime fire sequence
+        // (order preserved, repeats kept) against the Axon spec. Reuses the same
+        // validateAxonSequence() the unit tests cover — single source of truth.
+        if (url.startsWith('/api/axon-validate')) {
+          const q = url.indexOf('?') >= 0 ? url.slice(url.indexOf('?') + 1) : '';
+          const params = new URLSearchParams(q);
+          const raw = params.get('events') || '';
+          const sequence = raw.split(',').map((s) => s.trim()).filter(Boolean);
+          const rawTs = params.get('ts') || '';
+          const timestamps = rawTs
+            ? rawTs.split(',').map((s) => Number(s)).filter((n) => !Number.isNaN(n))
+            : undefined;
+          const ts = timestamps && timestamps.length === sequence.length ? timestamps : undefined;
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ events }));
+          res.end(JSON.stringify({ checks: validateAxonSequence(sequence, ts) }));
           return;
         }
 

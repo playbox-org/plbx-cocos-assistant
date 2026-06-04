@@ -12,6 +12,7 @@ import { generateFullHtml, generatePayloadJs } from './runtime-loader';
 import { buildLauncher, fillLauncherPayloadUrl, validateLauncher } from './launcher-builder';
 import { resolveTemplate } from './template-resolver';
 import { extractStoreUrls } from './store-url-extractor';
+import { extractAxonUsage, validateAxonEvents } from './axon-events';
 import { buildVersionBanner } from './version-banner';
 import CleanCSS from 'clean-css';
 
@@ -60,6 +61,12 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
   );
   const hasGooglePlayUrl = headStoreUrls.some((u) => u.includes(GOOGLE_PLAY_MARKER));
 
+  // AppLovin "Axon" playable-analytics events are authored in the game source
+  // (the packager never injects them) and end up base64-zipped in the final
+  // HTML — invisible to a plaintext scan. Extract them once from the build
+  // source so the applovin branch below can warn on spec violations.
+  const axonUsage = extractAxonUsage(options.buildDir);
+
   for (const networkId of options.networks) {
     options.onProgress?.(networkId, 'starting');
 
@@ -93,6 +100,18 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
         warnings.push(w);
         console.warn(`[plbx] ${w}`);
         options.onProgress?.(networkId, 'processing', w);
+      }
+
+      // AppLovin Axon event-spec conformance (advisory — these events are
+      // developer-authored, so we never abort the build, only warn).
+      if (networkId === 'applovin') {
+        for (const c of validateAxonEvents(axonUsage)) {
+          if (c.ok) continue;
+          const w = `AppLovin Axon events — ${c.label}: ${c.detail}`;
+          warnings.push(w);
+          console.warn(`[plbx] ${w}`);
+          options.onProgress?.(networkId, 'processing', w);
+        }
       }
 
       if (network.format === 'launcher-payload') {

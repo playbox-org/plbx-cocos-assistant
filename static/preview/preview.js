@@ -75,8 +75,12 @@
   var currentDevice = DEFAULT_DEVICE;
   var isLandscape = false;
   var audioMuted = false;
-  var axonExpected = [];   // event names extracted from source
+  var axonExpected = [];   // canonical spec event list (from /api/networks)
   var axonFired = {};      // { eventName: count }
+  var axonSequence = [];   // ordered fire log (with repeats) for spec validation
+  var axonTimestamps = [];  // ms timestamps aligned to axonSequence (CHALLENGE_* spacing)
+  var axonChecks = [];     // verdicts from /api/axon-validate
+  var axonValidateTimer = null;
   var currentValidatorUrl = null;
   // MolocoV2 state
   var isMolocoV2 = false;
@@ -197,6 +201,72 @@
   // ========== AXON EVENTS ==========
   var isAxonNetwork = false;
 
+  // Spec conformance is validated server-side by validateAxonSequence()
+  // (src/core/packager/axon-events.ts \u2014 the unit-tested single source of truth):
+  // lifecycle order, dedup of one-shot events, required set, valid names, and an
+  // aggregate "all conform" roll-up. We debounce-post the fire sequence to it.
+  function scheduleAxonValidate() {
+    if (axonValidateTimer) clearTimeout(axonValidateTimer);
+    axonValidateTimer = setTimeout(requestAxonValidate, 200);
+  }
+
+  function requestAxonValidate() {
+    if (!isAxonNetwork) return;
+    if (axonSequence.length === 0) { axonChecks = []; renderAxonVerdicts(); return; }
+    fetch('/api/axon-validate?events=' + encodeURIComponent(axonSequence.join(',')) +
+          '&ts=' + encodeURIComponent(axonTimestamps.join(',')))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        axonChecks = (data && data.checks) || [];
+        renderAxonVerdicts();
+      })
+      .catch(function() { /* validation endpoint unavailable \u2014 leave verdicts as-is */ });
+  }
+
+  // Map a server check { ok, level } to a verdict status class.
+  function axonCheckStatus(check) {
+    if (check.ok) return 'pass';
+    return check.level === 'error' ? 'fail' : 'warn';
+  }
+
+  function renderAxonVerdicts() {
+    var container = document.getElementById('axon-verdicts');
+    if (!container) return;
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    if (axonChecks.length === 0) {
+      var none = document.createElement('div');
+      none.className = 'axon-verdict warn';
+      var ni = document.createElement('span'); ni.className = 'icon'; ni.textContent = '!';
+      var nt = document.createElement('span'); nt.className = 'text';
+      nt.textContent = 'No Axon event fired yet \u2014 DISPLAYED is required by the spec';
+      none.appendChild(ni); none.appendChild(nt);
+      container.appendChild(none);
+      return;
+    }
+
+    axonChecks.forEach(function(check) {
+      var status = axonCheckStatus(check);
+      var div = document.createElement('div');
+      div.className = 'axon-verdict ' + status + (check.id === 'all_conformant' ? ' aggregate' : '');
+      var icon = document.createElement('span');
+      icon.className = 'icon';
+      icon.textContent = status === 'pass' ? '\u2713' : status === 'fail' ? '\u2717' : '!';
+      div.appendChild(icon);
+      var text = document.createElement('span');
+      text.className = 'text';
+      text.textContent = check.label;
+      if (!check.ok && check.detail) {
+        var d = document.createElement('span');
+        d.className = 'detail';
+        d.textContent = check.detail;
+        text.appendChild(d);
+      }
+      div.appendChild(text);
+      container.appendChild(div);
+    });
+  }
+
   function renderAxonEvents() {
     var section = document.getElementById('axon-section');
     var container = document.getElementById('axon-events');
@@ -210,28 +280,29 @@
     }
 
     section.style.display = '';
+    renderAxonVerdicts();
     while (container.firstChild) container.removeChild(container.firstChild);
 
-    // Merge: all known events = expected + any runtime-only events
-    var allEvents = axonExpected.slice();
-    Object.keys(axonFired).forEach(function(name) {
-      if (allEvents.indexOf(name) === -1) allEvents.push(name);
-    });
-
-    if (allEvents.length === 0) {
+    // List the events that actually fired (spec order, non-spec names last).
+    var fired = Object.keys(axonFired).filter(function(k) { return axonFired[k] > 0; });
+    if (fired.length === 0) {
       emptyMsg.style.display = '';
       return;
     }
     emptyMsg.style.display = 'none';
 
-    allEvents.forEach(function(name) {
+    var ordered = axonExpected.filter(function(e) { return axonFired[e] > 0; });
+    fired.forEach(function(e) { if (ordered.indexOf(e) === -1) ordered.push(e); });
+
+    ordered.forEach(function(name) {
       var count = axonFired[name] || 0;
+      var isSpec = axonExpected.indexOf(name) !== -1;
       var div = document.createElement('div');
-      div.className = 'axon-event' + (count > 0 ? ' fired' : '');
+      div.className = 'axon-event fired';
 
       var icon = document.createElement('span');
       icon.className = 'icon';
-      icon.textContent = count > 0 ? '\u26A1' : '\u23F3';
+      icon.textContent = isSpec ? '\u26A1' : '\u26A0';
       div.appendChild(icon);
 
       var nameSpan = document.createElement('span');
@@ -241,7 +312,7 @@
 
       var countSpan = document.createElement('span');
       countSpan.className = 'count';
-      countSpan.textContent = count > 0 ? '\u00D7' + count : '\u2014';
+      countSpan.textContent = '\u00D7' + count;
       div.appendChild(countSpan);
 
       container.appendChild(div);
@@ -364,19 +435,14 @@
         net.hasAppStoreUrl ? 'Found in build' : 'MISSING — set via set_app_store_url(...) in game code');
     }
 
-    // Axon Events: fetch expected events for AppLovin
-    axonExpected = [];
+    // Axon Events (AppLovin): the canonical spec event list comes from the
+    // server (/api/networks). Runtime-fired events are checked against it.
+    axonExpected = (net && net.axonEvents) || [];
     axonFired = {};
+    axonSequence = [];
+    axonTimestamps = [];
+    axonChecks = [];
     isAxonNetwork = (id === 'applovin');
-    if (isAxonNetwork) {
-      fetch('/api/axon-events/' + id)
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          axonExpected = data.events || [];
-          renderAxonEvents();
-        })
-        .catch(function() { /* no axon events */ });
-    }
     renderAxonEvents();
 
     var frame = document.getElementById('preview-frame');
@@ -453,8 +519,11 @@
       case 'axon_event':
         if (data.name) {
           axonFired[data.name] = (axonFired[data.name] || 0) + 1;
+          axonSequence.push(data.name);
+          axonTimestamps.push(typeof data.ts === 'number' ? data.ts : Date.now());
           log('Axon: ' + data.name + ' (×' + axonFired[data.name] + ')', 'cta');
           renderAxonEvents();
+          scheduleAxonValidate();
         }
         break;
       case 'macro_fire':

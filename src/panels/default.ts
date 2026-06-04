@@ -3,6 +3,7 @@ declare const Editor: any;
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { translate, normalizeLang } from '../core/i18n/locales';
+import { AXON_SPEC_URL } from '../core/packager/axon-events';
 
 const template = readFileSync(join(__dirname, '../../static/template/index.html'), 'utf-8');
 const style = readFileSync(join(__dirname, '../../static/style/index.css'), 'utf-8');
@@ -102,6 +103,7 @@ module.exports = Editor.Panel.define({
     pkgBuildDir:      '#pkg-build-dir',
     pkgOutputDir:     '#pkg-output-dir',
     pkgResultsTbody:  '#pkg-results-tbody',
+    pkgWarnings:      '#pkg-warnings',
     pkgAutoPackage:   '#pkg-auto-package',
     pkgTemplatePreset:'#pkg-template-preset',
     pkgOutputTemplate:'#pkg-output-template',
@@ -1389,6 +1391,24 @@ module.exports = Editor.Panel.define({
           .catch((e: any) => { console.warn('[plbx]', e); });
       };
 
+      // Advisory AppLovin Axon event-spec scan of the build source. Shown only
+      // when AppLovin is selected (Axon is AppLovin-specific) so other projects
+      // aren't nagged. Mirrors the fresh-pack warnings into the same box.
+      const refreshAxonAdvisory = (buildDir?: string, selectedNetworks?: string[]) => {
+        const selected = selectedNetworks ?? Array.from(
+          contentPkg?.querySelectorAll('input[name="network"]:checked') ?? [],
+        ).map((cb: any) => (cb as HTMLInputElement).value);
+        if (!selected.includes('applovin')) return;
+        const dir = (buildDir ?? (this.$.pkgBuildDir as HTMLInputElement)?.value ?? '').trim();
+        if (!dir) return;
+        Editor.Message.request('plbx-cocos-extension', 'scan-axon-events', dir)
+          .then((res: any) => {
+            const warnings: string[] = Array.isArray(res?.warnings) ? res.warnings : [];
+            this._renderPackageWarnings([{ networkName: 'AppLovin', warnings }]);
+          })
+          .catch((e: any) => { console.warn('[plbx]', e); });
+      };
+
       // --- Restore settings ---
       Editor.Message.request('plbx-cocos-extension', 'get-settings').then((settings: any) => {
         const buildDirInput = this.$.pkgBuildDir as HTMLInputElement;
@@ -1397,6 +1417,7 @@ module.exports = Editor.Panel.define({
 
         if (buildDirInput && settings?.buildDir) buildDirInput.value = settings.buildDir;
         refreshDetectedStoreUrls(settings?.buildDir);
+        refreshAxonAdvisory(settings?.buildDir, settings?.selectedNetworks);
         if (outputDirInput && settings?.outputDir) outputDirInput.value = settings.outputDir;
         if (autoPackageCb) autoPackageCb.checked = settings?.autoPackage !== false;
 
@@ -1446,6 +1467,9 @@ module.exports = Editor.Panel.define({
               if (Array.isArray(rows) && rows.length > 0) {
                 this._renderPackageResults(rows);
                 if (pkgStatus) pkgStatus.textContent = `${rows.length} existing build${rows.length === 1 ? '' : 's'}`;
+                // _renderPackageResults clears the warnings box; re-run the Axon
+                // advisory so it survives the existing-builds render.
+                refreshAxonAdvisory(settings?.buildDir, settings?.selectedNetworks);
               }
             })
             .catch((e: any) => { console.warn('[plbx]', e); });
@@ -1462,6 +1486,7 @@ module.exports = Editor.Panel.define({
       // Re-detect store URLs when the build directory changes.
       (this.$.pkgBuildDir as HTMLInputElement)?.addEventListener('change', () => {
         refreshDetectedStoreUrls();
+        refreshAxonAdvisory();
       });
 
       // --- Build All ---
@@ -1641,6 +1666,66 @@ module.exports = Editor.Panel.define({
         tr.appendChild(tdCreated);
         tr.appendChild(tdStatus);
         tbody.appendChild(tr);
+      }
+
+      // Surface warnings as a visible list (the per-row badge tooltip is
+      // hover-only and easy to miss). Advisory only — e.g. AppLovin Axon
+      // event-spec conformance — the build itself still succeeds.
+      this._renderPackageWarnings(results);
+    },
+
+    _renderPackageWarnings(this: any, results: any[]) {
+      const box = this.$.pkgWarnings as HTMLDivElement | undefined;
+      if (!box) return;
+      clearChildren(box);
+
+      const groups = (results || [])
+        .map((r) => ({
+          name: r.networkName ?? r.network ?? r.id ?? '—',
+          warnings: (Array.isArray(r.warnings) ? r.warnings : []) as string[],
+        }))
+        .filter((g) => g.warnings.length > 0);
+
+      if (groups.length === 0) {
+        box.style.display = 'none';
+        return;
+      }
+      box.style.display = '';
+
+      const header = document.createElement('div');
+      header.className = 'pkg-warnings-title';
+      const total = groups.reduce((n, g) => n + g.warnings.length, 0);
+      header.textContent = `⚠ ${total} advisory warning${total === 1 ? '' : 's'}`;
+      box.appendChild(header);
+
+      for (const g of groups) {
+        for (const w of g.warnings) {
+          const item = document.createElement('div');
+          item.className = 'pkg-warning-item';
+          const net = document.createElement('span');
+          net.className = 'pkg-warning-net';
+          net.textContent = g.name;
+          const msg = document.createElement('span');
+          msg.className = 'pkg-warning-msg';
+          msg.textContent = w;
+          item.appendChild(net);
+          item.appendChild(msg);
+          box.appendChild(item);
+        }
+      }
+
+      // Link to the Axon event spec when any AppLovin/Axon advisory is shown.
+      const hasAxon = groups.some(
+        (g) => /applovin/i.test(g.name) || g.warnings.some((w) => /axon/i.test(w)),
+      );
+      if (hasAxon) {
+        const link = document.createElement('a');
+        link.className = 'pkg-warnings-link';
+        link.href = AXON_SPEC_URL;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = 'AppLovin Axon event spec ↗';
+        box.appendChild(link);
       }
     },
 
