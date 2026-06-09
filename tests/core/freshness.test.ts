@@ -205,14 +205,60 @@ describe('checkFreshness (orchestration with injected deps)', () => {
     expect(v.state).toBe('unknown');
   });
 
-  it('reports unknown when there is no upstream (rev-parse @{u} throws)', async () => {
+  it('falls back to origin default branch when there is no upstream (detached HEAD / local branch)', async () => {
+    // Real case: user checks out an old commit (detached) or a local branch
+    // without upstream — rev-parse @{u} fails. The check must still compare
+    // against the origin default branch instead of giving up with 'unknown'.
+    const calls: any[] = [];
     const v = await checkFreshness({
       repoRoot: '/repo',
       runGit: async (args: string[]) => {
         const key = args.join(' ');
         if (key === 'rev-parse --symbolic-full-name @{u}') throw new Error('no upstream');
+        if (key === 'rev-parse --abbrev-ref origin/HEAD') return 'origin/master';
         if (key === 'rev-parse HEAD') return 'abc1234';
+        if (key === 'remote get-url origin')
+          return 'git@github.com:playbox-org/plbx-cocos-assistant.git';
         return '';
+      },
+      fetchCompare: async (slug: string, base: string, head: string) => {
+        calls.push({ slug, base, head });
+        return { status: 'behind', ahead_by: 0, behind_by: 3 };
+      },
+    });
+    expect(calls[0]).toEqual({
+      slug: 'playbox-org/plbx-cocos-assistant',
+      base: 'master',
+      head: 'abc1234',
+    });
+    expect(v.state).toBe('behind');
+    expect(v.behindBy).toBe(3);
+  });
+
+  it("falls back to 'master' when even origin/HEAD is unresolved but origin exists", async () => {
+    const v = await checkFreshness({
+      repoRoot: '/repo',
+      runGit: async (args: string[]) => {
+        const key = args.join(' ');
+        if (key === 'rev-parse --symbolic-full-name @{u}') throw new Error('no upstream');
+        if (key === 'rev-parse --abbrev-ref origin/HEAD') throw new Error('no origin/HEAD ref');
+        if (key === 'rev-parse HEAD') return 'abc1234';
+        if (key === 'remote get-url origin')
+          return 'git@github.com:playbox-org/plbx-cocos-assistant.git';
+        return '';
+      },
+      fetchCompare: async () => ({ status: 'behind', ahead_by: 0, behind_by: 1 }),
+    });
+    expect(v.state).toBe('behind');
+  });
+
+  it('reports unknown when there is no upstream AND no origin remote', async () => {
+    const v = await checkFreshness({
+      repoRoot: '/repo',
+      runGit: async (args: string[]) => {
+        const key = args.join(' ');
+        if (key === 'rev-parse HEAD') return 'abc1234';
+        throw new Error('fail');
       },
       fetchCompare: async () => ({ status: 'behind', ahead_by: 0, behind_by: 2 }),
     });

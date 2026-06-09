@@ -188,8 +188,15 @@ export async function checkFreshness(deps: CheckDeps): Promise<FreshnessVerdict>
   const remoteUrl = await tryGit(['remote', 'get-url', 'origin']);
 
   const dirty = statusOut.length > 0;
-  const branch = upstreamRef ? stripRemoteRef(upstreamRef) : null;
   const slug = remoteUrl ? parseSlug(remoteUrl) : null;
+  let branch = upstreamRef ? stripRemoteRef(upstreamRef) : null;
+  if (!branch && slug) {
+    // No upstream (detached HEAD after checking out an old commit, or a local
+    // branch created without --track). Still meaningful to compare against the
+    // origin default branch instead of bailing out as 'unknown'.
+    const originHead = await tryGit(['rev-parse', '--abbrev-ref', 'origin/HEAD']);
+    branch = originHead ? originHead.replace(/^origin\//, '') : 'master';
+  }
 
   let compare: CompareResult | null = null;
   if (local && branch && slug) {
