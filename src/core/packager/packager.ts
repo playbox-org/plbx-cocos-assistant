@@ -330,18 +330,25 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
               // the playable (assetTitle / projectName override, else the build
               // folder name) so it works out of the box without a custom template.
               if (!zipBase || zipBase === 'index') {
-                const playable = sanitizeFileBase(
+                zipBase =
                   options.templateVariables?.assetTitle ||
-                    options.templateVariables?.projectName ||
-                    deriveProjectNameFromBuildDir(options.buildDir) ||
-                    '',
-                );
-                if (playable) {
-                  zipBase = playable;
-                  outputPath = join(dirname(outputPath), `${playable}${extname(outputPath)}`);
-                }
+                  options.templateVariables?.projectName ||
+                  deriveProjectNameFromBuildDir(options.buildDir) ||
+                  '';
               }
-              if (zipBase && zipBase !== 'index') innerHtmlName = `${zipBase}.html`;
+              // Mintegral 2026 moderation rule: "Html file name are supported with
+              // letters, Numbers, and underscores only." sanitizeFileBase keeps
+              // dashes/dots (fine for other targets) so apply a stricter pass here
+              // — collapse anything outside [A-Za-z0-9_] to underscore. Rename the
+              // outer .zip too: htmlMatchesZipName means the network loads the inner
+              // HTML by the zip basename, so both must match AND both must be clean.
+              zipBase = sanitizeFileBase(zipBase)
+                .replace(/[^A-Za-z0-9_]+/g, '_')
+                .replace(/^_+|_+$/g, '');
+              if (zipBase && zipBase !== 'index') {
+                innerHtmlName = `${zipBase}.html`;
+                outputPath = join(dirname(outputPath), `${zipBase}${extname(outputPath)}`);
+              }
             }
             writeFileSync(join(tempDir, innerHtmlName), finalHtml);
 

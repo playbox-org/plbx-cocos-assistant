@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getAdapter } from '../../../src/core/packager/network-adapters';
+import { mraidDeferBootGate } from '../../../src/core/packager/network-adapters/base';
 import { HtmlBuilder } from '../../../src/core/packager/html-builder';
 import { NETWORKS } from '../../../src/shared/networks';
 import { PackageConfig } from '../../../src/shared/types';
@@ -66,6 +67,9 @@ describe('Network Adapters', () => {
         expect(required).toContain('mraid.isViewable');
         expect(required).toContain('viewableChange');
         expect(required).toContain('mraid.js');
+        // Lock the render-surface fallback so a future edit can't silently drop it
+        // and reintroduce the Unity moderation grey-screen.
+        expect(required).toContain('document.visibilityState');
       });
     });
 
@@ -75,6 +79,39 @@ describe('Network Adapters', () => {
         const required = adapter.getRequiredStrings();
         expect(required).not.toContain('__plbx_pre_boot = function');
       });
+    });
+  });
+
+  // Regression: Unity Ads moderation rejected a packaged build as "content is
+  // non-functional" — its headless screenshot showed a grey #333 screen because
+  // Cocos never booted. Root cause: the naive defer-boot gate registered its
+  // viewableChange listener only AFTER the base64-ZIP unpack (runtime-loader
+  // calls __plbx_pre_boot post-unpack) and checked isViewable() exactly once. If
+  // the network fired its first viewableChange(true) during the unpack window the
+  // pulse was lost, and if isViewable() was false at that single check the game
+  // hung forever. Verified by reproduction (mraid mock, modes never/early-pulse).
+  describe('mraidDeferBootGate — robust boot (Unity moderation grey-screen fix)', () => {
+    const gate = mraidDeferBootGate();
+
+    it('polls isViewable() to catch a viewableChange pulse lost during ZIP unpack', () => {
+      // Same proven pattern as the moloco-v2 viewable handler: a bounded poll
+      // catches the already-viewable and missed-first-pulse cases that a single
+      // event listener + one isViewable() check cannot.
+      expect(gate).toMatch(/poll/i);
+      expect(gate).toContain('setTimeout');
+    });
+
+    it('boots on a real, visible render surface when MRAID never reports viewable', () => {
+      // Unity server-side moderation captures a screenshot without ever firing
+      // viewableChange or returning isViewable()===true. Boot must still happen,
+      // gated deterministically on a nonzero, visible viewport — NOT an arbitrary
+      // "boot anyway after N ms" timer.
+      expect(gate).toContain('document.visibilityState');
+      expect(gate).toContain('innerWidth');
+    });
+
+    it('boots immediately when no MRAID is present (preview / validators)', () => {
+      expect(gate).toContain('if (!window.mraid)');
     });
   });
 

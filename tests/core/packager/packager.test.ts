@@ -183,6 +183,31 @@ describe('validator-forbidden string enforcement', () => {
     expect(onProgress).toHaveBeenCalledWith('mintegral', 'done');
   });
 
+  it('mintegral inner HTML + zip filename use only letters/numbers/underscores (no dashes)', async () => {
+    // Mintegral 2026 moderation: "Html file name are supported with letters,
+    // Numbers, and underscores only." The auto-name path derives the playable
+    // name from assetTitle / projectName / the build folder; a hyphenated source
+    // like "candivore-carousel-of-seasons" must NOT leak dashes into the entry
+    // name (htmlMatchesZipName → inner HTML == zip basename, so sanitize both).
+    const result = await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['mintegral'],
+      config: defaultConfig,
+      templateVariables: { assetTitle: 'candivore-carousel-of-seasons' },
+    });
+    const out = result.results[0];
+    expect(out.error).toBeFalsy();
+    const zip = await JSZip.loadAsync(readFileSync(out.outputPath));
+    const htmlEntries = Object.keys(zip.files).filter((f) => f.endsWith('.html'));
+    expect(htmlEntries).toHaveLength(1);
+    const innerBase = htmlEntries[0].replace(/\.html$/, '').split('/').pop()!;
+    expect(innerBase).toMatch(/^[A-Za-z0-9_]+$/);
+    // htmlMatchesZipName: the outer .zip basename must equal the inner HTML base.
+    const zipBase = out.outputPath.split('/').pop()!.replace(/\.zip$/, '');
+    expect(zipBase).toBe(innerBase);
+  });
+
   it('should fail mintegral build when injected content contains preview-util.js', async () => {
     const onProgress = vi.fn();
     const result = await packageForNetworks({
@@ -411,11 +436,14 @@ describe('Mintegral inner HTML filename (matches outer ZIP name)', () => {
       // no outputTemplate → default {networkId}/index.{ext}; must NOT stay index
     });
     const r = result.results.find((x) => x.networkId === 'mintegral')!;
-    // MOCK_BUILD's folder name ("mock-build") is the derived playable name
-    expect(r.outputPath).toContain('mock-build.zip');
+    // MOCK_BUILD's folder name ("mock-build") is the derived playable name. The
+    // dash is sanitized to an underscore — Mintegral moderation allows only
+    // letters/numbers/underscores in the HTML/zip filename.
+    expect(r.outputPath).toContain('mock_build.zip');
+    expect(r.outputPath).not.toContain('mock-build.zip');
     expect(r.outputPath).not.toContain('index.zip');
     const names = await innerNames(r.outputPath);
-    expect(names).toContain('mock-build.html');
+    expect(names).toContain('mock_build.html');
     expect(names).not.toContain('index.html');
   });
 

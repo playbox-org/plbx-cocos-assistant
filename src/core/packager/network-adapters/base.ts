@@ -71,24 +71,56 @@ window.open = function(u) {
 
 /**
  * MRAID defer-boot gate — same pattern as super-html's viewable_start_ads().
- * Defers Cocos boot until ad is viewable. Fixes video+playable combo black screen
- * (AppLovin Axon etc.) where playable HTML preloads in hidden WebView while video plays,
- * causing Cocos to init with 0x0 canvas.
+ * Defers Cocos boot until the ad has a real render surface. Fixes video+playable
+ * combo black screen (AppLovin Axon etc.) where the playable HTML preloads in a
+ * hidden WebView while video plays, causing Cocos to init with a 0x0 canvas.
  *
- * Registers window.__plbx_pre_boot(origBoot) — called by runtime-loader before Cocos boot.
- * If mraid.isViewable() → boot immediately. Else → wait for viewableChange(true) → boot.
+ * Registers window.__plbx_pre_boot(origBoot) — called by runtime-loader AFTER the
+ * base64-ZIP unpack, right before Cocos boot. Boot fires as soon as the gate's
+ * `ready()` precondition holds; otherwise it waits on real signals (no timer).
+ *
+ * `ready()` boots when EITHER:
+ *   - mraid.isViewable() === true (the network's own signal), OR
+ *   - the viewport is a real, visible render surface (innerWidth/Height > 0 and
+ *     document.visibilityState === 'visible').
+ * The second clause is the deterministic fallback for environments that render
+ * the playable but never report viewability — notably Unity Ads server-side
+ * moderation, whose headless screenshot otherwise captured a grey #333 screen
+ * (Cocos never booted) and rejected the creative as "content is non-functional".
+ *
+ * Two robustness mechanisms, NO arbitrary "boot anyway after N ms" timer:
+ *   - viewableChange listener — covers becomes-viewable-later.
+ *   - bounded isViewable() poll — SAME pattern as the moloco-v2 viewable handler:
+ *     the network can fire the FIRST viewableChange(true) during the ZIP-unpack
+ *     window, BEFORE this listener attaches (the pulse is lost). Polling catches
+ *     the already-viewable and missed-first-pulse cases the lone listener cannot.
+ *
  * If no mraid at all → boot immediately (runtime preview, validators without MRAID).
  */
 export function mraidDeferBootGate(): string {
   return `window.__plbx_pre_boot = function(boot) {
-  if (!window.mraid) { boot(); return; }
-  function gate() {
-    if (mraid.isViewable()) { boot(); return; }
-    mraid.addEventListener('viewableChange', function h(v) {
-      if (v) { mraid.removeEventListener('viewableChange', h); boot(); }
-    });
+  var done = false;
+  function go() { if (done) return; done = true; try { boot(); } catch(e) {} }
+  if (!window.mraid) { go(); return; }
+  function ready() {
+    try { if (typeof mraid.isViewable === 'function' && mraid.isViewable()) return true; } catch(e) {}
+    var w = window.innerWidth, h = window.innerHeight;
+    var visible = (typeof document.visibilityState === 'undefined') || document.visibilityState === 'visible';
+    return w > 0 && h > 0 && visible;
   }
-  mraid.getState() === 'loading' ? mraid.addEventListener('ready', gate) : gate();
+  function tryBoot() { if (ready()) { go(); return true; } return false; }
+  if (tryBoot()) return;
+  function attach() {
+    try { mraid.addEventListener('viewableChange', function(v) { if (v) tryBoot(); }); } catch(e) {}
+  }
+  (mraid.getState && mraid.getState() === 'loading') ? mraid.addEventListener('ready', attach) : attach();
+  window.addEventListener('resize', tryBoot);
+  try { document.addEventListener('visibilitychange', tryBoot); } catch(e) {}
+  (function poll(n) {
+    if (done) return;
+    if (tryBoot()) return;
+    if (n > 0) setTimeout(function() { poll(n - 1); }, 200);
+  })(50);
 };`;
 }
 
@@ -231,6 +263,9 @@ export class BaseAdapter implements NetworkAdapter {
         '__plbx_pre_boot = function',
         'mraid.isViewable',
         'viewableChange',
+        // Render-surface fallback — without it, environments that never report
+        // viewability (Unity Ads headless moderation) grey-screen the creative.
+        'document.visibilityState',
         'mraid.js',
       ];
     }
