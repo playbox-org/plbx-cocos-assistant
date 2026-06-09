@@ -638,10 +638,13 @@ h3 {
 .mv2-macro-name { font-family: monospace; font-weight: 600; color: #e5e7eb; }
 .mv2-macro-meta { font-size: 0.7rem; color: #9ca3af; margin-top: 0.15rem; }
 
+/* Top-left placement — mirrors the Axon panel which occupies the left column. */
 .mv2-dock {
   position: fixed;
-  bottom: 1rem;
-  right: 1rem;
+  /* Below the network tab bar (~49px: 8px padding x2 + ~32px tab + border) so
+     the dock never covers network switching. */
+  top: 60px;
+  left: 1rem;
   z-index: 1000;
   background: rgba(18, 18, 22, 0.95);
   border: 1px solid rgba(245, 166, 35, 0.35);
@@ -678,6 +681,28 @@ h3 {
 .mv2-dock.collapsed .mv2-dock-body { display: none; }
 .mv2-dock.collapsed { padding-bottom: 0.55rem; }
 .mv2-dock.collapsed .mv2-dock-header { margin-bottom: 0; }
+/* Call-to-action hint: mraid_viewable cannot pass until Viewable is pressed. */
+.mv2-viewable-hint {
+  display: none;
+  font-size: 0.7rem;
+  color: #f5a623;
+  background: rgba(245, 166, 35, 0.12);
+  border: 1px dashed rgba(245, 166, 35, 0.5);
+  border-radius: 4px;
+  padding: 0.3rem 0.45rem;
+  margin-bottom: 0.4rem;
+  line-height: 1.35;
+}
+.mv2-viewable-hint.visible { display: block; }
+@keyframes mv2-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.6); }
+  70%  { box-shadow: 0 0 0 8px rgba(245, 166, 35, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0); }
+}
+.mv2-btn-pulse {
+  animation: mv2-pulse 1.5s ease-out infinite;
+  background: rgba(245, 166, 35, 0.3);
+}
 .mv2-controls-row {
   display: flex;
   flex-wrap: wrap;

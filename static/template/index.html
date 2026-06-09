@@ -194,7 +194,10 @@
             <input type="text" id="pkg-store-ios" class="form-input" disabled placeholder="—" data-i18n-placeholder="package.storeUrlFromCode" title="Set in game code via set_app_store_url(...)" />
           </div>
           <div class="form-hint" data-i18n="package.storeUrlHint">Detected from game code (set_google_play_url / set_app_store_url)</div>
-          <div class="form-warning" id="pkg-store-regional" style="display:none;"></div>
+          <div class="form-warning" id="pkg-store-regional" style="display:none;">
+            <span id="pkg-store-regional-text"></span>
+            <button id="pkg-store-regional-fix" class="warning-fix-btn" data-i18n="package.fixRegional">Fix</button>
+          </div>
         </div>
 
         <!-- Right: Output Settings -->
@@ -232,6 +235,13 @@
               <input type="checkbox" id="pkg-auto-package" checked />
               <span data-i18n="settings.autoPackage">Auto-package after build</span>
             </label>
+          </div>
+          <div class="form-group">
+            <label class="toggle-label">
+              <input type="checkbox" id="pkg-show-splash" checked />
+              <span data-i18n="settings.showSplash">Show Playbox splash while loading</span>
+            </label>
+            <div id="pkg-splash-cost" class="pkg-hint"></div>
           </div>
         </div>
       </div>

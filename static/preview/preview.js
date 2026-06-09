@@ -406,6 +406,7 @@
   function renderMolocoV2Section() {
     var dock = document.getElementById('mv2-dock');
     if (dock) dock.style.display = isMolocoV2 ? '' : 'none';
+    updateViewableHint();
     var section = document.getElementById('molocov2-section');
     if (!section) return;
     if (!isMolocoV2) { section.style.display = 'none'; return; }
@@ -438,10 +439,25 @@
         meta.className = 'mv2-macro-meta';
         meta.textContent = 'fired ' + count + '× @ ' + Math.round(entry.lastTs) + 'ms';
         info.appendChild(meta);
+      } else if (def.key === 'mraid_viewable') {
+        var hintMeta = document.createElement('div');
+        hintMeta.className = 'mv2-macro-meta';
+        hintMeta.textContent = 'Press Viewable in Manual triggers to fire this beacon';
+        info.appendChild(hintMeta);
       }
       div.appendChild(info);
       container.appendChild(div);
     });
+  }
+
+  // Show "press Viewable" call-to-action until the mraid_viewable macro fires.
+  // MolocoV2 only: the mraid_viewable beacon check cannot pass without a manual trigger.
+  function updateViewableHint() {
+    var pending = isMolocoV2 && !(macroFires['mraid_viewable'] && macroFires['mraid_viewable'].count > 0);
+    var hint = document.getElementById('mv2-viewable-hint');
+    if (hint) hint.classList.toggle('visible', pending);
+    var viewableBtn = document.querySelector('.mv2-btn[data-mv2-action="viewable"][data-mv2-value="true"]');
+    if (viewableBtn) viewableBtn.classList.toggle('mv2-btn-pulse', pending);
   }
 
   function recordMacroFire(macroKey, url, ts) {

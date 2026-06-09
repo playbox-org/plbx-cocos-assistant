@@ -19,6 +19,8 @@ export interface ProjectSettings {
   loaderMode: 'self-contained' | 'systemjs';
   /** Networks pinned to the legacy SystemJS loader regardless of loaderMode. */
   legacyLoaderNetworks: string[];
+  /** Show PLBX loading splash until the first rendered Cocos frame. */
+  showSplash: boolean;
 }
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
@@ -35,6 +37,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   templateVariables: {},
   loaderMode: 'self-contained',
   legacyLoaderNetworks: [],
+  showSplash: true,
 };
 
 /**
@@ -49,6 +52,7 @@ export function toPackageConfig(s: ProjectSettings): PackageConfig {
     orientation: s.orientation,
     loaderMode: s.loaderMode,
     legacyLoaderNetworks: s.legacyLoaderNetworks,
+    showSplash: s.showSplash !== false,
   };
 }
 

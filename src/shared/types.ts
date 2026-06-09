@@ -48,6 +48,8 @@ export interface PackageConfig {
   loaderMode?: 'self-contained' | 'systemjs';
   /** Networks pinned to the legacy SystemJS loader regardless of loaderMode. */
   legacyLoaderNetworks?: string[];
+  /** Show PLBX loading splash until the first rendered Cocos frame. Default true. */
+  showSplash?: boolean;
 }
 
 export interface AssetReportItem {

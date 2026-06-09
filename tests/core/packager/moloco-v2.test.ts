@@ -260,13 +260,13 @@ describe('MolocoV2 target', () => {
       config: defaultConfig,
     });
     const launcher = readFileSync(r.results[0].outputPath, 'utf-8');
-    // Splash DOM + branded PLBX logo (pulsing rainbow mark) + wordmark
+    // Splash DOM + branded PLBX pinwheel mark (compact mode: whole-mark pulse,
+    // CSS-text wordmark — the SVG wordmark would blow the 3 KB budget)
     expect(launcher).toContain('<div id="s">');
-    expect(launcher).toContain('PLAYBOX');
+    expect(launcher).toContain('Playbox');
     expect(launcher).toContain('<svg id="lg"');
-    expect(launcher).toContain('@keyframes plbxp');
-    // Stops defined once, inherited via href to stay under the 3 KB budget
-    expect(launcher).toContain('href="#g0"');
+    expect(launcher).toContain('@keyframes pq');
+    expect(launcher).toContain('url(#p0)');
     // Auto-hide hook + fallback timeout so the splash can never get stuck
     expect(launcher).toContain('window.__plbx_splash_hide');
     expect(launcher).toMatch(/setTimeout\(window\.__plbx_splash_hide,\s*\d+\)/);

@@ -96,3 +96,82 @@ export function extractStoreUrls(buildDir: string): string[] {
 
   return [...googlePlay, ...apple];
 }
+
+/**
+ * Strip regional / localization tokens from a store URL — the inverse of
+ * detectRegionalParams. Removes:
+ *   Google Play:  ?gl= / ?hl= query params
+ *   App Store:    /<cc>/ country path segment, ?l= / ?country= query params
+ * Returns the URL unchanged when it is already region-agnostic.
+ */
+export function stripRegionalParams(url: string): string {
+  let out = url;
+
+  // Apple country-code path segment: apps.apple.com/us/app/... → apps.apple.com/app/...
+  out = out.replace(/((?:apps|itunes)\.apple\.com)\/[a-z]{2}\//i, '$1/');
+
+  // Regional query params (Google Play gl/hl, Apple l/country). Keep the other
+  // params intact; promote the first survivor to '?' if the leading param was removed.
+  out = out.replace(/[?&](?:gl|hl|l|country)=[^&#]*/gi, '');
+  if (!out.includes('?') && out.includes('&')) out = out.replace('&', '?');
+  // Trailing '?' when every param was regional.
+  out = out.replace(/\?$/, '');
+
+  return out;
+}
+
+/**
+ * Rewrite every regional store URL inside the build's scannable source files
+ * (same walk + URL grammar as extractStoreUrls). Used by the panel's "Fix"
+ * button next to the regional warning. Returns the number of distinct
+ * URL occurrences rewritten across all files.
+ */
+export function fixRegionalStoreUrls(
+  buildDir: string,
+  opts?: { extraExtensions?: string[] },
+): { fixed: number } {
+  let fixed = 0;
+  const scannable = new Set(SCANNABLE_EXTENSIONS);
+  for (const ext of opts?.extraExtensions ?? []) scannable.add(ext.toLowerCase());
+
+  const rewrite = (content: string): string =>
+    content.replace(new RegExp(`${GOOGLE_PLAY_RE.source}|${APPLE_RE.source}`, 'g'), (url) => {
+      const stripped = stripRegionalParams(url);
+      if (stripped !== url) fixed++;
+      return stripped;
+    });
+
+  const walk = (dir: string): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules') continue;
+        walk(full);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (!scannable.has(extname(entry.name).toLowerCase())) continue;
+
+      let content: string;
+      try {
+        content = fs.readFileSync(full, 'utf8');
+      } catch {
+        continue;
+      }
+      const before = fixed;
+      const next = rewrite(content);
+      if (fixed > before) {
+        fs.writeFileSync(full, next, 'utf8');
+      }
+    }
+  };
+
+  walk(buildDir);
+  return { fixed };
+}

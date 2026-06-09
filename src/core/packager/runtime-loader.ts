@@ -10,6 +10,7 @@
  */
 
 import { generateSelfContainedLoader } from './loader';
+import { buildSplash, FIRST_FRAME_HOOK_JS } from './splash';
 
 export interface RuntimeLoaderOptions {
   /** Enable debug logging in the runtime */
@@ -932,6 +933,8 @@ export function generateFullHtml(params: {
   buildDir?: string;
   /** Effective loader engine for this output (per-network). Overrides loaderOptions.mode. */
   loaderMode?: 'self-contained' | 'systemjs';
+  /** Inject PLBX loading splash, hidden on the first rendered Cocos frame. */
+  showSplash?: boolean;
 }): string {
   const { originalHtml, zipBase64, jsModules, cssContent, loaderOptions = {} } = params;
   const buildDir = params.buildDir;
@@ -1005,9 +1008,28 @@ export function generateFullHtml(params: {
     return '<!-- plbx: ' + src + ' loaded from ZIP -->';
   });
 
+  // --- Phase 1.5: PLBX loading splash (optional) ---
+  // Covers the grey #333 flash from page parse (ZIP unpack + MRAID defer-boot
+  // wait) until the first rendered Cocos frame. Style → <head>, overlay right
+  // after <body> so it paints before GameDiv; hide hook joins the injection
+  // block below.
+  let splashJs = '';
+  if (params.showSplash) {
+    const splash = buildSplash({});
+    rewrittenHtml = rewrittenHtml.replace(
+      /<\/head>/i,
+      '<style>' + splash.styleCss + '</style></head>',
+    );
+    rewrittenHtml = rewrittenHtml.replace(
+      /<body([^>]*)>/i,
+      (m) => m + splash.bodyHtml,
+    );
+    splashJs = '<script>' + splash.hideJs + FIRST_FRAME_HOOK_JS + '</script>\n';
+  }
+
   // --- Phase 2: Build injection block ---
 
-  let injection = '';
+  let injection = splashJs;
 
   if (mode === 'self-contained') {
     // The self-contained loader builds __plbx_res from the ZIP itself, so it

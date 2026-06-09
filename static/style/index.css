@@ -1460,3 +1460,25 @@ body,
   cursor: pointer;
   accent-color: #7c6fcd;
 }
+
+.warning-fix-btn {
+  background: transparent;
+  border: 1px solid #f87171;
+  border-radius: 4px;
+  color: #f87171;
+  font-size: 11px;
+  padding: 1px 10px;
+  margin-left: 8px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.warning-fix-btn:hover {
+  background: #f87171;
+  color: #1e1e1e;
+}
+
+.warning-fix-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

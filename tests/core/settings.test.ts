@@ -24,4 +24,10 @@ describe('toPackageConfig', () => {
     expect(config.legacyLoaderNetworks).toEqual(['facebook', 'molocoV2']);
     expect(config.orientation).toBe('landscape');
   });
+
+  it('forwards showSplash (default true, explicit false honoured)', () => {
+    expect(DEFAULT_SETTINGS.showSplash).toBe(true);
+    expect(toPackageConfig(DEFAULT_SETTINGS).showSplash).toBe(true);
+    expect(toPackageConfig({ ...DEFAULT_SETTINGS, showSplash: false }).showSplash).toBe(false);
+  });
 });

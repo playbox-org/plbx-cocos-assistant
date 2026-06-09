@@ -101,11 +101,15 @@ module.exports = Editor.Panel.define({
     pkgStoreIos:      '#pkg-store-ios',
     pkgStoreAndroid:  '#pkg-store-android',
     pkgStoreRegional: '#pkg-store-regional',
+    pkgStoreRegionalText: '#pkg-store-regional-text',
+    pkgStoreRegionalFix: '#pkg-store-regional-fix',
     pkgBuildDir:      '#pkg-build-dir',
     pkgOutputDir:     '#pkg-output-dir',
     pkgResultsTbody:  '#pkg-results-tbody',
     pkgWarnings:      '#pkg-warnings',
     pkgAutoPackage:   '#pkg-auto-package',
+    pkgShowSplash:    '#pkg-show-splash',
+    pkgSplashCost:    '#pkg-splash-cost',
     pkgTemplatePreset:'#pkg-template-preset',
     pkgOutputTemplate:'#pkg-output-template',
     pkgTemplatePreview:'#pkg-template-preview',
@@ -1394,18 +1398,48 @@ module.exports = Editor.Panel.define({
             // be absent so the creative serves globally; same rule the packager warns on).
             const regional: string[] = Array.isArray(res?.regional) ? res.regional : [];
             if (regionalEl) {
+              const textEl = this.$.pkgStoreRegionalText as HTMLElement | null;
               if (regional.length) {
-                regionalEl.textContent =
-                  '⚠ ' + translate(this._lang || 'en', 'package.storeUrlRegional') + ': ' + regional.join('; ');
+                if (textEl) {
+                  textEl.textContent =
+                    '⚠ ' + translate(this._lang || 'en', 'package.storeUrlRegional') + ': ' + regional.join('; ');
+                }
                 regionalEl.style.display = '';
               } else {
-                regionalEl.textContent = '';
+                if (textEl) textEl.textContent = '';
                 regionalEl.style.display = 'none';
               }
             }
           })
           .catch((e: any) => { console.warn('[plbx]', e); });
       };
+
+      // "Fix" button on the regional warning: rewrite the offending store URLs
+      // inside the build's source files (they are set in game code), then
+      // re-scan so the warning clears and the fields show the fixed URLs.
+      const fixBtn = this.$.pkgStoreRegionalFix as HTMLButtonElement | null;
+      fixBtn?.addEventListener('click', () => {
+        const dir = ((this.$.pkgBuildDir as HTMLInputElement)?.value ?? '').trim();
+        if (!dir) return;
+        fixBtn.disabled = true;
+        Editor.Message.request('plbx-cocos-extension', 'fix-store-urls', dir)
+          .then((res: any) => {
+            const total = (res?.fixed ?? 0) + (res?.sourceFixed ?? 0);
+            console.log('[plbx] regional store URLs fixed:', res);
+            refreshDetectedStoreUrls(dir);
+            // Already-packaged outputs still carry the old URLs — tell the user
+            // to re-package. Reuse the warnings box under the results table.
+            if (total > 0) {
+              const msg = translate(this._lang || 'en', 'package.fixedRepack').replace(
+                '{n}',
+                String(total),
+              );
+              this._renderPackageWarnings([{ networkName: 'Store URL', warnings: [msg] }]);
+            }
+          })
+          .catch((e: any) => { console.warn('[plbx]', e); })
+          .finally(() => { fixBtn.disabled = false; });
+      });
 
       // Advisory AppLovin Axon event-spec scan of the build source. Shown only
       // when AppLovin is selected (Axon is AppLovin-specific) so other projects
@@ -1436,6 +1470,8 @@ module.exports = Editor.Panel.define({
         refreshAxonAdvisory(settings?.buildDir, settings?.selectedNetworks);
         if (outputDirInput && settings?.outputDir) outputDirInput.value = settings.outputDir;
         if (autoPackageCb) autoPackageCb.checked = settings?.autoPackage !== false;
+        const showSplashCb = this.$.pkgShowSplash as HTMLInputElement | null;
+        if (showSplashCb) showSplashCb.checked = settings?.showSplash !== false;
 
         const ori = settings?.orientation ?? 'auto';
         const radioEl = (this.$.contentPackage as HTMLElement | null)?.querySelector(`input[name="orientation"][value="${ori}"]`) as HTMLInputElement | null;
@@ -1498,6 +1534,22 @@ module.exports = Editor.Panel.define({
         Editor.Message.request('plbx-cocos-extension', 'save-settings', { autoPackage: checked })
           .catch((e: any) => { console.warn('[plbx]', e); });
       });
+
+      // PLBX splash toggle — project setting + byte-cost hint.
+      (this.$.pkgShowSplash as HTMLInputElement)?.addEventListener('change', () => {
+        const checked = (this.$.pkgShowSplash as HTMLInputElement)?.checked ?? true;
+        Editor.Message.request('plbx-cocos-extension', 'save-settings', { showSplash: checked })
+          .catch((e: any) => { console.warn('[plbx]', e); });
+      });
+      Editor.Message.request('plbx-cocos-extension', 'get-splash-info')
+        .then((info: any) => {
+          const el = this.$.pkgSplashCost as HTMLElement | null;
+          if (el && info?.bytes > 0) {
+            const kb = (info.bytes / 1024).toFixed(1);
+            el.textContent = translate(this._lang || 'en', 'settings.splashCost').replace('{kb}', kb);
+          }
+        })
+        .catch(() => {});
 
       // Re-detect store URLs when the build directory changes.
       (this.$.pkgBuildDir as HTMLInputElement)?.addEventListener('change', () => {

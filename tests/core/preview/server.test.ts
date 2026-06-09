@@ -86,6 +86,42 @@ describe('Preview Server', () => {
     expect(res.body).toContain('window.install'); // Mintegral CTA mock
   });
 
+  it('should position the manual-triggers dock in the top-left corner', async () => {
+    mkdirSync(join(TMP, 'molocoV2'), { recursive: true });
+    writeFileSync(join(TMP, 'molocoV2', 'index.html'), '<html><head></head><body>m</body></html>');
+
+    const { url } = await startPreviewServer({ outputDir: TMP, networks: ['molocoV2'] });
+    const res = await httpGet(url + '/static/preview/preview.css');
+    expect(res.status).toBe(200);
+    const dockRule = res.body.match(/\.mv2-dock\s*\{[^}]*\}/);
+    expect(dockRule).not.toBeNull();
+    expect(dockRule![0]).toMatch(/top:/);
+    expect(dockRule![0]).toMatch(/left:/);
+    expect(dockRule![0]).not.toMatch(/bottom:/);
+    expect(dockRule![0]).not.toMatch(/right:/);
+  });
+
+  it('should include a viewable hint with pulse styling for molocoV2 manual trigger', async () => {
+    mkdirSync(join(TMP, 'molocoV2'), { recursive: true });
+    writeFileSync(join(TMP, 'molocoV2', 'index.html'), '<html><head></head><body>m</body></html>');
+
+    const { url } = await startPreviewServer({ outputDir: TMP, networks: ['molocoV2'] });
+
+    const html = await httpGet(url + '/');
+    expect(html.status).toBe(200);
+    expect(html.body).toContain('mv2-viewable-hint');
+    expect(html.body).toContain('Press Viewable to simulate the ad container becoming visible');
+
+    const css = await httpGet(url + '/static/preview/preview.css');
+    expect(css.body).toContain('.mv2-viewable-hint');
+    expect(css.body).toContain('.mv2-btn-pulse');
+
+    const js = await httpGet(url + '/static/preview/preview.js');
+    expect(js.status).toBe(200);
+    expect(js.body).toContain('mv2-viewable-hint');
+    expect(js.body).toContain('mv2-btn-pulse');
+  });
+
   it('should stop server cleanly', async () => {
     mkdirSync(join(TMP, 'applovin'), { recursive: true });
     writeFileSync(join(TMP, 'applovin', 'index.html'), '<html><head></head><body></body></html>');

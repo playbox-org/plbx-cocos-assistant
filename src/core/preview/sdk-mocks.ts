@@ -110,6 +110,17 @@ export function generatePreviewUtil(params: PreviewUtilParams): string {
       var d = decodeURIComponent(url);
       if (_macroLookup[d]) return _macroLookup[d];
     } catch(e) {}
+    // Suffix fallback: browser extensions that re-wrap Image.src (observed:
+    // Arc + an inspector.js content script) pass the ABSOLUTIZED url down the
+    // setter chain — the '#PLACEHOLDER#' macro value resolves against the page
+    // URL and arrives as 'http://host/page#PLACEHOLDER#'. Exact match fails,
+    // but the macro value survives as the suffix (ES5: lastIndexOf, no endsWith).
+    for (var raw in _macroLookup) {
+      if (!Object.prototype.hasOwnProperty.call(_macroLookup, raw)) continue;
+      if (raw && url.length > raw.length && url.lastIndexOf(raw) === url.length - raw.length) {
+        return _macroLookup[raw];
+      }
+    }
     return null;
   }
   function _logMacroFire(url, channel) {

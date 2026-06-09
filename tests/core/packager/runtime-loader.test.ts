@@ -251,6 +251,28 @@ describe('generateFullHtml', () => {
     expect(result).toContain('src/main.js');
   });
 
+  it('showSplash:true injects splash overlay + style + first-frame hook', () => {
+    const result = generateFullHtml({
+      originalHtml: sampleHtml, zipBase64: fakeZipBase64, showSplash: true,
+    });
+    expect(result).toContain('<div id="s">');
+    expect(result).toContain('#s{');
+    expect(result).toContain('__plbx_splash_hide');
+    expect(result).toContain('EVENT_END_FRAME');
+    // Overlay must paint first — before the injected loader scripts.
+    expect(result.indexOf('<div id="s">')).toBeLessThan(result.indexOf('__plbx_zip'));
+  });
+
+  it('showSplash omitted/false injects nothing splash-related', () => {
+    for (const showSplash of [undefined, false] as const) {
+      const result = generateFullHtml({
+        originalHtml: sampleHtml, zipBase64: fakeZipBase64, showSplash,
+      });
+      expect(result).not.toContain('<div id="s">');
+      expect(result).not.toContain('__plbx_splash_hide');
+    }
+  });
+
   it('enables debug mode when specified', () => {
     const result = generateFullHtml({ originalHtml: sampleHtml, zipBase64: fakeZipBase64, loaderOptions: { debug: true } });
     expect(result).toContain('DEBUG = true');

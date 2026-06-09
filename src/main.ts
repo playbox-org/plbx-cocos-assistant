@@ -348,6 +348,29 @@ export const methods: Record<string, (...args: any[]) => any> = {
     }
   },
 
+  /** Panel "Fix" button: strip regional/localization tokens from store URLs.
+   *  Rewrites BOTH the build output (so the current package is clean) and the
+   *  project sources under assets/ (so the fix survives the next Cocos build).
+   *  Returns counts so the panel can warn that a re-package is needed. */
+  fixStoreUrls(buildDir: string) {
+    try {
+      const { resolve, join } = require('path');
+      const { fixRegionalStoreUrls } = require('./core/packager/store-url-extractor');
+      const projectPath = Editor.Project.path || '';
+      const absBuildDir = resolve(projectPath, buildDir || '');
+      const buildRes = fixRegionalStoreUrls(absBuildDir);
+      // Game sources: TypeScript under assets/ (set_app_store_url / set_google_play_url
+      // literals live there). .ts is not in the default scannable set — opt in.
+      const srcRes = projectPath
+        ? fixRegionalStoreUrls(join(projectPath, 'assets'), { extraExtensions: ['.ts'] })
+        : { fixed: 0 };
+      return { fixed: buildRes.fixed, sourceFixed: srcRes.fixed };
+    } catch (e) {
+      console.warn('[plbx] fixStoreUrls failed:', e);
+      return { fixed: 0, sourceFixed: 0 };
+    }
+  },
+
   /**
    * Scan the build source for AppLovin "Axon" playable-analytics events and
    * return spec-conformance warnings (advisory — see axon-events.ts). Used by
@@ -690,6 +713,12 @@ export const methods: Record<string, (...args: any[]) => any> = {
 
   async saveSettings(settings: any) {
     return saveProjectSettings(settings);
+  },
+
+  /** Byte cost the PLBX splash adds to each HTML build (uncompressed). */
+  getSplashInfo() {
+    const { splashByteCost } = require('./core/packager/splash');
+    return { bytes: splashByteCost() };
   },
 
   async getToken() {

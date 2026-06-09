@@ -119,6 +119,13 @@ describe('MolocoV2 macro reverse-lookup algorithm', () => {
     } catch {
       /* ignore */
     }
+    // Suffix fallback: a browser extension that re-wraps Image.src (observed:
+    // Arc + inspector.js) passes the ABSOLUTIZED url down the setter chain —
+    // '#PLACEHOLDER#' becomes 'http://host/page#PLACEHOLDER#'. Exact match
+    // fails, but the macro value survives as the suffix.
+    for (const raw of Object.keys(lookup)) {
+      if (raw && url.length > raw.length && url.endsWith(raw)) return lookup[raw];
+    }
     return null;
   }
 
@@ -147,6 +154,27 @@ describe('MolocoV2 macro reverse-lookup algorithm', () => {
 
   it('ignores empty macro values when building the lookup', () => {
     expect(Object.values(lookup)).not.toContain('engagement');
+  });
+
+  it('matches absolutized URL (extension re-wrap turns placeholder into fragment)', () => {
+    // Regression: Arc with an Image.src-wrapping extension passes
+    // 'http://127.0.0.1:63901/preview/molocoV2#IMP_TRACE_MRAID_VIEWABLE_ESC#'
+    // instead of the raw '#IMP_TRACE_MRAID_VIEWABLE_ESC#'.
+    const frag = buildLookup({ mraid_viewable: '#IMP_TRACE_MRAID_VIEWABLE_ESC#' });
+    expect(keyForUrl(frag, 'http://127.0.0.1:63901/preview/molocoV2#IMP_TRACE_MRAID_VIEWABLE_ESC#')).toBe(
+      'mraid_viewable',
+    );
+    expect(keyForUrl(frag, '#IMP_TRACE_MRAID_VIEWABLE_ESC#')).toBe('mraid_viewable');
+  });
+
+  it('suffix fallback does not false-positive on unrelated fragments', () => {
+    const frag = buildLookup({ mraid_viewable: '#IMP_TRACE_MRAID_VIEWABLE_ESC#' });
+    expect(keyForUrl(frag, 'http://host/page#OTHER_FRAGMENT')).toBeNull();
+  });
+
+  it('structural: generated preview-util contains the suffix fallback', () => {
+    const code = generatePreviewUtil({ networkId: 'molocoV2', mraid: true, maxSize: 5242880 });
+    expect(code).toMatch(/endsWith|lastIndexOf/);
   });
 
   it('multi-fire of the same beacon is just multiple positive lookups', () => {

@@ -311,6 +311,7 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
             cssContent,
             buildDir: options.buildDir,
             loaderMode: effectiveLoaderMode,
+            showSplash: options.config.showSplash !== false,
           });
 
           assertNoForbiddenStrings(finalHtml, adapter.getForbiddenStrings(), network.name);

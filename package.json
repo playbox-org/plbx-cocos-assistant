@@ -118,6 +118,11 @@
           "detectStoreUrls"
         ]
       },
+      "fix-store-urls": {
+        "methods": [
+          "fixStoreUrls"
+        ]
+      },
       "scan-axon-events": {
         "methods": [
           "scanAxonEvents"
@@ -191,6 +196,11 @@
       "save-settings": {
         "methods": [
           "saveSettings"
+        ]
+      },
+      "get-splash-info": {
+        "methods": [
+          "getSplashInfo"
         ]
       },
       "get-token": {
