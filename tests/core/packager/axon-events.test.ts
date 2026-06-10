@@ -103,9 +103,16 @@ describe('validateAxonEvents', () => {
     expect(failed(checks)).toEqual([]);
   });
 
-  it('warns when no events are integrated at all', () => {
+  it('stays silent when the game does not use Axon at all (no nagging)', () => {
+    // Axon is optional — a creative that never calls trackEvent should not get
+    // an advisory warning on every package run.
     const checks = validateAxonEvents({ events: [], redefinesAnalytics: false });
-    expect(failed(checks)).toContain('events_present');
+    expect(checks).toEqual([]);
+  });
+
+  it('still surfaces the redefinition problem even with zero events', () => {
+    const checks = validateAxonEvents({ events: [], redefinesAnalytics: true });
+    expect(failed(checks)).toContain('no_redefinition');
   });
 
   it('errors on an unknown/typo event name', () => {

@@ -154,14 +154,9 @@ export function validateAxonEvents(usage: AxonUsage): AxonCheck[] {
   const set = new Set(events);
 
   if (events.length === 0) {
-    checks.push({
-      id: 'events_present',
-      label: 'Axon analytics integrated',
-      ok: false,
-      level: 'warn',
-      detail:
-        'No ALPlayableAnalytics.trackEvent() calls found — DISPLAYED is required by the AppLovin spec.',
-    });
+    // Axon is optional — a game that never calls trackEvent gets no advisory
+    // noise. Only the SDK-object redefinition is still worth flagging (it
+    // breaks AppLovin's own injection even without our events).
     if (redefinesAnalytics) checks.push(redefinitionCheck(redefinesAnalytics));
     return checks;
   }
@@ -261,7 +256,20 @@ const ORDER_PAIRS: ReadonlyArray<readonly [string, string]> = [
  *   enables the CHALLENGE_* spacing check (≥50ms apart)
  */
 export function validateAxonSequence(sequence: string[], timestamps?: number[]): AxonCheck[] {
-  if (sequence.length === 0) return validateAxonEvents({ events: [] });
+  if (sequence.length === 0) {
+    // Runtime semantics differ from the static scan: in the preview, an empty
+    // sequence means "nothing fired YET" — keep the pending check visible.
+    return [
+      {
+        id: 'events_present',
+        label: 'Axon analytics integrated',
+        ok: false,
+        level: 'warn',
+        detail:
+          'No ALPlayableAnalytics.trackEvent() calls observed — DISPLAYED is required by the AppLovin spec.',
+      },
+    ];
+  }
 
   // Distinct events in first-seen order → reuse the set-based checks (presence,
   // unknown names, LOADED-with-LOADING, challenge completion). Redefinition is a

@@ -350,8 +350,9 @@ describe('Google Play URL warning (requiresStoreUrl networks)', () => {
 });
 
 describe('AppLovin Axon event-spec warnings', () => {
-  it('warns (non-fatally) when the build fires no Axon events', async () => {
-    // MOCK_BUILD's main.js has no trackEvent() calls.
+  it('stays silent when the build uses no Axon events at all (optional integration)', async () => {
+    // MOCK_BUILD's main.js has no trackEvent() calls — Axon is optional, so a
+    // game that never integrates it must not get an advisory on every package.
     const result = await packageForNetworks({
       buildDir: MOCK_BUILD,
       outputDir: PACK_OUTPUT,
@@ -359,8 +360,7 @@ describe('AppLovin Axon event-spec warnings', () => {
       config: defaultConfig,
     });
     const axonWarnings = (result.results[0].warnings ?? []).filter((w) => w.includes('Axon'));
-    expect(axonWarnings.length).toBeGreaterThan(0);
-    // Non-fatal: the build still succeeds.
+    expect(axonWarnings).toHaveLength(0);
     expect(result.results[0].outputSize).toBeGreaterThan(0);
   });
 
