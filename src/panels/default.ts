@@ -1236,7 +1236,12 @@ module.exports = Editor.Panel.define({
 
         const fmtTag = document.createElement('span');
         fmtTag.className = 'network-format-tag';
-        fmtTag.textContent = net.format ?? '';
+        // Long format names ("launcher-payload") would eat the whole card width
+        // and squeeze the network name to nothing — show a short label instead.
+        const FORMAT_SHORT: Record<string, string> = { 'launcher-payload': 'L+P' };
+        const fmt = net.format ?? '';
+        fmtTag.textContent = FORMAT_SHORT[fmt] ?? fmt;
+        if (FORMAT_SHORT[fmt]) fmtTag.title = fmt;
 
         label.appendChild(cb);
         label.appendChild(nameSpan);

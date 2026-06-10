@@ -642,6 +642,8 @@ export async function startPreviewServer(options: {
             facebook: 'https://developers.facebook.com/tools/playable-preview/',
             google: 'https://h5validator.appspot.com/adwords/asset',
             mintegral: 'https://www.mindworks-creative.com/review/',
+            // Official Moloco playable preview — paste launcher-final.html contents
+            molocoV2: 'https://hyungseokchoi-moloco.github.io/playable-preview/',
             vungle: 'https://vungle.com/creative-verifier/',
             tiktok: 'https://ads.tiktok.com/help/article/playable-ad-specifications',
             pangle: 'https://ads.tiktok.com/help/article/playable-ad-specifications',
