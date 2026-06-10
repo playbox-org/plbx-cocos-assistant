@@ -747,6 +747,16 @@ body,
   cursor: pointer;
   width: 13px;
   height: 13px;
+  flex-shrink: 0;
+}
+
+/* Network name: single line, truncate with ellipsis (full name in title tooltip). */
+.network-check-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .network-check-label.checked {
@@ -761,6 +771,8 @@ body,
   background-color: #2a2a2a;
   padding: 1px 5px;
   border-radius: 2px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* ===== Section Headers ===== */

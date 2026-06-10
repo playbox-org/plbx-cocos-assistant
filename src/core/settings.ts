@@ -21,6 +21,8 @@ export interface ProjectSettings {
   legacyLoaderNetworks: string[];
   /** Show PLBX loading splash until the first rendered Cocos frame. */
   showSplash: boolean;
+  /** Moloco Ad Account ID for CDN asset uploads (per-project; API key is global). */
+  molocoAdAccountId: string;
 }
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
@@ -38,6 +40,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   loaderMode: 'self-contained',
   legacyLoaderNetworks: [],
   showSplash: true,
+  molocoAdAccountId: '',
 };
 
 /**
@@ -99,6 +102,19 @@ export async function getGlobalToken(): Promise<string> {
 /** Save global PLBX API token */
 export async function saveGlobalToken(token: string): Promise<void> {
   await Editor.Profile.setConfig('plbx-cocos-extension', 'apiKey', token, 'local');
+}
+
+/** Moloco CDN API key — secret, global (per-developer), never in project files. */
+export async function getMolocoApiKey(): Promise<string> {
+  try {
+    return (await Editor.Profile.getConfig('plbx-cocos-extension', 'molocoApiKey', 'local')) || '';
+  } catch {
+    return '';
+  }
+}
+
+export async function saveMolocoApiKey(key: string): Promise<void> {
+  await Editor.Profile.setConfig('plbx-cocos-extension', 'molocoApiKey', key, 'local');
 }
 
 /**

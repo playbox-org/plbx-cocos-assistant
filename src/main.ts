@@ -10,7 +10,9 @@ import { extractAxonUsage, validateAxonEvents } from './core/packager/axon-event
 import { buildOutputRows, OutputFileStat } from './core/packager/output-listing';
 import { PlayboxApiClient } from './core/deployer/api-client';
 import { uploadFile } from './core/deployer/uploader';
-import { getProjectSettings, saveProjectSettings, getGlobalToken, saveGlobalToken, getShowPanelOnStart, saveShowPanelOnStart, getLanguage, saveLanguage, sanitizeProjectName, toPackageConfig } from './core/settings';
+import { getProjectSettings, saveProjectSettings, getGlobalToken, saveGlobalToken, getMolocoApiKey, saveMolocoApiKey, getShowPanelOnStart, saveShowPanelOnStart, getLanguage, saveLanguage, sanitizeProjectName, toPackageConfig } from './core/settings';
+import { MolocoCdnClient } from './core/deployer/moloco-cdn';
+import { fillLauncherPayloadUrl } from './core/packager/launcher-builder';
 import { startPreviewServer, stopPreviewServer } from './core/preview/server';
 import { getAllNetworks } from './shared/networks';
 import { runFreshnessCheck, decideAction, formatCheckResult } from './core/freshness/freshness-check';
@@ -396,6 +398,51 @@ export const methods: Record<string, (...args: any[]) => any> = {
 
   getNetworks() {
     return getAllNetworks();
+  },
+
+  // === Moloco CDN upload ===
+
+  /** Panel settings accessors for the Moloco CDN API key (global, secret). */
+  async getMolocoApiKey() {
+    return getMolocoApiKey();
+  },
+  async saveMolocoApiKey(key: string) {
+    await saveMolocoApiKey(key || '');
+    return { ok: true };
+  },
+
+  /**
+   * Upload the built molocoV2 payload.js to Moloco's CDN (Partner Guide §2.7)
+   * and write launcher-final.html with #PAYLOAD_URL# replaced by the returned
+   * asset_url. launcher-final.html is the file delivered to Moloco QA.
+   */
+  async uploadMolocoCdn() {
+    const { resolve, join } = require('path');
+    const { readFileSync, writeFileSync, existsSync } = require('fs');
+    const settings = await getProjectSettings();
+    const apiKey = await getMolocoApiKey();
+    if (!apiKey) return { ok: false, error: 'no_api_key' };
+    if (!settings.molocoAdAccountId) return { ok: false, error: 'no_ad_account_id' };
+
+    const outDir = join(resolve(Editor.Project.path || '', settings.outputDir), 'molocoV2');
+    const payloadPath = join(outDir, 'payload.js');
+    const launcherPath = join(outDir, 'launcher.html');
+    if (!existsSync(payloadPath)) return { ok: false, error: 'no_payload' };
+
+    try {
+      const client = new MolocoCdnClient({ apiKey, adAccountId: settings.molocoAdAccountId });
+      const { assetUrl } = await client.uploadPayload(readFileSync(payloadPath));
+      let launcherFinalPath = '';
+      if (existsSync(launcherPath)) {
+        const launcher = readFileSync(launcherPath, 'utf-8');
+        launcherFinalPath = join(outDir, 'launcher-final.html');
+        writeFileSync(launcherFinalPath, fillLauncherPayloadUrl(launcher, assetUrl), 'utf-8');
+      }
+      return { ok: true, assetUrl, launcherFinalPath };
+    } catch (e: any) {
+      console.warn('[plbx] uploadMolocoCdn failed:', e);
+      return { ok: false, error: 'upload_failed', detail: e?.message || String(e) };
+    }
   },
 
   // === Deploy ===

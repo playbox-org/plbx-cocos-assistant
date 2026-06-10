@@ -142,6 +142,25 @@ export interface LauncherCheck {
 export const LAUNCHER_MAX_BYTES = 3 * 1024;
 
 /**
+ * Bytes reserved for the real CDN asset URL that replaces #PAYLOAD_URL# after
+ * upload. Observed Moloco CDN URLs are ~93 chars
+ * (https://cdn-f.adsmoloco.com/<16-char account>/external/<40-char name>.js);
+ * 120 leaves headroom. Without this reserve a launcher can pass the gate with
+ * the 13-char placeholder and overflow as launcher-final.html (the 3097 B bug).
+ */
+export const PAYLOAD_URL_RESERVE_BYTES = 120;
+
+/**
+ * Launcher size as it will ship: while #PAYLOAD_URL# is still in place, count
+ * it as PAYLOAD_URL_RESERVE_BYTES; once filled, the real byte size applies.
+ */
+export function effectiveLauncherBytes(launcherHtml: string): number {
+  const raw = Buffer.byteLength(launcherHtml, 'utf-8');
+  if (!launcherHtml.includes(PAYLOAD_URL_PLACEHOLDER)) return raw;
+  return raw - PAYLOAD_URL_PLACEHOLDER.length + PAYLOAD_URL_RESERVE_BYTES;
+}
+
+/**
  * Validate a built Moloco V2 launcher against spec v2.0. Shared by the package-time
  * gate (validateLauncherStructure → build aborts on failure) and the preview
  * "Validate" window (rendered as a pass/fail checklist).
@@ -207,9 +226,11 @@ export function validateLauncher(launcherHtml: string): LauncherCheck[] {
 
   // --- Size ceiling (§2.1). Only meaningful for the production launcher (placeholder
   // or absolute URL); the inline launcher-local is exempt and skipped by the caller.
-  const bytes = Buffer.byteLength(html, 'utf-8');
+  // The placeholder form is measured with the URL reserve — the file that ships is
+  // launcher-final.html with a ~93-char CDN URL in place of the 13-char placeholder.
+  const bytes = effectiveLauncherBytes(html);
   add('size', `Launcher < ${LAUNCHER_MAX_BYTES} B`, bytes <= LAUNCHER_MAX_BYTES,
-    `launcher is ${bytes} B, exceeds ${LAUNCHER_MAX_BYTES} B`);
+    `launcher is ${bytes} B with payload-URL reserve, exceeds ${LAUNCHER_MAX_BYTES} B`);
 
   return checks;
 }

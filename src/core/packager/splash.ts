@@ -67,8 +67,9 @@ export function buildSplash(opts: SplashOptions = {}): SplashParts {
     '#s.h{opacity:0;pointer-events:none}' +
     '#lg{width:84px;height:84px}' +
     (compact
-      ? '#lg{animation:pq 1.8s ease-in-out infinite}' +
-        '@keyframes pq{0%,100%{transform:scale(1)}50%{transform:scale(.9);opacity:.8}}'
+      ? // Byte-shaved for the 3 KB launcher: no opacity keyframe, short easing.
+        '#lg{animation:pq 1.8s ease infinite}' +
+        '@keyframes pq{0%,100%{transform:scale(1)}50%{transform:scale(.9)}}'
       : // E2: petals pulse toward center with a stagger; outer silhouette static.
         '#lg .pt path{transform-origin:12px 12px;animation:pq 1.8s ease-in-out infinite}' +
         '#lg .pt path:nth-child(2){animation-delay:.15s}' +
@@ -82,11 +83,9 @@ export function buildSplash(opts: SplashOptions = {}): SplashParts {
     styleCss += '#s .wm{width:84px;height:auto;display:block;opacity:.95}';
     wordmark = PLBX_WORDMARK_SVG;
   } else {
-    // F5: "Playbox" 800, Avenir Next on iOS (closest system face to the brand
-    // wordmark), Segoe UI/Roboto via system-ui elsewhere. Zero byte cost.
-    styleCss +=
-      "#s .t{font:800 19px/1 'Avenir Next','Segoe UI',system-ui,sans-serif;" +
-      'letter-spacing:.01em;color:#fff}';
+    // Compact wordmark text. system-ui only — the named-font stack and
+    // letter-spacing cost ~43 B the 3 KB launcher budget can't spare.
+    styleCss += '#s .t{font:800 19px/1 system-ui,sans-serif;color:#fff}';
     wordmark = '<div class=t>Playbox</div>';
   }
 

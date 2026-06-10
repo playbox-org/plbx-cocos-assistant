@@ -362,6 +362,24 @@
         </div>
       </div>
       </div><!-- /deploy-body -->
+
+      <!-- Moloco CDN upload — shown only when a molocoV2 build exists.
+           Independent of PLBX auth: uses Moloco credentials from Settings. -->
+      <div id="moloco-cdn-card" style="display:none;flex-shrink:0;background:#333;border:1px solid #3a3a3a;border-radius:4px;padding:12px;margin-top:10px;">
+        <div class="section-header" style="margin-top:0;" data-i18n="settings.molocoCdn">Moloco CDN</div>
+        <div class="form-row">
+          <span class="form-label" data-i18n="settings.molocoApiKey">API Key</span>
+          <input type="password" id="moloco-api-key" class="form-input" placeholder="Moloco API key" />
+        </div>
+        <div class="form-row">
+          <span class="form-label" data-i18n="settings.molocoAdAccount">Ad Account ID</span>
+          <input type="text" id="moloco-ad-account" class="form-input" placeholder="AD_ACCOUNT_ID" />
+        </div>
+        <div class="form-row" style="margin-bottom:0;">
+          <button id="btn-moloco-cdn" class="btn" style="min-width:100px;" data-i18n="package.uploadMolocoCdn">Upload to Moloco CDN</button>
+          <span id="moloco-cdn-status" style="color:#777;font-size:12px;margin-left:12px;"></span>
+        </div>
+      </div>
     </div>
 
   </div><!-- end .tab-content -->

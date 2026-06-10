@@ -140,6 +140,11 @@ module.exports = Editor.Panel.define({
     deployResult:      '#deploy-result',
     deployResultUrl:   '#deploy-result-url',
     btnCopyUrl:        '#btn-copy-url',
+    molocoCdnCard:     '#moloco-cdn-card',
+    molocoApiKey:      '#moloco-api-key',
+    molocoAdAccount:   '#moloco-ad-account',
+    btnMolocoCdn:      '#btn-moloco-cdn',
+    molocoCdnStatus:   '#moloco-cdn-status',
 
     // Preset buttons
     presetWeb:  '#preset-web',
@@ -189,6 +194,7 @@ module.exports = Editor.Panel.define({
       // Re-check build availability when switching to Deploy tab
       if (index === 3 && typeof this._checkDeployBuild === 'function') {
         this._checkDeployBuild();
+        this._checkMolocoCdnCard?.();
       }
     };
 
@@ -322,6 +328,7 @@ module.exports = Editor.Panel.define({
       startCb?.addEventListener('change', () => {
         Editor.Message.request('plbx-cocos-extension', 'saveShowPanelOnStart', startCb.checked).catch(() => {});
       });
+
     },
 
     _initFreshness(this: any) {
@@ -1220,7 +1227,10 @@ module.exports = Editor.Panel.define({
         cb.addEventListener('change', () => label.classList.toggle('checked', cb.checked));
 
         const nameSpan = document.createElement('span');
+        nameSpan.className = 'network-check-name';
         nameSpan.textContent = net.name ?? net.id;
+        // Long names ("Moloco V2.0 (Launcher API)") truncate — full name on hover.
+        label.title = net.name ?? net.id;
 
         const fmtTag = document.createElement('span');
         fmtTag.className = 'network-format-tag';
@@ -1659,6 +1669,7 @@ module.exports = Editor.Panel.define({
           btnGenAdapter.disabled = false;
         }
       });
+
     },
 
     _renderPackageResults(this: any, results: any[]) {
@@ -2022,10 +2033,63 @@ module.exports = Editor.Panel.define({
         }
       };
 
+      // Moloco CDN card: visible only when a molocoV2 launcher-payload build
+      // exists on disk (outputDir/molocoV2/payload.js).
+      this._checkMolocoCdnCard = async () => {
+        const card = this.$.molocoCdnCard as HTMLElement | null;
+        if (!card) return;
+        try {
+          const s = await Editor.Message.request('plbx-cocos-extension', 'get-settings');
+          const path = (s?.outputDir || 'build/plbx-html') + '/molocoV2/payload.js';
+          const exists = await Editor.Message.request('plbx-cocos-extension', 'check-path-exists', path);
+          card.style.display = exists ? '' : 'none';
+          if (exists) {
+            // Populate credentials: API key is global (secret), Ad Account ID per-project.
+            const keyEl = this.$.molocoApiKey as HTMLInputElement | null;
+            const accEl = this.$.molocoAdAccount as HTMLInputElement | null;
+            if (keyEl && !keyEl.value) {
+              keyEl.value = (await Editor.Message.request('plbx-cocos-extension', 'get-moloco-api-key')) || '';
+            }
+            if (accEl && !accEl.value) accEl.value = s?.molocoAdAccountId || '';
+          }
+        } catch {
+          card.style.display = 'none';
+        }
+      };
+
+      const btnCdn = this.$.btnMolocoCdn as HTMLButtonElement | null;
+      btnCdn?.addEventListener('click', async () => {
+        const statusEl = this.$.molocoCdnStatus as HTMLElement | null;
+        const t = (k: string) => translate(this._lang || 'en', k);
+        btnCdn.disabled = true;
+        if (statusEl) statusEl.textContent = t('package.molocoUploading');
+        try {
+          // Persist credentials from the card before uploading.
+          const keyEl = this.$.molocoApiKey as HTMLInputElement | null;
+          const accEl = this.$.molocoAdAccount as HTMLInputElement | null;
+          await Editor.Message.request('plbx-cocos-extension', 'save-moloco-api-key', keyEl?.value?.trim() || '');
+          await Editor.Message.request('plbx-cocos-extension', 'save-settings', { molocoAdAccountId: accEl?.value?.trim() || '' });
+          const res = await Editor.Message.request('plbx-cocos-extension', 'upload-moloco-cdn');
+          if (res?.ok) {
+            if (statusEl) statusEl.textContent = t('package.molocoUploaded').replace('{url}', res.assetUrl || '');
+          } else {
+            const errKey =
+              res?.error === 'no_api_key' ? 'package.molocoNoKey' :
+              res?.error === 'no_ad_account_id' ? 'package.molocoNoAccount' :
+              res?.error === 'no_payload' ? 'package.molocoNoPayload' : 'package.molocoFailed';
+            if (statusEl) statusEl.textContent = t(errKey).replace('{msg}', res?.detail || '');
+          }
+        } catch (e: any) {
+          if (statusEl) statusEl.textContent = t('package.molocoFailed').replace('{msg}', String(e?.message ?? e));
+        } finally {
+          btnCdn.disabled = false;
+        }
+      });
+
       networkSel?.addEventListener('change', () => this._checkDeployBuild?.());
       buildPathInput?.addEventListener('change', () => this._checkDeployBuild?.());
       // Initial check after settings load
-      setTimeout(() => this._checkDeployBuild?.(), 500);
+      setTimeout(() => { this._checkDeployBuild?.(); this._checkMolocoCdnCard?.(); }, 500);
 
       btnDeploy?.addEventListener('click', async () => {
         const projectId   = projectHidden?.value;

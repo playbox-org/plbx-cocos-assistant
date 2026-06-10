@@ -9,7 +9,7 @@ import { PackagerOptions, PackagerResult } from './types';
 import { packDirectoryToZip } from './asset-inliner';
 import { rewriteCocosJs, shouldRewriteCocosJs } from './cocos-js-rewriter';
 import { generateFullHtml, generatePayloadJs } from './runtime-loader';
-import { buildLauncher, fillLauncherPayloadUrl, validateLauncher } from './launcher-builder';
+import { buildLauncher, fillLauncherPayloadUrl, validateLauncher, effectiveLauncherBytes } from './launcher-builder';
 import { resolveTemplate } from './template-resolver';
 import { extractStoreUrls, detectRegionalParams } from './store-url-extractor';
 import { extractAxonUsage, validateAxonEvents } from './axon-events';
@@ -189,11 +189,13 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
           includeSplash: lpConfig.includeSplash,
         });
 
-        // Strict launcher size ceiling — fail loud if exceeded, do not ship oversized
-        const launcherSize = Buffer.byteLength(launcher, 'utf-8');
+        // Strict launcher size ceiling — fail loud if exceeded, do not ship oversized.
+        // Measured with the payload-URL reserve: the shipped launcher-final.html
+        // carries a ~93-char CDN URL where launcher.html has the 13-char placeholder.
+        const launcherSize = effectiveLauncherBytes(launcher);
         if (launcherSize > lpConfig.launcherMaxSize) {
           throw new Error(
-            `[${network.name}] launcher.html is ${launcherSize}B, exceeds strict limit ${lpConfig.launcherMaxSize}B — aborting`,
+            `[${network.name}] launcher.html is ${launcherSize}B (with payload-URL reserve), exceeds strict limit ${lpConfig.launcherMaxSize}B — aborting`,
           );
         }
         const payloadSize = Buffer.byteLength(payloadJs, 'utf-8');

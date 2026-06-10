@@ -5,6 +5,9 @@ import {
   fillLauncherPayloadUrl,
   validateLauncher,
   MOLOCO_V2_MACRO_SPEC,
+  LAUNCHER_MAX_BYTES,
+  PAYLOAD_URL_RESERVE_BYTES,
+  effectiveLauncherBytes,
 } from '../../../src/core/packager/launcher-builder';
 import { join } from 'path';
 import { mkdirSync, writeFileSync, existsSync, rmSync, readFileSync } from 'fs';
@@ -384,6 +387,48 @@ describe('validateLauncher (spec compliance gate)', () => {
   it('flags IMP_BEACON that is not last before </body>', () => {
     const bad = buildLauncher(baseOpts).replace('%{IMP_BEACON}</body>', '%{IMP_BEACON}<div></div></body>');
     expect(fail(bad, 'imp_beacon')).toBeTruthy();
+  });
+
+  describe('size gate accounts for the real CDN URL (launcher-final regression)', () => {
+    // Regression: launcher.html passed at 3020 B with the 13-char #PAYLOAD_URL#
+    // placeholder, but launcher-final.html (real ~93-char CDN URL substituted)
+    // came out 3097 B > 3072. The gate must reserve room for URL expansion.
+
+    it('exports a reserve at least as long as a real Moloco CDN asset URL', () => {
+      const real = 'https://cdn-f.adsmoloco.com/lkzEvERvJWoAD5Io/external/mq7w2jd2_atzkfgu_ol5h5sbyftowwphk.js';
+      expect(PAYLOAD_URL_RESERVE_BYTES).toBeGreaterThanOrEqual(real.length);
+    });
+
+    it('effectiveLauncherBytes adds the URL reserve while the placeholder is present', () => {
+      const launcher = buildLauncher(baseOpts);
+      const raw = Buffer.byteLength(launcher, 'utf-8');
+      expect(effectiveLauncherBytes(launcher)).toBe(raw - '#PAYLOAD_URL#'.length + PAYLOAD_URL_RESERVE_BYTES);
+      // Once filled, the real size speaks for itself — no reserve.
+      const filled = fillLauncherPayloadUrl(launcher, 'https://cdn-f.adsmoloco.com/x/p.js');
+      expect(effectiveLauncherBytes(filled)).toBe(Buffer.byteLength(filled, 'utf-8'));
+    });
+
+    it('validateLauncher fails size when placeholder + reserve exceed the ceiling', () => {
+      // Pad a valid launcher to just under the raw ceiling — placeholder form
+      // passes a naive byte count but must fail once the reserve is applied.
+      const launcher = buildLauncher(baseOpts);
+      const pad = LAUNCHER_MAX_BYTES - Buffer.byteLength(launcher, 'utf-8') - 10;
+      const padded = launcher.replace('<body>', `<body><!--${'x'.repeat(pad - 7)}-->`);
+      expect(Buffer.byteLength(padded, 'utf-8')).toBeLessThanOrEqual(LAUNCHER_MAX_BYTES);
+      expect(fail(padded, 'size')).toBeTruthy();
+    });
+
+    it('a compact-splash launcher with a long title fits the ceiling WITH the URL reserve', () => {
+      // Mirrors the piggy-merge production config that overflowed.
+      const launcher = buildLauncher({
+        ...baseOpts,
+        assetTitle: 'moloco-piggy-merge',
+        includeSplash: true,
+      });
+      expect(effectiveLauncherBytes(launcher)).toBeLessThanOrEqual(LAUNCHER_MAX_BYTES);
+      const failed = validateLauncher(launcher).filter((c) => !c.ok);
+      expect(failed, JSON.stringify(failed)).toHaveLength(0);
+    });
   });
 });
 

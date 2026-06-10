@@ -1,6 +1,6 @@
 {
   "package_version": 2,
-  "version": "0.2.14",
+  "version": "0.2.15",
   "name": "plbx-cocos-extension",
   "title": "i18n:plbx-cocos-extension.title",
   "description": "i18n:plbx-cocos-extension.description",
@@ -126,6 +126,21 @@
       "scan-axon-events": {
         "methods": [
           "scanAxonEvents"
+        ]
+      },
+      "get-moloco-api-key": {
+        "methods": [
+          "getMolocoApiKey"
+        ]
+      },
+      "save-moloco-api-key": {
+        "methods": [
+          "saveMolocoApiKey"
+        ]
+      },
+      "upload-moloco-cdn": {
+        "methods": [
+          "uploadMolocoCdn"
         ]
       },
       "get-networks": {
