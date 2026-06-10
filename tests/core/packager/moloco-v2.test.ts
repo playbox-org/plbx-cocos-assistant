@@ -54,6 +54,19 @@ describe('MolocoV2 target', () => {
     expect(r.results[0].withinLimit).toBe(true);
   });
 
+  it('honors templateVariables.assetProvider / assetTitle in the launcher metadata', async () => {
+    await packageForNetworks({
+      buildDir: MOCK_BUILD,
+      outputDir: PACK_OUTPUT,
+      networks: ['molocoV2'],
+      config: defaultConfig,
+      templateVariables: { assetProvider: 'MyStudio', assetTitle: 'My Great Game' },
+    });
+    const launcher = readFileSync(join(PACK_OUTPUT, 'molocoV2', 'launcher.html'), 'utf-8');
+    expect(launcher).toContain('ASSET_PROVIDER=MyStudio;');
+    expect(launcher).toContain('ASSET_TITLE=My Great Game;');
+  });
+
   it('default includeSplash:false fits well under 2 KB to leave headroom for asset titles', async () => {
     const launcher = buildLauncher({
       assetProvider: 'Playbox',
@@ -382,6 +395,40 @@ describe('validateLauncher (spec compliance gate)', () => {
   it('flags a relative payload <script src> (but not mraid.js)', () => {
     const bad = buildLauncher(baseOpts).replace('#PAYLOAD_URL#', 'payload.js');
     expect(fail(bad, 'no_relative_payload')).toContain('payload.js');
+  });
+
+  describe('asset metadata sanitization', () => {
+    // The metadata block is `<!--ASSET_PROVIDER=X;ASSET_TITLE=Y;...-->`:
+    // `;`/`=` break key-value parsing, `--`/`>` break the HTML comment itself,
+    // and Moloco QA expects plain names. Only a safe charset may pass through.
+
+    it('strips structure-breaking characters from provider and title', () => {
+      const launcher = buildLauncher({
+        ...baseOpts,
+        assetProvider: 'My;Studio=Inc--<b>',
+        assetTitle: 'Game; Title=2 -- "quoted" <tag>',
+      });
+      const meta = launcher.slice(0, launcher.indexOf('-->') + 3);
+      expect(meta).toContain('ASSET_PROVIDER=MyStudioInc');
+      expect(meta).toContain('ASSET_TITLE=Game Title2 quoted');
+      // No stray separators or comment-breakers inside values
+      expect(meta).not.toMatch(/ASSET_TITLE=[^;]*[<>="]/);
+    });
+
+    it('collapses whitespace and trims', () => {
+      const launcher = buildLauncher({ ...baseOpts, assetTitle: '  My   Game  ' });
+      expect(launcher).toContain('ASSET_TITLE=My Game;');
+    });
+
+    it('keeps letters, digits, space, dash, underscore, dot untouched', () => {
+      const launcher = buildLauncher({ ...baseOpts, assetTitle: 'piggy-merge_v2.0 RU' });
+      expect(launcher).toContain('ASSET_TITLE=piggy-merge_v2.0 RU;');
+    });
+
+    it('still passes full validation after sanitization', () => {
+      const launcher = buildLauncher({ ...baseOpts, assetTitle: 'Bad;Name=--' });
+      expect(validateLauncher(launcher).filter((c) => !c.ok)).toHaveLength(0);
+    });
   });
 
   it('flags IMP_BEACON that is not last before </body>', () => {

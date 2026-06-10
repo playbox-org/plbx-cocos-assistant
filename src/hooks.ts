@@ -44,6 +44,12 @@ export async function onAfterBuild(options: any, result: any): Promise<void> {
       outputDir,
       networks,
       config,
+      // Same Moloco launcher metadata as manual packaging (main.packageNetworks).
+      templateVariables: {
+        ...settings.templateVariables,
+        ...(settings.molocoAssetProvider ? { assetProvider: settings.molocoAssetProvider } : {}),
+        ...(settings.molocoAssetTitle ? { assetTitle: settings.molocoAssetTitle } : {}),
+      },
       onProgress: (id, status, msg) => {
         console.log(`[plbx] ${id}: ${status} ${msg || ''}`);
       },

@@ -307,13 +307,20 @@ export const methods: Record<string, (...args: any[]) => any> = {
     // config keys (store/orientation, or a caller that does pass loaderMode) win.
     const settings = await getProjectSettings();
     const fullConfig = { ...toPackageConfig(settings), ...config };
+    // Moloco launcher metadata from project settings (Deploy tab → Moloco CDN
+    // card). Explicit caller-passed templateVariables win over settings.
+    const fullTemplateVariables: Record<string, string> = {
+      ...(settings.molocoAssetProvider ? { assetProvider: settings.molocoAssetProvider } : {}),
+      ...(settings.molocoAssetTitle ? { assetTitle: settings.molocoAssetTitle } : {}),
+      ...templateVariables,
+    };
     return packageForNetworks({
       buildDir: absBuildDir,
       outputDir: absOutputDir,
       networks: networkIds,
       config: fullConfig,
       outputTemplate,
-      templateVariables,
+      templateVariables: fullTemplateVariables,
       onProgress: (_id, _status, _msg) => {
         // TODO: 'package-progress' message has no registered listener in the extension.
         // Panel does not handle this message type, so sending it is a no-op.

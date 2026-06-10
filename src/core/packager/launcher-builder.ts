@@ -59,10 +59,19 @@ export const ASSET_REVISION_RE = /^\d{8}\.\d{2}$/;
 /** Spec version this packager targets (§2.2.1 ASSET_VERSION). */
 export const MOLOCO_V2_ASSET_VERSION = '2.0';
 
-function escapeHtml(s: string): string {
-  return s.replace(/[<>&"]/g, (c) =>
-    c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '&' ? '&amp;' : '&quot;',
-  );
+/**
+ * Sanitize a value embedded in the metadata comment
+ * `<!--ASSET_PROVIDER=X;ASSET_TITLE=Y;...-->`: `;`/`=` break key=value parsing,
+ * `-`-runs/`<>` can break the HTML comment, quotes/`&` confuse downstream
+ * parsers. Whitelist letters/digits/space/dash/underscore/dot, forbid `--`,
+ * collapse whitespace. (Single dashes survive — "piggy-merge" stays intact.)
+ */
+export function sanitizeAssetMeta(s: string): string {
+  return s
+    .replace(/-{2,}/g, '')
+    .replace(/[^A-Za-z0-9 ._-]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -70,10 +79,10 @@ function escapeHtml(s: string): string {
  */
 export function buildLauncher(opts: LauncherBuildOptions): string {
   const meta =
-    `<!--ASSET_PROVIDER=${escapeHtml(opts.assetProvider)};` +
-    `ASSET_TITLE=${escapeHtml(opts.assetTitle)};` +
-    `ASSET_REVISION=${escapeHtml(opts.assetRevision)};` +
-    `ASSET_VERSION=${escapeHtml(opts.assetVersion)}-->`;
+    `<!--ASSET_PROVIDER=${sanitizeAssetMeta(opts.assetProvider)};` +
+    `ASSET_TITLE=${sanitizeAssetMeta(opts.assetTitle)};` +
+    `ASSET_REVISION=${sanitizeAssetMeta(opts.assetRevision)};` +
+    `ASSET_VERSION=${sanitizeAssetMeta(opts.assetVersion)}-->`;
 
   // Moloco macros — DSP substitutes the #...# placeholders server-side at bid time.
   // Generated from MOLOCO_V2_MACRO_SPEC (single source of truth; see validateLauncher).

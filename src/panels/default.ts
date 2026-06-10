@@ -143,6 +143,8 @@ module.exports = Editor.Panel.define({
     molocoCdnCard:     '#moloco-cdn-card',
     molocoApiKey:      '#moloco-api-key',
     molocoAdAccount:   '#moloco-ad-account',
+    molocoAssetProvider: '#moloco-asset-provider',
+    molocoAssetTitle:  '#moloco-asset-title',
     btnMolocoCdn:      '#btn-moloco-cdn',
     molocoCdnStatus:   '#moloco-cdn-status',
 
@@ -2051,11 +2053,28 @@ module.exports = Editor.Panel.define({
               keyEl.value = (await Editor.Message.request('plbx-cocos-extension', 'get-moloco-api-key')) || '';
             }
             if (accEl && !accEl.value) accEl.value = s?.molocoAdAccountId || '';
+            // Launcher metadata, prefilled with the effective defaults the
+            // packager would use (provider "Playbox", title = project name).
+            const provEl = this.$.molocoAssetProvider as HTMLInputElement | null;
+            const titleEl = this.$.molocoAssetTitle as HTMLInputElement | null;
+            if (provEl && !provEl.value) provEl.value = s?.molocoAssetProvider || 'Playbox';
+            if (titleEl && !titleEl.value) titleEl.value = s?.molocoAssetTitle || s?.projectName || '';
           }
         } catch {
           card.style.display = 'none';
         }
       };
+
+      // Launcher metadata is consumed at PACKAGE time (not upload) — persist on
+      // edit so the next Pack All picks it up without extra clicks.
+      const provEl = this.$.molocoAssetProvider as HTMLInputElement | null;
+      provEl?.addEventListener('change', () => {
+        Editor.Message.request('plbx-cocos-extension', 'save-settings', { molocoAssetProvider: provEl.value.trim() }).catch(() => {});
+      });
+      const titleEl = this.$.molocoAssetTitle as HTMLInputElement | null;
+      titleEl?.addEventListener('change', () => {
+        Editor.Message.request('plbx-cocos-extension', 'save-settings', { molocoAssetTitle: titleEl.value.trim() }).catch(() => {});
+      });
 
       const btnCdn = this.$.btnMolocoCdn as HTMLButtonElement | null;
       btnCdn?.addEventListener('click', async () => {

@@ -23,6 +23,10 @@ export interface ProjectSettings {
   showSplash: boolean;
   /** Moloco Ad Account ID for CDN asset uploads (per-project; API key is global). */
   molocoAdAccountId: string;
+  /** Moloco launcher ASSET_PROVIDER metadata override (empty → network default "Playbox"). */
+  molocoAssetProvider: string;
+  /** Moloco launcher ASSET_TITLE metadata override (empty → project name). */
+  molocoAssetTitle: string;
 }
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
@@ -41,6 +45,8 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   legacyLoaderNetworks: [],
   showSplash: true,
   molocoAdAccountId: '',
+  molocoAssetProvider: '',
+  molocoAssetTitle: '',
 };
 
 /**

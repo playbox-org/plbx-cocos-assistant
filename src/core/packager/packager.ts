@@ -181,7 +181,8 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
         // NN = revision within the day from 00. ISO "YYYY-MM-DD" is rejected by QA.
         const assetRevision = new Date().toISOString().slice(0, 10).replace(/-/g, '') + '.00';
         const launcher = buildLauncher({
-          assetProvider: lpConfig.assetProvider,
+          // Panel-configurable (Moloco CDN card); falls back to the network default.
+          assetProvider: options.templateVariables?.assetProvider || lpConfig.assetProvider,
           assetTitle,
           assetRevision,
           assetVersion: lpConfig.assetVersion,
