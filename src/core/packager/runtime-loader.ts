@@ -199,8 +199,10 @@ function _isVirtualScheme(url) {
   // SystemJS virtual modules (chunks:///, virtual:///, _virtual/)
   // and non-file schemes (blob:, data:, about:) — these MUST NOT match
   // real ZIP file paths via suffix matching, since names like 'index.js'
-  // would falsely match 'chunks:///_virtual/index.js'.
-  return /^(chunks|virtual|blob|data|about):/.test(url);
+  // would falsely match 'chunks:///_virtual/index.js'. The optional leading
+  // './' matters: a './' + url probe must still be recognized as virtual,
+  // else './chunks:///_virtual/index.js' collides with the real boot index.js.
+  return /^(\\.\\/)?(chunks|virtual|blob|data|about):/.test(url);
 }
 function _suffixMatch(map, url) {
   if (map[url]) return map[url];

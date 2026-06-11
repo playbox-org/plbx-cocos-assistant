@@ -12,8 +12,13 @@ export function emitSharedHelpers(): string {
   return `
 // Non-file schemes must NOT match real ZIP paths via suffix matching
 // (e.g. 'chunks:///_virtual/index.js' must not resolve to the root index.js).
+// The optional leading './' matters: instantiate()/fetch() probe
+// _findAsset('./' + normalized) as a fallback, and './chunks:///_virtual/index.js'
+// must still be recognized as virtual — otherwise its '/index.js' suffix collides
+// with the real boot index.js asset, the CJS module loses __cjsMetaURL, and Cocos
+// throws "expected be an ESM-wrapped CommonJS module" → grey screen.
 function _isVirtualScheme(url) {
-  return /^(chunks|virtual|blob|data|about):/.test(url);
+  return /^(\\.\\/)?(chunks|virtual|blob|data|about):/.test(url);
 }
 function _suffixMatch(map, url) {
   if (map[url]) return map[url];
