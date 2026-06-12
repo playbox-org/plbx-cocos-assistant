@@ -110,6 +110,7 @@ module.exports = Editor.Panel.define({
     pkgAutoPackage:   '#pkg-auto-package',
     pkgShowSplash:    '#pkg-show-splash',
     pkgSplashCost:    '#pkg-splash-cost',
+    pkgEncoding:      '#pkg-encoding',
     pkgTemplatePreset:'#pkg-template-preset',
     pkgOutputTemplate:'#pkg-output-template',
     pkgTemplatePreview:'#pkg-template-preview',
@@ -1489,6 +1490,14 @@ module.exports = Editor.Panel.define({
         if (autoPackageCb) autoPackageCb.checked = settings?.autoPackage !== false;
         const showSplashCb = this.$.pkgShowSplash as HTMLInputElement | null;
         if (showSplashCb) showSplashCb.checked = settings?.showSplash !== false;
+        const encArr: string[] = Array.isArray(settings?.assetEncodings) && settings.assetEncodings.length
+          ? settings.assetEncodings
+          : ['base122'];
+        const encSel = this.$.pkgEncoding as HTMLSelectElement | null;
+        if (encSel) {
+          const both = encArr.includes('base64') && encArr.includes('base122');
+          encSel.value = both ? 'both' : encArr.includes('base122') ? 'base122' : 'base64';
+        }
 
         const ori = settings?.orientation ?? 'auto';
         const radioEl = (this.$.contentPackage as HTMLElement | null)?.querySelector(`input[name="orientation"][value="${ori}"]`) as HTMLInputElement | null;
@@ -1556,6 +1565,18 @@ module.exports = Editor.Panel.define({
       (this.$.pkgShowSplash as HTMLInputElement)?.addEventListener('change', () => {
         const checked = (this.$.pkgShowSplash as HTMLInputElement)?.checked ?? true;
         Editor.Message.request('plbx-cocos-extension', 'save-settings', { showSplash: checked })
+          .catch((e: any) => { console.warn('[plbx]', e); });
+      });
+
+      // Asset-encoding dropdown (base122 default / base64 / both). Maps the single
+      // choice to the assetEncodings array; "both" emits index.html + index.b122.html
+      // for A/B size comparison. Persisted to project settings; packaging reads it
+      // via toPackageConfig.
+      (this.$.pkgEncoding as HTMLSelectElement)?.addEventListener('change', () => {
+        const v = (this.$.pkgEncoding as HTMLSelectElement)?.value || 'base122';
+        const enc: ('base64' | 'base122')[] =
+          v === 'both' ? ['base64', 'base122'] : v === 'base64' ? ['base64'] : ['base122'];
+        Editor.Message.request('plbx-cocos-extension', 'save-settings', { assetEncodings: enc })
           .catch((e: any) => { console.warn('[plbx]', e); });
       });
       Editor.Message.request('plbx-cocos-extension', 'get-splash-info')

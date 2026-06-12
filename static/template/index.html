@@ -243,6 +243,15 @@
             </label>
             <div id="pkg-splash-cost" class="pkg-hint"></div>
           </div>
+          <div class="form-group">
+            <span class="form-label" data-i18n="settings.encodings">Asset encoding</span>
+            <select id="pkg-encoding" class="form-select" style="max-width:260px;">
+              <option value="base122" data-i18n="settings.encBase122">base122 (~14% smaller)</option>
+              <option value="base64" data-i18n="settings.encBase64">base64</option>
+              <option value="both" data-i18n="settings.encBoth">both (A/B compare)</option>
+            </select>
+            <div class="pkg-hint" data-i18n="settings.encHint">base122 ~14% smaller on disk. "both" emits index.html (base122) + index.b64.html.</div>
+          </div>
         </div>
       </div>
 

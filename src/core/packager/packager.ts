@@ -257,8 +257,11 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
 
       for (const format of formats) {
         const formatSuffix = formats.length > 1 ? `-${format}` : '';
-        let outputPath: string;
-        let outputSize: number;
+        let outputPath: string = '';
+        let outputSize: number = 0;
+        // The inlined non-wrap path may emit multiple encoding variants and push
+        // its own results; this guards the shared single push below.
+        let pushed = false;
 
         // Resolve output path from template
         const template = options.outputTemplate || '{networkId}/index.{ext}';
@@ -376,8 +379,45 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
             outputSize = zipResult.size;
             rmSync(tempDir, { recursive: true, force: true });
           } else {
-            writeFileSync(outputPath, finalHtml);
-            outputSize = statSync(outputPath).size;
+            // Per-encoding emit (self-contained only). The chosen encoding writes the
+            // primary `index.html`. In "both" (A/B) mode base122 keeps the bare name
+            // and the base64 sibling carries a `.b64` suffix.
+            const encodings = resolveInlinedEncodings(options.config, effectiveLoaderMode);
+            const multi = encodings.length > 1;
+            for (const enc of encodings) {
+              const html =
+                enc === 'base64'
+                  ? finalHtml
+                  : generateFullHtml({
+                      originalHtml: builder.toHtml(),
+                      zipBase64,
+                      cssContent,
+                      buildDir: options.buildDir,
+                      loaderMode: effectiveLoaderMode,
+                      showSplash: options.config.showSplash !== false,
+                      encoding: 'base122',
+                    });
+              if (enc === 'base122') {
+                assertNoForbiddenStrings(html, adapter.getForbiddenStrings(), network.name);
+                assertHasRequiredStrings(html, adapter.getRequiredStrings(), network.name);
+              }
+              const variantPath =
+                enc === 'base64' && multi ? outputPath.replace(/(\.[^.\\/]+)$/, '.b64$1') : outputPath;
+              writeFileSync(variantPath, html);
+              const variantSize = statSync(variantPath).size;
+              const baseId = formats.length > 1 ? `${networkId}-${format}` : networkId;
+              results.push({
+                networkId: enc === 'base64' && multi ? `${baseId}-b64` : baseId,
+                networkName: network.name,
+                outputPath: variantPath,
+                outputSize: variantSize,
+                maxSize: network.maxSize,
+                withinLimit: variantSize <= network.maxSize,
+                format,
+                warnings: warnings.length ? warnings : undefined,
+              });
+            }
+            pushed = true;
           }
         } else {
           // ZIP — copy build dir + transformed HTML + extras
@@ -416,16 +456,18 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
           rmSync(tempDir, { recursive: true, force: true });
         }
 
-        results.push({
-          networkId: formats.length > 1 ? `${networkId}-${format}` : networkId,
-          networkName: network.name,
-          outputPath,
-          outputSize,
-          maxSize: network.maxSize,
-          withinLimit: outputSize <= network.maxSize,
-          format,
-          warnings: warnings.length ? warnings : undefined,
-        });
+        if (!pushed) {
+          results.push({
+            networkId: formats.length > 1 ? `${networkId}-${format}` : networkId,
+            networkName: network.name,
+            outputPath,
+            outputSize,
+            maxSize: network.maxSize,
+            withinLimit: outputSize <= network.maxSize,
+            format,
+            warnings: warnings.length ? warnings : undefined,
+          });
+        }
       }
 
       options.onProgress?.(networkId, 'done');
@@ -481,6 +523,25 @@ function assertHasRequiredStrings(html: string, required: string[], networkName:
       missing.map((s) => `"${s}"`).join(', ') +
       `. Build is broken — aborting.`,
   );
+}
+
+/**
+ * Resolve which asset-container encodings to emit for the inlined-HTML path.
+ * base122 requires the self-contained loader (its decoder is only wired into
+ * that unpack), so it's dropped for systemjs-pinned outputs. Defaults to
+ * ['base122'] when unset; always returns a non-empty, de-duplicated list.
+ */
+function resolveInlinedEncodings(
+  config: { assetEncodings?: ('base64' | 'base122')[] },
+  loaderMode: 'self-contained' | 'systemjs',
+): ('base64' | 'base122')[] {
+  const sel: ('base64' | 'base122')[] =
+    config.assetEncodings && config.assetEncodings.length ? config.assetEncodings : ['base122'];
+  const deduped = sel.filter((e, i) => sel.indexOf(e) === i);
+  // base122's decoder is only wired into the self-contained unpack → systemjs
+  // outputs fall back to base64.
+  if (loaderMode !== 'self-contained') return ['base64'];
+  return deduped.length ? deduped : ['base122'];
 }
 
 /**

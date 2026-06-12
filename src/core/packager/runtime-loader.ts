@@ -11,6 +11,7 @@
 
 import { generateSelfContainedLoader } from './loader';
 import { buildSplash, FIRST_FRAME_HOOK_JS } from './splash';
+import { encodeBase122, emitBase122Decoder } from './base122';
 
 export interface RuntimeLoaderOptions {
   /** Enable debug logging in the runtime */
@@ -937,11 +938,23 @@ export function generateFullHtml(params: {
   loaderMode?: 'self-contained' | 'systemjs';
   /** Inject PLBX loading splash, hidden on the first rendered Cocos frame. */
   showSplash?: boolean;
+  /** Asset-container encoding. 'base122' (~14% smaller) only applies to the
+   *  self-contained loader; the legacy systemjs path is always base64. */
+  encoding?: 'base64' | 'base122';
 }): string {
   const { originalHtml, zipBase64, jsModules, cssContent, loaderOptions = {} } = params;
   const buildDir = params.buildDir;
 
   const mode = params.loaderMode ?? loaderOptions.mode ?? 'self-contained';
+  // base122 is only wired through the self-contained unpack; the legacy __zip
+  // path stays base64. Convert the base64 ZIP → base122 here so callers only
+  // ever pass the base64 string (one source of truth, no caller/encoding skew).
+  const encoding: 'base64' | 'base122' =
+    mode === 'self-contained' && params.encoding === 'base122' ? 'base122' : 'base64';
+  const zipEncoded =
+    encoding === 'base122'
+      ? encodeBase122(new Uint8Array(Buffer.from(zipBase64, 'base64')))
+      : zipBase64;
   const jszipRuntime = getJSZipRuntime();
   const runtimeLoader = generateRuntimeLoader({ ...loaderOptions, mode });
 
@@ -1035,8 +1048,13 @@ export function generateFullHtml(params: {
 
   if (mode === 'self-contained') {
     // The self-contained loader builds __plbx_res from the ZIP itself, so it
-    // only needs the base64 ZIP. No pre-populated __res / __plbx_scripts.
-    injection += '<script>window.__plbx_zip = "' + zipBase64 + '";</script>\n';
+    // only needs the encoded ZIP. No pre-populated __res / __plbx_scripts.
+    if (encoding === 'base122') {
+      // Define the decoder + set the marker BEFORE unpack runs. base122 output is
+      // safe verbatim in a double-quoted JS string (no ", \, <, &, NUL, CR, LF).
+      injection += '<script>' + emitBase122Decoder() + 'window.__plbx_enc="b122";</script>\n';
+    }
+    injection += '<script>window.__plbx_zip = "' + zipEncoded + '";</script>\n';
   } else {
     // Legacy loader globals.
     if (jsModules && Object.keys(jsModules).length > 0) {

@@ -22,7 +22,18 @@ export function emitUnpack(options: RuntimeLoaderOptions): string {
   var TEXT_EXTS = {'.js':1,'.json':1,'.css':1,'.html':1,'.txt':1,'.xml':1,'.svg':1,'.glsl':1,'.chunk':1,'.effect':1,'.mtl':1};
   function isText(name) { var d = name.lastIndexOf('.'); return d >= 0 && TEXT_EXTS[name.substring(d).toLowerCase()]; }
 
-  zip.loadAsync(window.__plbx_zip, { base64: true }).then(function (z) {
+  // base122 container: decode to a Uint8Array (JSZip takes it directly, no
+  // base64 option). Else the legacy/default base64 string path.
+  var _zipInput, _zipOpts;
+  if (window.__plbx_enc === 'b122' && typeof window.__plbx_b122decode === 'function') {
+    _zipInput = window.__plbx_b122decode(window.__plbx_zip);
+    _zipOpts = {};
+  } else {
+    _zipInput = window.__plbx_zip;
+    _zipOpts = { base64: true };
+  }
+
+  zip.loadAsync(_zipInput, _zipOpts).then(function (z) {
     var files = z.files;
     for (var path in files) {
       if (files[path].dir) continue;

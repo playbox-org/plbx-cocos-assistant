@@ -21,6 +21,10 @@ export interface ProjectSettings {
   legacyLoaderNetworks: string[];
   /** Show PLBX loading splash until the first rendered Cocos frame. */
   showSplash: boolean;
+  /** Asset-container encodings to emit (self-contained loader only). Default
+   *  ['base122'] (~14% smaller on disk). ['base64','base122'] emits both —
+   *  index.html (base122) + sibling index.b64.html. Invariant: at least one entry. */
+  assetEncodings: ('base64' | 'base122')[];
   /** Moloco Ad Account ID for CDN asset uploads (per-project; API key is global). */
   molocoAdAccountId: string;
   /** Moloco launcher ASSET_PROVIDER metadata override (empty → network default "Playbox"). */
@@ -44,6 +48,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   loaderMode: 'self-contained',
   legacyLoaderNetworks: [],
   showSplash: true,
+  assetEncodings: ['base122'],
   molocoAdAccountId: '',
   molocoAssetProvider: '',
   molocoAssetTitle: '',
@@ -62,6 +67,7 @@ export function toPackageConfig(s: ProjectSettings): PackageConfig {
     loaderMode: s.loaderMode,
     legacyLoaderNetworks: s.legacyLoaderNetworks,
     showSplash: s.showSplash !== false,
+    assetEncodings: s.assetEncodings && s.assetEncodings.length ? s.assetEncodings : ['base122'],
   };
 }
 
