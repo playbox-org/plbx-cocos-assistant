@@ -43,6 +43,34 @@ describe('generatePreviewUtil', () => {
     expect(code).toContain('FbPlayableAd');
   });
 
+  describe('mraidMode (adversarial boot harness)', () => {
+    const gen = (mraidMode?: string) =>
+      generatePreviewUtil({ networkId: 'applovin', mraid: true, maxSize: 5242880, mraidMode });
+
+    it('happy (default) auto-fires viewableChange(true) on ready', () => {
+      const code = gen();
+      expect(code).toContain("_fire('viewableChange', true)");
+      expect(code).toContain('var _viewable = true');
+    });
+
+    it('neverViewable starts not-viewable and never auto-fires viewableChange(true)', () => {
+      const code = gen('neverViewable');
+      expect(code).toContain('var _viewable = false');
+      expect(code).not.toContain("_fire('viewableChange', true)");
+    });
+
+    it('lostPulse fires a viewableChange(true) pulse but keeps isViewable() false at gate time', () => {
+      const code = gen('lostPulse');
+      expect(code).toContain('_PLBX_LOST_PULSE');
+      expect(code).toContain('var _viewable = false');
+    });
+
+    it('falls back to happy behavior for an unknown mode', () => {
+      const code = gen('bogusMode');
+      expect(code).toContain("_fire('viewableChange', true)");
+    });
+  });
+
   it('tags CTA reports with the expected SDK method per network (no false window.open pass)', () => {
     // The validator must track the network's REAL CTA method, not a bare
     // window.open() — otherwise it shows a false success.

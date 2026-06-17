@@ -1,0 +1,35 @@
+<!DOCTYPE html><html><head>
+<script src="mraid.js"></script>
+<title>loader-health fixture</title></head><body>
+<div id="GameDiv"><canvas id="GameCanvas"></canvas></div>
+<script>console.log('%c'+"@playbox-org/plbx-cocos-assistant"+'%c '+"v0.2.21"+'%c',"","","");</script>
+<script>window.__plbx_pre_boot = function(boot) {
+  var done = false;
+  function go() { if (done) return; done = true; try { boot(); } catch(e) {} }
+  if (!window.mraid) { go(); return; }
+  function ready() {
+    try { if (typeof mraid.isViewable === 'function' && mraid.isViewable()) return true; } catch(e) {}
+    var w = window.innerWidth, h = window.innerHeight;
+    var visible = (typeof document.visibilityState === 'undefined') || document.visibilityState === 'visible';
+    return w > 0 && h > 0 && visible;
+  }
+  function tryBoot() { if (ready()) { go(); return true; } return false; }
+  if (tryBoot()) return;
+  function attach() {
+    try { mraid.addEventListener('viewableChange', function(v) { if (v) tryBoot(); }); } catch(e) {}
+  }
+  (mraid.getState && mraid.getState() === 'loading') ? mraid.addEventListener('ready', attach) : attach();
+  window.addEventListener('resize', tryBoot);
+  try { document.addEventListener('visibilitychange', tryBoot); } catch(e) {}
+  (function poll(n) {
+    if (done) return;
+    if (tryBoot()) return;
+    if (n > 0) setTimeout(function() { poll(n - 1); }, 200);
+  })(50);
+};</script>
+<script>/* runtime-loader excerpt */
+function _isVirtualScheme(url) {
+  return /^(\.\/)?(chunks|virtual|blob|data|about):/.test(url);
+}
+</script>
+</body></html>

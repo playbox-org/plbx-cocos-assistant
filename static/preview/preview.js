@@ -101,6 +101,18 @@
   // Dynamic: loaded per-network from /api/networks response
   var CHECK_DEFS = [];
 
+  // Boot-harness state: the offscreen iframe currently being driven through the
+  // adversarial mraid modes. Its beacons are routed to the harness's own
+  // listener, NOT the main checklist (see the message handler guard).
+  var bootHarnessFrame = null;
+
+  // Human labels for the static loader-health fingerprint check ids.
+  var LH_LABELS = {
+    gate_robust: 'Robust defer-boot gate',
+    virtual_scheme_guarded: 'Virtual-scheme suffix guard',
+    loader_version: 'Boot-safe loader version',
+  };
+
   // Fallback definitions if network doesn't provide checks
   var DEFAULT_CHECK_DEFS = [
     { id: 'file_size', label: 'File size' },
@@ -476,17 +488,95 @@
     renderMolocoV2Section();
   }
 
+  // ========== BOOT HARNESS ==========
+  // Drive the build through hostile mraid timing modes in an offscreen iframe;
+  // each mode must reach game_ready or it fails (grey screen). The offscreen
+  // frame is a real, visible render surface (nonzero size) so a robust gate
+  // boots via its render-surface fallback while a fragile gate hangs.
+  function runBootHarness(net, modes) {
+    if (bootHarnessFrame) {
+      try { document.body.removeChild(bootHarnessFrame); } catch (e) {}
+      bootHarnessFrame = null;
+    }
+    var hframe = document.createElement('iframe');
+    hframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:320px;height:480px;border:0;visibility:visible;';
+    document.body.appendChild(hframe);
+    bootHarnessFrame = hframe;
+
+    var idx = 0;
+    function runMode() {
+      if (idx >= modes.length) {
+        try { document.body.removeChild(hframe); } catch (e) {}
+        if (bootHarnessFrame === hframe) bootHarnessFrame = null;
+        return;
+      }
+      var mode = modes[idx];
+      var checkId = 'boot_' + mode;
+      var settled = false;
+      var timer = null;
+
+      function finish(booted) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        window.removeEventListener('message', onMsg);
+        if (booted) {
+          var status = 'pass';
+          var detail = 'reached game_ready';
+          try {
+            var cv = hframe.contentWindow.document.getElementById('GameCanvas');
+            if (cv && (cv.clientWidth === 0 || cv.clientHeight === 0)) {
+              status = 'fail';
+              detail = 'booted but GameCanvas 0×0 (canvas never sized)';
+            }
+          } catch (err) {}
+          setCheck(checkId, status, detail);
+        } else {
+          setCheck(checkId, 'fail', 'no game_ready within 12s — grey screen under ' + mode);
+        }
+        idx++;
+        runMode();
+      }
+
+      function onMsg(e) {
+        if (e.source !== hframe.contentWindow) return;
+        if (!e.data || e.data.type !== 'plbx:preview') return;
+        if (e.data.event === 'game_ready') finish(true);
+      }
+
+      window.addEventListener('message', onMsg);
+      timer = setTimeout(function() { finish(false); }, 12000);
+      log('boot-harness: ' + mode);
+      hframe.src = '/preview/' + net.id + '?mraidMode=' + encodeURIComponent(mode);
+    }
+    runMode();
+  }
+
   // ========== NETWORK LOADING ==========
   function loadNetwork(id) {
     currentNetwork = id;
 
     // Set network-specific check definitions
     var net = networks.find(function(n) { return n.id === id; });
-    if (net && net.checks && net.checks.length > 0) {
-      CHECK_DEFS = net.checks;
-    } else {
-      CHECK_DEFS = DEFAULT_CHECK_DEFS;
-    }
+    CHECK_DEFS = (net && net.checks && net.checks.length > 0) ? net.checks.slice() : DEFAULT_CHECK_DEFS.slice();
+
+    // Static loader-health fingerprint rows (blocking). Detail text from server.
+    var loaderHealth = (net && net.loaderHealth) || [];
+    loaderHealth.forEach(function(lc) {
+      CHECK_DEFS.push({ id: 'lh_' + lc.id, label: LH_LABELS[lc.id] || lc.id, hint: lc.detail });
+    });
+
+    // Self-driving boot-harness rows (one per hostile mraid mode). Populated
+    // asynchronously by runBootHarness once the checklist is reset.
+    var bootModes = (net && net.mraidModes) || [];
+    bootModes.forEach(function(m) {
+      CHECK_DEFS.push({
+        id: 'boot_' + m,
+        label: 'Boots under ' + m,
+        hint: 'Game must reach game_ready under hostile mraid timing. A fragile defer-boot gate (no poll / no render-surface fallback) hangs here → grey screen in live. Repackage with the current extension.',
+      });
+    });
+
     currentValidatorUrl = (net && net.validatorUrl) || null;
 
     // MolocoV2 mode toggle — drives macro section + manual-trigger buttons
@@ -537,6 +627,15 @@
       setCheck('store_url_regional', 'pass', 'No regional params');
     }
 
+    // Static loader-health fingerprint — pass/fail is known at fetch time.
+    loaderHealth.forEach(function(lc) {
+      setCheck('lh_' + lc.id, lc.pass ? 'pass' : 'fail', lc.detail);
+    });
+
+    // Self-driving boot harness — boot the build under each hostile mraid mode
+    // in an offscreen iframe and assert it reaches game_ready.
+    if (bootModes.length) runBootHarness(net, bootModes);
+
     // Axon Events (AppLovin): runtime-fired events are checked client-side
     // against the spec (computeAxonChecks). Reset per network switch.
     axonFired = {};
@@ -560,6 +659,9 @@
     var NO_TIMEOUT = { cta: true, game_end: true, game_close: true };
     timeouts.lifecycle = setTimeout(function() {
       CHECK_DEFS.forEach(function(def) {
+        // boot_* rows have their own 12s-per-mode harness timeout (the sweep can
+        // run past 30s across modes) — don't double-judge them here.
+        if (def.id.indexOf('boot_') === 0) return;
         if (checks[def.id] && checks[def.id].status === 'pending' && !NO_TIMEOUT[def.id]) {
           setCheck(def.id, 'fail', 'Not detected within 30s');
         }
@@ -585,6 +687,9 @@
   // ========== POST MESSAGE LISTENER ==========
   window.addEventListener('message', function(e) {
     if (!e.data || e.data.type !== 'plbx:preview') return;
+    // Boot-harness iframe beacons are handled by the harness's own per-mode
+    // listener — never pollute the main checklist with them.
+    if (bootHarnessFrame && e.source === bootHarnessFrame.contentWindow) return;
     var evt = e.data.event;
     var data = e.data.data || {};
 

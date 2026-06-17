@@ -1,0 +1,21 @@
+<!DOCTYPE html><html><head>
+<script src="mraid.js"></script>
+<title>loader-health fixture</title></head><body>
+<div id="GameDiv"><canvas id="GameCanvas"></canvas></div>
+<script>console.log('%c'+"@playbox-org/plbx-cocos-assistant"+'%c '+"v0.2.11"+'%c',"","","");</script>
+<script>window.__plbx_pre_boot = function(boot) {
+  if (!window.mraid) { boot(); return; }
+  function gate() {
+    if (mraid.isViewable()) { boot(); return; }
+    mraid.addEventListener('viewableChange', function h(v) {
+      if (v) { mraid.removeEventListener('viewableChange', h); boot(); }
+    });
+  }
+  mraid.getState() === 'loading' ? mraid.addEventListener('ready', gate) : gate();
+};</script>
+<script>/* runtime-loader excerpt */
+function _isVirtualScheme(url) {
+  return /^(chunks|virtual|blob|data|about):/.test(url);
+}
+</script>
+</body></html>

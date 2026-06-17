@@ -123,12 +123,23 @@ modes each target one robust-gate mechanism:
 | mode            | mock behavior                                                                 | old gate | new gate |
 |-----------------|-------------------------------------------------------------------------------|----------|----------|
 | `happy` (def.)  | viewable true immediately on ready                                            | boots    | boots    |
-| `neverViewable` | `isViewable()`→false forever, `viewableChange` never true; render-surface live | hangs    | boots (render fallback) |
-| `lostPulse`     | `viewableChange(true)` fired BEFORE gate attaches; `isViewable()`→false at gate time, flips→true ~1s later | hangs (pulse lost, no re-check) | boots (poll catches the flip) |
-| `lateViewable`  | starts `document.hidden`; viewable at t≈5s via `visibilitychange`             | hangs    | boots (visibilitychange / poll) |
+| `neverViewable` | `isViewable()`→false forever, `viewableChange` never true; render-surface live | hangs    | boots (render-surface fallback) |
+| `lostPulse`     | a `viewableChange(true)` pulse fires while a real build's gate listener is not yet attached (lost); `isViewable()` stays false | hangs (pulse lost, no re-check) | boots (render-surface fallback / poll) |
+
+`lateViewable` was considered and dropped: a late `viewableChange(true)` fired
+AFTER the gate attaches its listener is *caught* by both the old and new gate,
+so it does not discriminate. The discriminating condition is "isViewable()
+never returns true / the pulse is lost" — covered by the two modes above.
+
+Note on the in-iframe harness: the offscreen harness iframe is a real, visible,
+nonzero render surface, so the robust gate boots via its **render-surface
+fallback** for both hostile modes. That is sufficient for the validator's
+question ("does it boot when viewable is hostile?"): old gate hangs → fail, new
+gate boots → pass. (The poll path specifically matters only for a true 0×0
+hidden preload, which an iframe cannot reproduce.)
 
 Modes are data-driven (a switch on `mraidMode`); the moloco-v2 special-casing
-already present stays untouched.
+already present stays untouched. Unknown mode → `happy`.
 
 ### 3. `src/core/preview/server.ts` (MODIFY)
 
@@ -173,10 +184,12 @@ already present stays untouched.
 
 `tests/core/preview/loader-health.test.ts` (new):
 
-- **Static, real fixtures**: the v0.2.11 build (`carousel_of_seasons_classic_applovin.html`)
-  → `gate_robust`, `virtual_scheme_guarded`, `loader_version` all **fail**; a
-  freshly packed v0.2.21 build → all **pass**. Both fixtures are committed under
-  `tests/fixtures/loader-health/`.
+- **Static, real fixtures**: lightweight HTML fixtures extracted from the real
+  builds — the actual `__plbx_pre_boot` gate block, `_isVirtualScheme` function,
+  and version banner, but WITHOUT the multi-MB base64 ZIP payload (the scan only
+  reads those loader blocks, so the fixtures stay a few KB). The v0.2.11 fixture
+  → `gate_robust`, `virtual_scheme_guarded`, `loader_version` all **fail**; the
+  v0.2.21 fixture → all **pass**. Committed under `tests/fixtures/loader-health/`.
 - **Per-check isolation**: hand-crafted minimal HTML snippets toggling each
   signature independently (robust gate present but virtual-scheme buggy, etc.)
   to prove the checks are orthogonal.

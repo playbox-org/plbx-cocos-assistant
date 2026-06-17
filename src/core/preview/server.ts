@@ -3,6 +3,7 @@ import { join, extname, basename } from 'path';
 import { existsSync, readFileSync, statSync, readdirSync } from 'fs';
 import JSZip from 'jszip';
 import { generatePreviewUtil } from './sdk-mocks';
+import { scanLoaderHealth, LoaderCheck } from './loader-health';
 import { getNetwork } from '../../shared/networks';
 import { resolveTemplate } from '../packager/template-resolver';
 import { validateLauncher, LauncherCheck } from '../packager/launcher-builder';
@@ -193,6 +194,27 @@ function buildLauncherChecks(outputDir: string, networkId: string): LauncherChec
     const launcherPath = join(outputDir, networkId, 'launcher.html');
     if (!existsSync(launcherPath)) return [];
     return validateLauncher(readFileSync(launcherPath, 'utf-8'));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Static loader-health fingerprint for the Validate window. Reads the built HTML
+ * (zip-aware) and runs the capability scan (robust defer-boot gate, virtual-scheme
+ * guard, boot-safety version floor). All checks are blocking. Returns [] when the
+ * build can't be read so a transient read error never masquerades as a pass.
+ */
+async function buildLoaderHealth(
+  outputDir: string,
+  networkId: string,
+  mraid: boolean,
+): Promise<LoaderCheck[]> {
+  try {
+    const file = findBuildFile(outputDir, networkId);
+    if (!file) return [];
+    const html = file.isZip ? await extractHtmlFromZip(file.path) : readFileSync(file.path, 'utf-8');
+    return scanLoaderHealth(html, { mraid });
   } catch {
     return [];
   }
@@ -718,6 +740,8 @@ export async function startPreviewServer(options: {
                 : { google: false, apple: false };
               // Static launcher structural checks (launcher-payload networks).
               const launcherChecks = buildLauncherChecks(outputDir, id);
+              // Static loader-health fingerprint (boot-pipeline safety). Blocking.
+              const loaderHealth = await buildLoaderHealth(outputDir, id, config?.mraid || false);
               // Regional/localization params in the store URL — applies to every
               // network (the creative must serve globally). Add the checklist line
               // only when the build actually carries a store URL.
@@ -742,6 +766,10 @@ export async function startPreviewServer(options: {
                 regional: regional.warnings,
                 checks,
                 launcherChecks,
+                loaderHealth,
+                // Adversarial mraid timing modes the client iterates in the
+                // self-driving boot harness (mraid networks only).
+                mraidModes: config?.mraid ? ['happy', 'neverViewable', 'lostPulse'] : [],
                 // Canonical Axon event spec — the client renders these as the
                 // expected set and checks runtime-fired events against them.
                 axonEvents: id === 'applovin' ? AXON_EVENTS : null,
@@ -772,11 +800,15 @@ export async function startPreviewServer(options: {
           return;
         }
 
-        // GET /preview/{networkId}
-        const previewMatch = url.match(/^\/preview\/([a-zA-Z0-9_-]+)$/);
+        // GET /preview/{networkId}[?mraidMode=...]
+        const [urlPath, urlQuery] = url.split('?');
+        const previewMatch = urlPath.match(/^\/preview\/([a-zA-Z0-9_-]+)$/);
         if (previewMatch) {
           const networkId = previewMatch[1];
           const config = getNetwork(networkId);
+          // Adversarial boot-harness timing (mraid builds). Unknown → happy
+          // (sanitized again inside generatePreviewUtil).
+          const mraidMode = new URLSearchParams(urlQuery || '').get('mraidMode') || 'happy';
           const buildFile = findBuildFile(outputDir, networkId);
 
           if (!buildFile) {
@@ -802,6 +834,7 @@ export async function startPreviewServer(options: {
             networkId,
             mraid: config?.mraid || false,
             maxSize: config?.maxSize || 0,
+            mraidMode,
           });
 
           const injectedHtml = injectPreviewUtil(html, utilScript);

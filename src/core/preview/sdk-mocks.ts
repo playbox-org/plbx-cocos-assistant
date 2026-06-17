@@ -2,6 +2,11 @@ export interface PreviewUtilParams {
   networkId: string;
   mraid: boolean;
   maxSize: number;
+  /** Adversarial mraid timing for the boot harness. Default 'happy' (today's
+   *  behavior: viewable true right after ready). Hostile modes stress the
+   *  defer-boot gate so a fragile loader greys out instead of silently passing.
+   *  Ignored for molocoV2 (which has its own manual-viewable semantics). */
+  mraidMode?: 'happy' | 'neverViewable' | 'lostPulse' | string;
 }
 
 /**
@@ -181,6 +186,12 @@ export function generatePreviewUtil(params: PreviewUtilParams): string {
 
   // Shared state and listener system for MRAID + dapi
   const isMolocoV2 = networkId === 'molocoV2';
+  // Adversarial boot harness mode (non-moloco). Unknown → happy (today's behavior).
+  const KNOWN_MRAID_MODES = new Set(['happy', 'neverViewable', 'lostPulse']);
+  const mraidMode = KNOWN_MRAID_MODES.has(params.mraidMode || '') ? (params.mraidMode as string) : 'happy';
+  // Initial viewability: happy → true (legacy), hostile modes start false so the
+  // gate must boot via its render-surface fallback / poll, not a gifted pulse.
+  const initialViewable = isMolocoV2 ? false : mraidMode === 'happy';
   if (mraid) {
     parts.push(`
   // Shared SDK state
@@ -188,7 +199,7 @@ export function generatePreviewUtil(params: PreviewUtilParams): string {
   // MolocoV2 spec: ad container delivers viewableChange(true) only after the
   // creative is actually visible. Start false so production semantics are
   // mirrored — manual "Trigger viewable" button drives the transition.
-  var _viewable = ${isMolocoV2 ? 'false' : 'true'};
+  var _viewable = ${initialViewable ? 'true' : 'false'};
   var _volume = 100;
   var _listeners = {};
 
@@ -340,7 +351,15 @@ export function generatePreviewUtil(params: PreviewUtilParams): string {
   setTimeout(function() {
     _sdkState = 'default';
     _fire('ready');
-    ${isMolocoV2 ? "// viewable stays false — wait for manual trigger" : "_fire('viewableChange', true);"}
+    ${
+      isMolocoV2
+        ? '// viewable stays false — wait for manual trigger'
+        : mraidMode === 'neverViewable'
+          ? "// neverViewable: isViewable() stays false forever, no viewableChange(true). A fragile gate hangs; a robust gate boots via its render-surface fallback."
+          : mraidMode === 'lostPulse'
+            ? "var _PLBX_LOST_PULSE = true; _fire('viewableChange', true); // pulse fires while the gate listener is (in a real build) not yet attached → lost; _viewable stays false so isViewable() at gate time is false. Robust gate recovers via poll/render-surface."
+            : "_fire('viewableChange', true);"
+    }
     report('mraid_ready', {});
   }, ${isMolocoV2 ? 100 : 50});
 `);
