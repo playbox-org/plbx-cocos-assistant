@@ -1845,10 +1845,10 @@ module.exports = Editor.Panel.define({
         box.appendChild(item);
       }
 
-      // Link to the Axon event spec when any AppLovin/Axon advisory is shown.
-      const hasAxon = groups.some(
-        (g) => /applovin/i.test(g.name) || g.warnings.some((w) => /axon/i.test(w)),
-      );
+      // Link to the Axon event spec only when an actual Axon advisory is shown —
+      // keyed on the warning text, NOT the network name (else any AppLovin warning,
+      // e.g. risky-audio, would surface an irrelevant Axon link).
+      const hasAxon = groups.some((g) => g.warnings.some((w) => /axon/i.test(w)));
       if (hasAxon) {
         const link = document.createElement('a');
         link.className = 'pkg-warnings-link';
