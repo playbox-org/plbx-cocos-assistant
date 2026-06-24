@@ -1,6 +1,6 @@
 {
   "package_version": 2,
-  "version": "0.2.25",
+  "version": "0.2.26",
   "name": "plbx-cocos-extension",
   "title": "i18n:plbx-cocos-extension.title",
   "description": "i18n:plbx-cocos-extension.description",
@@ -166,6 +166,11 @@
       "generate-adapter": {
         "methods": [
           "generateAdapter"
+        ]
+      },
+      "generate-axon-helper": {
+        "methods": [
+          "generateAxonHelper"
         ]
       },
       "start-preview": {

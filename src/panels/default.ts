@@ -90,6 +90,7 @@ module.exports = Editor.Panel.define({
 
     // Package tab
     btnGenerateAdapter: '#btn-generate-adapter',
+    btnGenerateAxon:    '#btn-generate-axon',
     networkGrid:      '#network-grid',
     networkGridMore:  '#network-grid-more',
     networkMoreWrap:  '#network-more-wrap',
@@ -1785,6 +1786,24 @@ module.exports = Editor.Panel.define({
           if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.error').replace('{msg}', String(e?.message ?? e));
         } finally {
           btnGenAdapter.disabled = false;
+        }
+      });
+
+      const btnGenAxon = this.$.btnGenerateAxon as HTMLButtonElement;
+      btnGenAxon?.addEventListener('click', async () => {
+        btnGenAxon.disabled = true;
+        if (pkgStatus) pkgStatus.textContent = '';
+        try {
+          const result = await Editor.Message.request('plbx-cocos-extension', 'generate-axon-helper');
+          if (result.created) {
+            if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.createdPath').replace('{path}', result.path.split('/').slice(-3).join('/'));
+          } else {
+            if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.alreadyExists').replace('{path}', result.path.split('/').slice(-3).join('/'));
+          }
+        } catch (e: any) {
+          if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.error').replace('{msg}', String(e?.message ?? e));
+        } finally {
+          btnGenAxon.disabled = false;
         }
       });
 
