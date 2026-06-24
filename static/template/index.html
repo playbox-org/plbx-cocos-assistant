@@ -237,11 +237,23 @@
             </label>
           </div>
           <div class="form-group">
-            <label class="toggle-label">
-              <input type="checkbox" id="pkg-show-splash" checked />
-              <span data-i18n="settings.showSplash">Show Playbox splash while loading</span>
-            </label>
+            <span class="form-label" data-i18n="settings.splashTitle">Loading splash</span>
+            <select id="pkg-splash-mode" class="form-select" style="max-width:240px;">
+              <option value="none" data-i18n="settings.splashNone">None</option>
+              <option value="playbox" data-i18n="settings.splashPlaybox">Playbox splash</option>
+              <option value="custom" data-i18n="settings.splashCustom">Custom logo</option>
+            </select>
             <div id="pkg-splash-cost" class="pkg-hint"></div>
+            <div id="pkg-custom-logo" class="pkg-custom-logo" style="display:none;">
+              <div class="pkg-custom-logo-row">
+                <img id="pkg-logo-preview" class="pkg-logo-preview" alt="" />
+                <button id="pkg-logo-browse" class="btn btn-small" data-i18n="settings.customLogoBrowse">Browse…</button>
+                <button id="pkg-logo-clear" class="btn-secondary btn-small" data-i18n="settings.customLogoClear" style="display:none;">Clear</button>
+              </div>
+              <div id="pkg-logo-hint" class="pkg-hint" data-i18n="settings.customLogoHint">PNG/JPG/WebP shown on a black screen</div>
+              <div id="pkg-logo-cost" class="pkg-hint"></div>
+              <div id="pkg-logo-error" class="pkg-hint pkg-logo-error"></div>
+            </div>
           </div>
           <div class="form-group">
             <span class="form-label" data-i18n="settings.encodings">Asset encoding</span>

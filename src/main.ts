@@ -783,6 +783,31 @@ export const methods: Record<string, (...args: any[]) => any> = {
     return { bytes: splashByteCost() };
   },
 
+  /** Open a file dialog to pick a custom splash logo. Returns the chosen path. */
+  async pickSplashLogo() {
+    try {
+      const res = await Editor.Dialog.select({
+        title: 'Select splash logo',
+        type: 'file',
+        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+      });
+      const path = res?.filePaths?.[0];
+      return { canceled: !path, path: path || '' };
+    } catch (e: any) {
+      return { canceled: true, path: '', error: String(e?.message || e) };
+    }
+  },
+
+  /** Preview + build-cost for a custom splash logo. `bytes` already counts the
+   *  base64 (+~33%) form, since the logo is embedded as a data: URL. */
+  getSplashLogoInfo(path: string) {
+    const { resolveSplashLogoDataUrl } = require('./core/packager/packager');
+    const { splashByteCost } = require('./core/packager/splash');
+    const dataUrl = resolveSplashLogoDataUrl(path);
+    if (!dataUrl) return { ok: false, error: 'unreadable' };
+    return { ok: true, dataUrl, bytes: splashByteCost({ customLogo: { dataUrl } }) };
+  },
+
   async getToken() {
     return getGlobalToken();
   },

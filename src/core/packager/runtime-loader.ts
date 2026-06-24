@@ -938,6 +938,9 @@ export function generateFullHtml(params: {
   loaderMode?: 'self-contained' | 'systemjs';
   /** Inject PLBX loading splash, hidden on the first rendered Cocos frame. */
   showSplash?: boolean;
+  /** Client logo data: URL — shown on the splash instead of the PLBX pinwheel +
+   *  wordmark. Ignored unless showSplash is set. */
+  splashLogoDataUrl?: string;
   /** Asset-container encoding. 'base122' (~14% smaller) only applies to the
    *  self-contained loader; the legacy systemjs path is always base64. */
   encoding?: 'base64' | 'base122';
@@ -1031,7 +1034,9 @@ export function generateFullHtml(params: {
   // block below.
   let splashJs = '';
   if (params.showSplash) {
-    const splash = buildSplash({});
+    const splash = buildSplash(
+      params.splashLogoDataUrl ? { customLogo: { dataUrl: params.splashLogoDataUrl } } : {},
+    );
     rewrittenHtml = rewrittenHtml.replace(
       /<\/head>/i,
       '<style>' + splash.styleCss + '</style></head>',

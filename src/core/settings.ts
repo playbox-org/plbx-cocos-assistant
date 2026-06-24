@@ -19,8 +19,13 @@ export interface ProjectSettings {
   loaderMode: 'self-contained' | 'systemjs';
   /** Networks pinned to the legacy SystemJS loader regardless of loaderMode. */
   legacyLoaderNetworks: string[];
-  /** Show PLBX loading splash until the first rendered Cocos frame. */
-  showSplash: boolean;
+  /** Loading splash shown until the first rendered Cocos frame:
+   *  'none' = no splash, 'playbox' = PLBX branded splash, 'custom' = client logo
+   *  (customSplashLogo) on a plain black screen. */
+  splashMode: 'none' | 'playbox' | 'custom';
+  /** Absolute path to a client logo (PNG/JPG/WebP) for splashMode 'custom'.
+   *  Persisted across mode switches so toggling back to custom keeps the file. */
+  customSplashLogo: string;
   /** Asset-container encodings to emit (self-contained loader only). Default
    *  ['base64'] (most stable, fastest boot, larger file). base122 is ~14% smaller
    *  but less robust. ['base64','base122'] emits both — index.html (base122) +
@@ -48,7 +53,8 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   templateVariables: {},
   loaderMode: 'self-contained',
   legacyLoaderNetworks: [],
-  showSplash: true,
+  splashMode: 'playbox',
+  customSplashLogo: '',
   assetEncodings: ['base64'],
   molocoAdAccountId: '',
   molocoAssetProvider: '',
@@ -67,7 +73,8 @@ export function toPackageConfig(s: ProjectSettings): PackageConfig {
     orientation: s.orientation,
     loaderMode: s.loaderMode,
     legacyLoaderNetworks: s.legacyLoaderNetworks,
-    showSplash: s.showSplash !== false,
+    showSplash: s.splashMode !== 'none',
+    customSplashLogo: s.splashMode === 'custom' ? s.customSplashLogo || '' : '',
     assetEncodings: s.assetEncodings && s.assetEncodings.length ? s.assetEncodings : ['base64'],
   };
 }
@@ -78,7 +85,13 @@ export async function getProjectSettings(): Promise<ProjectSettings> {
     const saved = await Editor.Profile.getProject('plbx-cocos-extension', 'settings', 'local');
     const rawName = sanitizeProjectName(saved?.projectName);
     const projectName = rawName || getDefaultProjectName();
-    return { ...DEFAULT_SETTINGS, ...saved, projectName };
+    const merged = { ...DEFAULT_SETTINGS, ...saved, projectName };
+    // Migrate legacy boolean showSplash → splashMode (pre-dropdown settings).
+    if (saved && saved.splashMode === undefined) {
+      merged.splashMode = saved.showSplash === false ? 'none'
+        : saved.customSplashLogo ? 'custom' : 'playbox';
+    }
+    return merged;
   } catch {
     return { ...DEFAULT_SETTINGS, projectName: getDefaultProjectName() };
   }

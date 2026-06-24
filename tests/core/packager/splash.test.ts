@@ -36,6 +36,42 @@ describe('buildSplash', () => {
   });
 });
 
+describe('buildSplash custom logo', () => {
+  const dataUrl = 'data:image/png;base64,' + Buffer.from('x'.repeat(900)).toString('base64');
+
+  it('renders <img> with the data URL instead of the PLBX pinwheel + wordmark', () => {
+    const s = buildSplash({ customLogo: { dataUrl } });
+    expect(s.bodyHtml).toContain('<img id="lg"');
+    expect(s.bodyHtml).toContain(dataUrl);
+    expect(s.bodyHtml).not.toContain('<svg id="lg"'); // not the PLBX pinwheel
+    expect(s.bodyHtml).not.toContain('class="wm"');   // no PLBX wordmark
+    expect(s.styleCss).toContain('object-fit:contain'); // fit any aspect
+    expect(s.styleCss).toContain('@keyframes pq');      // whole-image pulse
+  });
+
+  it('uses a plain black backdrop with no gradients or progress bar', () => {
+    const s = buildSplash({ customLogo: { dataUrl }, withProgressBar: true });
+    expect(s.bodyHtml).not.toContain('class=b');         // no progress bar
+    expect(s.styleCss).toContain('background:#000');      // plain black
+    expect(s.styleCss).not.toContain('radial-gradient');  // gradients dropped
+  });
+});
+
+describe('splashByteCost with custom logo', () => {
+  const url = (rawBytes: number) =>
+    'data:image/png;base64,' + Buffer.from('x'.repeat(rawBytes)).toString('base64');
+
+  it('scales with the base64 image size, with the +33% inflation counted', () => {
+    const small = splashByteCost({ customLogo: { dataUrl: url(300) } });
+    const big = splashByteCost({ customLogo: { dataUrl: url(30000) } });
+    const rawDelta = 30000 - 300;
+    // base64 grows the byte cost by ceil(n/3)*4 per image → delta is exact.
+    const base64Delta = Math.ceil(30000 / 3) * 4 - Math.ceil(300 / 3) * 4;
+    expect(big - small).toBe(base64Delta);      // cost tracks the image (not ignored)
+    expect(base64Delta).toBeGreaterThan(rawDelta); // base64 +33% over raw
+  });
+});
+
 describe('splashByteCost', () => {
   it('returns positive stable byte count', () => {
     const a = splashByteCost();

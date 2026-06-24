@@ -21,6 +21,28 @@ import CleanCSS from 'clean-css';
  *  Creative Pack validator greps the raw HTML for). */
 const GOOGLE_PLAY_MARKER = 'play.google.com/store/apps/details';
 
+/** Image extensions accepted for the custom splash logo → MIME for the data URL. */
+const SPLASH_LOGO_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+};
+
+/** Read the optional client splash logo into a base64 `data:` URL. Returns
+ *  undefined (→ default PLBX splash) on no path, unsupported type, or read error. */
+export function resolveSplashLogoDataUrl(path?: string): string | undefined {
+  if (!path) return undefined;
+  const mime = SPLASH_LOGO_MIME[extname(path).toLowerCase()];
+  if (!mime) return undefined;
+  try {
+    return `data:${mime};base64,${readFileSync(path).toString('base64')}`;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Resolve the packager version for the startup banner. Prefer the explicitly
  *  passed value; otherwise read package.json; finally fall back to '0.0.0'. */
 function resolvePackagerVersion(explicit?: string): string {
@@ -43,6 +65,10 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
     throw new Error(`Build HTML not found: ${htmlPath}`);
   }
   const baseHtml = readFileSync(htmlPath, 'utf-8');
+
+  // Optional client splash logo — read once, shared across networks. Unreadable
+  // path / unsupported type falls back to the default PLBX splash (no hard fail).
+  const splashLogoDataUrl = resolveSplashLogoDataUrl(options.config.customSplashLogo);
 
   // Startup version banner injected into every build (console.log on run).
   const versionBanner = buildVersionBanner(resolvePackagerVersion(options.packagerVersion));
@@ -341,6 +367,7 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
             buildDir: options.buildDir,
             loaderMode: effectiveLoaderMode,
             showSplash: options.config.showSplash !== false,
+            splashLogoDataUrl,
           });
 
           assertNoForbiddenStrings(finalHtml, adapter.getForbiddenStrings(), network.name);
@@ -418,6 +445,7 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
                       buildDir: options.buildDir,
                       loaderMode: effectiveLoaderMode,
                       showSplash: options.config.showSplash !== false,
+                      splashLogoDataUrl,
                       encoding: 'base122',
                     });
               if (enc === 'base122') {

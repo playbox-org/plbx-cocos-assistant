@@ -50,6 +50,9 @@ export interface PackageConfig {
   legacyLoaderNetworks?: string[];
   /** Show PLBX loading splash until the first rendered Cocos frame. Default true. */
   showSplash?: boolean;
+  /** Absolute path to a client logo (PNG/JPG/WebP) shown on the splash instead
+   *  of the PLBX pinwheel + wordmark. Empty/unreadable → default PLBX splash. */
+  customSplashLogo?: string;
   /** Asset-container encodings to emit (self-contained loader only). Default
    *  ['base64']. With both, base122 → primary `index.html`, base64 → sibling `.b64.html`. */
   assetEncodings?: ('base64' | 'base122')[];

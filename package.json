@@ -1,6 +1,6 @@
 {
   "package_version": 2,
-  "version": "0.2.24",
+  "version": "0.2.25",
   "name": "plbx-cocos-extension",
   "title": "i18n:plbx-cocos-extension.title",
   "description": "i18n:plbx-cocos-extension.description",
@@ -216,6 +216,16 @@
       "get-splash-info": {
         "methods": [
           "getSplashInfo"
+        ]
+      },
+      "pick-splash-logo": {
+        "methods": [
+          "pickSplashLogo"
+        ]
+      },
+      "get-splash-logo-info": {
+        "methods": [
+          "getSplashLogoInfo"
         ]
       },
       "get-token": {

@@ -687,6 +687,29 @@ body,
   margin-top: 2px;
 }
 
+.pkg-custom-logo {
+  margin-top: 8px;
+}
+.pkg-custom-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.pkg-logo-preview {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  background: #000;
+  display: none;
+}
+.pkg-logo-error {
+  color: #e0533a;
+  display: none;
+}
+
 .pkg-var-chips {
   display: flex;
   gap: 4px;

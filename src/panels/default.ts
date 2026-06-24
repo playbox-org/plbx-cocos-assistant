@@ -108,8 +108,14 @@ module.exports = Editor.Panel.define({
     pkgResultsTbody:  '#pkg-results-tbody',
     pkgWarnings:      '#pkg-warnings',
     pkgAutoPackage:   '#pkg-auto-package',
-    pkgShowSplash:    '#pkg-show-splash',
+    pkgSplashMode:    '#pkg-splash-mode',
     pkgSplashCost:    '#pkg-splash-cost',
+    pkgCustomLogo:    '#pkg-custom-logo',
+    pkgLogoPreview:   '#pkg-logo-preview',
+    pkgLogoBrowse:    '#pkg-logo-browse',
+    pkgLogoClear:     '#pkg-logo-clear',
+    pkgLogoCost:      '#pkg-logo-cost',
+    pkgLogoError:     '#pkg-logo-error',
     pkgEncoding:      '#pkg-encoding',
     pkgEncWarn:       '#pkg-enc-warn',
     pkgTemplatePreset:'#pkg-template-preset',
@@ -1478,6 +1484,63 @@ module.exports = Editor.Panel.define({
           .catch((e: any) => { console.warn('[plbx]', e); });
       };
 
+      // Custom splash logo: preview + build cost (incl. base64 +33%). Empty
+      // path → default PLBX splash, no preview.
+      const refreshCustomLogo = (path: string) => {
+        const preview = this.$.pkgLogoPreview as HTMLImageElement | null;
+        const clearBtn = this.$.pkgLogoClear as HTMLElement | null;
+        const costEl = this.$.pkgLogoCost as HTMLElement | null;
+        const errEl = this.$.pkgLogoError as HTMLElement | null;
+        if (costEl) costEl.textContent = '';
+        if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+        const showErr = () => {
+          if (preview) { preview.style.display = 'none'; preview.removeAttribute('src'); }
+          if (errEl) {
+            errEl.textContent = translate(this._lang || 'en', 'settings.customLogoError');
+            errEl.style.display = 'block';
+          }
+        };
+        if (!path) {
+          if (preview) { preview.style.display = 'none'; preview.removeAttribute('src'); }
+          if (clearBtn) clearBtn.style.display = 'none';
+          return;
+        }
+        if (clearBtn) clearBtn.style.display = '';
+        Editor.Message.request('plbx-cocos-extension', 'get-splash-logo-info', path)
+          .then((info: any) => {
+            if (!info?.ok) { showErr(); return; }
+            if (preview) { preview.src = info.dataUrl; preview.style.display = 'block'; }
+            if (costEl) {
+              const kb = (info.bytes / 1024).toFixed(1);
+              costEl.textContent = translate(this._lang || 'en', 'settings.customLogoCost').replace('{kb}', kb);
+            }
+          })
+          .catch(() => showErr());
+      };
+
+      // Splash mode (none / playbox / custom). Playbox byte-cost is fetched once
+      // and shown only in playbox mode; the custom-logo block shows only in
+      // custom mode. currentLogoPath persists the picked file across mode flips.
+      let splashKb = '';
+      let currentLogoPath = '';
+      const renderSplashCost = () => {
+        const el = this.$.pkgSplashCost as HTMLElement | null;
+        if (!el) return;
+        const mode = (this.$.pkgSplashMode as HTMLSelectElement | null)?.value || 'playbox';
+        el.textContent = mode === 'playbox' && splashKb
+          ? translate(this._lang || 'en', 'settings.splashCost').replace('{kb}', splashKb)
+          : '';
+      };
+      const applySplashMode = (mode: string, logoPath: string) => {
+        currentLogoPath = logoPath;
+        const sel = this.$.pkgSplashMode as HTMLSelectElement | null;
+        if (sel) sel.value = mode;
+        const block = this.$.pkgCustomLogo as HTMLElement | null;
+        if (block) block.style.display = mode === 'custom' ? 'block' : 'none';
+        renderSplashCost();
+        if (mode === 'custom') refreshCustomLogo(logoPath);
+      };
+
       // --- Restore settings ---
       Editor.Message.request('plbx-cocos-extension', 'get-settings').then((settings: any) => {
         const buildDirInput = this.$.pkgBuildDir as HTMLInputElement;
@@ -1489,8 +1552,7 @@ module.exports = Editor.Panel.define({
         refreshAxonAdvisory(settings?.buildDir, settings?.selectedNetworks);
         if (outputDirInput && settings?.outputDir) outputDirInput.value = settings.outputDir;
         if (autoPackageCb) autoPackageCb.checked = settings?.autoPackage !== false;
-        const showSplashCb = this.$.pkgShowSplash as HTMLInputElement | null;
-        if (showSplashCb) showSplashCb.checked = settings?.showSplash !== false;
+        applySplashMode(settings?.splashMode || 'playbox', settings?.customSplashLogo || '');
         const encArr: string[] = Array.isArray(settings?.assetEncodings) && settings.assetEncodings.length
           ? settings.assetEncodings
           : ['base64'];
@@ -1567,10 +1629,30 @@ module.exports = Editor.Panel.define({
           .catch((e: any) => { console.warn('[plbx]', e); });
       });
 
-      // PLBX splash toggle — project setting + byte-cost hint.
-      (this.$.pkgShowSplash as HTMLInputElement)?.addEventListener('change', () => {
-        const checked = (this.$.pkgShowSplash as HTMLInputElement)?.checked ?? true;
-        Editor.Message.request('plbx-cocos-extension', 'save-settings', { showSplash: checked })
+      // Splash mode dropdown (none / playbox / custom) — project setting + hints.
+      (this.$.pkgSplashMode as HTMLSelectElement)?.addEventListener('change', () => {
+        const mode = (this.$.pkgSplashMode as HTMLSelectElement)?.value || 'playbox';
+        applySplashMode(mode, currentLogoPath);
+        Editor.Message.request('plbx-cocos-extension', 'save-settings', { splashMode: mode })
+          .catch((e: any) => { console.warn('[plbx]', e); });
+      });
+
+      // Custom splash logo: Browse (file dialog) + Clear.
+      (this.$.pkgLogoBrowse as HTMLElement)?.addEventListener('click', () => {
+        Editor.Message.request('plbx-cocos-extension', 'pick-splash-logo')
+          .then((res: any) => {
+            if (res?.canceled || !res?.path) return;
+            currentLogoPath = res.path;
+            Editor.Message.request('plbx-cocos-extension', 'save-settings', { customSplashLogo: res.path })
+              .then(() => refreshCustomLogo(res.path))
+              .catch((e: any) => { console.warn('[plbx]', e); });
+          })
+          .catch((e: any) => { console.warn('[plbx]', e); });
+      });
+      (this.$.pkgLogoClear as HTMLElement)?.addEventListener('click', () => {
+        currentLogoPath = '';
+        Editor.Message.request('plbx-cocos-extension', 'save-settings', { customSplashLogo: '' })
+          .then(() => refreshCustomLogo(''))
           .catch((e: any) => { console.warn('[plbx]', e); });
       });
 
@@ -1592,11 +1674,8 @@ module.exports = Editor.Panel.define({
       });
       Editor.Message.request('plbx-cocos-extension', 'get-splash-info')
         .then((info: any) => {
-          const el = this.$.pkgSplashCost as HTMLElement | null;
-          if (el && info?.bytes > 0) {
-            const kb = (info.bytes / 1024).toFixed(1);
-            el.textContent = translate(this._lang || 'en', 'settings.splashCost').replace('{kb}', kb);
-          }
+          if (info?.bytes > 0) splashKb = (info.bytes / 1024).toFixed(1);
+          renderSplashCost();
         })
         .catch(() => {});
 

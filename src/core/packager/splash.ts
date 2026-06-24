@@ -46,47 +46,76 @@ export interface SplashOptions {
    * "PLAYBOX" — compact mode for the 3 KB Moloco launcher budget.
    */
   svgWordmark?: boolean;
+  /**
+   * Client logo (a `data:` URL) shown in place of the PLBX pinwheel + wordmark
+   * — clients who want their own brand on the loading screen. Keeps our
+   * backdrop, progress bar, fade and first-frame hide; whole-image pulse (the
+   * per-petal pulse needs our SVG paths). Only wired for full HTML builds, never
+   * the Moloco launcher (3 KB ceiling).
+   */
+  customLogo?: { dataUrl: string };
 }
 
 export function buildSplash(opts: SplashOptions = {}): SplashParts {
-  const withBar = opts.withProgressBar !== false;
+  const customUrl = opts.customLogo?.dataUrl;
+  const custom = !!customUrl;
+  // Custom client logo → plain black, no gradients, no progress bar (the client
+  // brand stands alone). PLBX splash keeps its branded backdrop + bar.
+  const withBar = opts.withProgressBar !== false && !custom;
   const svgWord = opts.svgWordmark !== false;
 
   // Compact mode (Moloco launcher, 3 KB ceiling) trades the staggered petal
   // pulse + second glow gradient for a whole-mark pulse — ~250 B cheaper.
   const compact = !svgWord;
 
+  const bg = custom
+    ? '#000'
+    : 'radial-gradient(60% 38% at 50% 0,#ff7a2629,#0000 70%)' +
+      (compact ? '' : ',radial-gradient(50% 40% at 50% 110%,#6833fb38,#0000 70%)') +
+      ' #06020d';
+
   let styleCss =
     '#s{position:fixed;inset:0;' +
     'display:flex;flex-direction:column;gap:20px;' +
     'align-items:center;justify-content:center;z-index:9999;' +
-    'background:radial-gradient(60% 38% at 50% 0,#ff7a2629,#0000 70%)' +
-    (compact ? '' : ',radial-gradient(50% 40% at 50% 110%,#6833fb38,#0000 70%)') +
-    ' #06020d;' +
+    'background:' + bg + ';' +
     'transition:opacity .5s ease-out}' +
-    '#s.h{opacity:0;pointer-events:none}' +
-    '#lg{width:84px;height:84px}' +
-    (compact
-      ? // Byte-shaved for the 3 KB launcher: no opacity keyframe, short easing.
-        '#lg{animation:pq 1.8s ease infinite}' +
-        '@keyframes pq{0%,100%{transform:scale(1)}50%{transform:scale(.9)}}'
-      : // E2: petals pulse toward center with a stagger; outer silhouette static.
-        '#lg .pt path{transform-origin:12px 12px;animation:pq 1.8s ease-in-out infinite}' +
-        '#lg .pt path:nth-child(2){animation-delay:.15s}' +
-        '#lg .pt path:nth-child(3){animation-delay:.3s}' +
-        '#lg .pt path:nth-child(4){animation-delay:.45s}' +
-        '@keyframes pq{0%,100%{transform:scale(1)}50%{transform:scale(.86);opacity:.8}}');
+    '#s.h{opacity:0;pointer-events:none}';
 
-  let wordmark: string;
-  if (svgWord) {
-    // Wordmark width matches the mark width.
-    styleCss += '#s .wm{width:84px;height:auto;display:block;opacity:.95}';
-    wordmark = PLBX_WORDMARK_SVG;
+  let logo: string;
+  let wordmark = '';
+  if (customUrl) {
+    // Custom client logo: fit any aspect, whole-image pulse, no PLBX wordmark.
+    styleCss +=
+      '#lg{max-width:96px;max-height:96px;width:auto;height:auto;' +
+      'object-fit:contain;animation:pq 1.8s ease infinite}' +
+      '@keyframes pq{0%,100%{transform:scale(1)}50%{transform:scale(.9)}}';
+    logo = `<img id="lg" src="${customUrl}" alt="">`;
   } else {
-    // Compact wordmark text. system-ui only — the named-font stack and
-    // letter-spacing cost ~43 B the 3 KB launcher budget can't spare.
-    styleCss += '#s .t{font:800 19px/1 system-ui,sans-serif;color:#fff}';
-    wordmark = '<div class=t>Playbox</div>';
+    logo = PLBX_LOGO_SVG;
+    styleCss +=
+      '#lg{width:84px;height:84px}' +
+      (compact
+        ? // Byte-shaved for the 3 KB launcher: no opacity keyframe, short easing.
+          '#lg{animation:pq 1.8s ease infinite}' +
+          '@keyframes pq{0%,100%{transform:scale(1)}50%{transform:scale(.9)}}'
+        : // E2: petals pulse toward center with a stagger; outer silhouette static.
+          '#lg .pt path{transform-origin:12px 12px;animation:pq 1.8s ease-in-out infinite}' +
+          '#lg .pt path:nth-child(2){animation-delay:.15s}' +
+          '#lg .pt path:nth-child(3){animation-delay:.3s}' +
+          '#lg .pt path:nth-child(4){animation-delay:.45s}' +
+          '@keyframes pq{0%,100%{transform:scale(1)}50%{transform:scale(.86);opacity:.8}}');
+
+    if (svgWord) {
+      // Wordmark width matches the mark width.
+      styleCss += '#s .wm{width:84px;height:auto;display:block;opacity:.95}';
+      wordmark = PLBX_WORDMARK_SVG;
+    } else {
+      // Compact wordmark text. system-ui only — the named-font stack and
+      // letter-spacing cost ~43 B the 3 KB launcher budget can't spare.
+      styleCss += '#s .t{font:800 19px/1 system-ui,sans-serif;color:#fff}';
+      wordmark = '<div class=t>Playbox</div>';
+    }
   }
 
   let bar = '';
@@ -102,7 +131,7 @@ export function buildSplash(opts: SplashOptions = {}): SplashParts {
     bar = '<div class=b><i></i></div>';
   }
 
-  const bodyHtml = `<div id="s">${PLBX_LOGO_SVG}${wordmark}${bar}</div>`;
+  const bodyHtml = `<div id="s">${logo}${wordmark}${bar}</div>`;
 
   const hideJs =
     'window.__plbx_splash_hide=function(){var s=document.getElementById("s");' +

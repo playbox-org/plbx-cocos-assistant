@@ -25,9 +25,21 @@ describe('toPackageConfig', () => {
     expect(config.orientation).toBe('landscape');
   });
 
-  it('forwards showSplash (default true, explicit false honoured)', () => {
-    expect(DEFAULT_SETTINGS.showSplash).toBe(true);
-    expect(toPackageConfig(DEFAULT_SETTINGS).showSplash).toBe(true);
-    expect(toPackageConfig({ ...DEFAULT_SETTINGS, showSplash: false }).showSplash).toBe(false);
+  it('defaults splashMode to playbox', () => {
+    expect(DEFAULT_SETTINGS.splashMode).toBe('playbox');
+  });
+
+  it('derives showSplash + customSplashLogo from splashMode', () => {
+    // none → no splash
+    expect(toPackageConfig({ ...DEFAULT_SETTINGS, splashMode: 'none' }).showSplash).toBe(false);
+    // playbox → splash on, custom logo path NOT forwarded even if stored
+    const stored = { ...DEFAULT_SETTINGS, customSplashLogo: '/x/logo.png' };
+    const pb = toPackageConfig({ ...stored, splashMode: 'playbox' });
+    expect(pb.showSplash).toBe(true);
+    expect(pb.customSplashLogo).toBe('');
+    // custom → splash on, path forwarded
+    const cu = toPackageConfig({ ...stored, splashMode: 'custom' });
+    expect(cu.showSplash).toBe(true);
+    expect(cu.customSplashLogo).toBe('/x/logo.png');
   });
 });
