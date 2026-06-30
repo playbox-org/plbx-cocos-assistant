@@ -148,6 +148,50 @@ function plbx_install_shims() {
       });
     };
   }
+
+  // Audio decode guard (Safari/WebKit). decodeAudioData can REJECT a valid-looking
+  // MP3 with a null error — seen with ultra-short VBR clips from old LAME encoders
+  // that ffmpeg/Chrome/CoreAudio all decode. Cocos's loadNative swallows that
+  // reject WITHOUT settling its promise, so the AudioClip — and every scene that
+  // depends on it — hangs forever (grey screen): one bad clip kills the whole
+  // playable. We cannot make the engine reject-and-skip from out here, so on a
+  // failed decode we surface the error LOUDLY (console.error — not a silent
+  // success) and hand back an empty buffer so the engine's load path SETTLES and
+  // boot continues. That clip just has no audio; everything else runs.
+  // ponytail: empty-buffer-on-fail, not retry — a WebKit-undecodable clip never
+  // decodes, so there is nothing to retry; the goal is only to un-hang boot.
+  (function () {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC || !AC.prototype || !AC.prototype.decodeAudioData || AC.prototype._plbxDecodeGuard) return;
+    var _origDecode = AC.prototype.decodeAudioData;
+    AC.prototype._plbxDecodeGuard = true;
+    AC.prototype.decodeAudioData = function (data, success, error) {
+      var ctx = this, done = false;
+      function emptyBuf() { try { return ctx.createBuffer(1, 1, ctx.sampleRate || 44100); } catch (e) { return null; } }
+      function ok(buf) { if (done) return buf; done = true; if (typeof success === 'function') success(buf); return buf; }
+      function recover(err) {
+        if (done) return emptyBuf();
+        done = true;
+        console.error('[plbx] decodeAudioData failed — continuing without this clip:', err);
+        var b = emptyBuf();
+        if (typeof success === 'function') success(b);
+        return b;
+      }
+      var ret;
+      try {
+        ret = _origDecode.call(ctx, data, function (buf) { ok(buf); }, function (err) { recover(err); });
+      } catch (e) {
+        // Some WebKit builds throw synchronously instead of invoking the error cb.
+        return Promise.resolve(recover(e));
+      }
+      // Promise form (modern Safari/Blink also returns one): swallow any rejection
+      // into a resolved empty buffer so promise-awaiting callers don't hang either.
+      if (ret && typeof ret.then === 'function') {
+        return ret.then(function (buf) { return ok(buf); }, function (err) { return recover(err); });
+      }
+      return ret;
+    };
+  })();
 }
 
 // Install cc.assetManager.downloader handlers for media (images/fonts/video/audio).

@@ -12,7 +12,12 @@ import { generateFullHtml, generatePayloadJs } from './runtime-loader';
 import { buildLauncher, fillLauncherPayloadUrl, validateLauncher, effectiveLauncherBytes } from './launcher-builder';
 import { resolveTemplate } from './template-resolver';
 import { extractStoreUrls, detectRegionalParams } from './store-url-extractor';
-import { detectRiskyAudio, riskyAudioMarker } from './audio-format-check';
+import {
+  detectRiskyAudio,
+  riskyAudioMarker,
+  detectHostileMp3,
+  hostileMp3Marker,
+} from './audio-format-check';
 import { extractAxonUsage, validateAxonEvents } from './axon-events';
 import { buildVersionBanner } from './version-banner';
 import CleanCSS from 'clean-css';
@@ -113,6 +118,12 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
   // surfaced as a warning + a plaintext <head> marker the preview validator reads.
   const riskyAudio = detectRiskyAudio(options.buildDir);
 
+  // WebKit-hostile MP3 (heuristic): a Xing VBR header on an ultra-short clip can
+  // be rejected by Safari/iOS decodeAudioData even though ffmpeg/Chrome/CoreAudio
+  // decode it — and that one bad clip hangs the whole playable. Advisory only;
+  // the loader's decode guard is the real safety net. See audio-format-check.ts.
+  const hostileMp3 = detectHostileMp3(options.buildDir);
+
   for (const networkId of options.networks) {
     options.onProgress?.(networkId, 'starting');
 
@@ -138,6 +149,10 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
       if (riskyAudio.length && network.format !== 'launcher-payload') {
         builder.injectHeadComment(riskyAudioMarker(riskyAudio));
       }
+      // Plaintext marker for WebKit-hostile MP3s (heuristic) — same plumbing.
+      if (hostileMp3.length && network.format !== 'launcher-payload') {
+        builder.injectHeadComment(hostileMp3Marker(hostileMp3));
+      }
 
       // Non-fatal warning: a network whose validator requires a Google Play Store
       // URL (e.g. Unity) but none was found in the build. We don't abort — the
@@ -157,6 +172,19 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
           `${riskyAudio.length} risky audio file(s) may not play on iOS WebView ` +
           `(decodeAudioData can't decode ogg/opus/webm) — re-encode to mp3/m4a: ` +
           riskyAudio.join(', ');
+        warnings.push(w);
+        console.warn(`[plbx] ${network.name}: ${w}`);
+        options.onProgress?.(networkId, 'processing', w);
+      }
+
+      // WebKit-hostile MP3 (ultra-short VBR) — advisory, every network. Safari/iOS
+      // decodeAudioData may reject these and hang the playable; the loader guard
+      // degrades it to a silent clip, but re-encoding to CBR is the clean fix.
+      if (hostileMp3.length) {
+        const w =
+          `${hostileMp3.length} MP3 file(s) may fail Safari/iOS WebAudio decode ` +
+          `(ultra-short VBR/Xing — re-encode to plain CBR, e.g. ffmpeg -write_xing 0): ` +
+          hostileMp3.join(', ');
         warnings.push(w);
         console.warn(`[plbx] ${network.name}: ${w}`);
         options.onProgress?.(networkId, 'processing', w);

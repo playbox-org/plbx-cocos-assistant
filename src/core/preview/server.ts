@@ -4,7 +4,7 @@ import { existsSync, readFileSync, statSync, readdirSync } from 'fs';
 import JSZip from 'jszip';
 import { generatePreviewUtil } from './sdk-mocks';
 import { scanLoaderHealth, LoaderCheck } from './loader-health';
-import { parseRiskyAudioMarker } from '../packager/audio-format-check';
+import { parseRiskyAudioMarker, parseHostileMp3Marker } from '../packager/audio-format-check';
 import { getNetwork } from '../../shared/networks';
 import { resolveTemplate } from '../packager/template-resolver';
 import { validateLauncher, LauncherCheck } from '../packager/launcher-builder';
@@ -173,6 +173,22 @@ async function buildRiskyAudio(outputDir: string, networkId: string): Promise<st
     if (!file) return [];
     const html = file.isZip ? await extractHtmlFromZip(file.path) : readFileSync(file.path, 'utf-8');
     return parseRiskyAudioMarker(html);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Static validator: WebKit-hostile MP3 (ultra-short VBR/Xing) in the build.
+ * Reads the packager's plaintext `<head>` marker like buildRiskyAudio above.
+ * Returns the offending file list ([] when none / unreadable).
+ */
+async function buildHostileMp3(outputDir: string, networkId: string): Promise<string[]> {
+  try {
+    const file = findBuildFile(outputDir, networkId);
+    if (!file) return [];
+    const html = file.isZip ? await extractHtmlFromZip(file.path) : readFileSync(file.path, 'utf-8');
+    return parseHostileMp3Marker(html);
   } catch {
     return [];
   }
@@ -781,6 +797,15 @@ export async function startPreviewServer(options: {
                   hint: 'Safari/iOS WebAudio decodeAudioData can\'t decode ogg/opus/webm on older / in-app WebViews — the playable may not open. Re-encode these to mp3/m4a in Cocos import settings.',
                 });
               }
+              // WebKit-hostile MP3 (ultra-short VBR/Xing) — advisory warn (heuristic).
+              const hostileMp3 = await buildHostileMp3(outputDir, id);
+              if (hostileMp3.length) {
+                checks.push({
+                  id: 'hostile_mp3',
+                  label: 'No WebKit-hostile MP3 (ultra-short VBR)',
+                  hint: 'Safari/iOS WebAudio decodeAudioData can reject ultra-short VBR/Xing MP3s (written by some LAME encoders) even though Chrome/ffmpeg decode them — one bad clip can hang the playable. Re-encode to plain CBR (e.g. ffmpeg -c:a libmp3lame -write_xing 0).',
+                });
+              }
               return {
                 id,
                 name: config?.name || id,
@@ -793,6 +818,7 @@ export async function startPreviewServer(options: {
                 hasAppStoreUrl: store.apple,
                 regional: regional.warnings,
                 riskyAudio,
+                hostileMp3,
                 checks,
                 launcherChecks,
                 loaderHealth,
