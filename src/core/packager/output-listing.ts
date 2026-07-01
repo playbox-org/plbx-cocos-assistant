@@ -1,4 +1,4 @@
-import { getNetwork } from '../../shared/networks';
+import { getNetwork, maxSizeForFormat } from '../../shared/networks';
 import { OutputFormat } from '../../shared/types';
 import { formatCompactDate } from '../format/date';
 
@@ -55,11 +55,12 @@ export function buildOutputRows(stats: OutputFileStat[]): OutputBuildRow[] {
     const networkId = networkIdFromPath(stat.path);
     const network = getNetwork(networkId);
     const ext = (stat.path.split('.').pop() || '').toLowerCase();
-    const maxSize = network?.maxSize ?? 0;
+    const fmt = extToFormat(ext);
+    const maxSize = network ? maxSizeForFormat(network, fmt) : 0;
     return {
       networkId,
       networkName: network?.name ?? networkId,
-      format: extToFormat(ext),
+      format: fmt,
       outputSize: stat.size,
       maxSize,
       // Unknown networks have no published limit (maxSize 0) → never "over limit".

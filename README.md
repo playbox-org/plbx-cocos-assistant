@@ -64,6 +64,7 @@ Compress images (WebP / JPEG / PNG / AVIF) and audio (MP3 / OGG) with live previ
 | Vungle | 5 MB |
 | Liftoff | 5 MB |
 | Moloco | 5 MB |
+| Moloco V2 (Launcher API) | 5 MB payload · 3 KB launcher |
 | Snapchat | 5 MB |
 | Bigo Ads | 5 MB |
 | GDT (Tencent) | 5 MB |

@@ -5,7 +5,7 @@ import JSZip from 'jszip';
 import { generatePreviewUtil } from './sdk-mocks';
 import { scanLoaderHealth, LoaderCheck } from './loader-health';
 import { parseRiskyAudioMarker, parseHostileMp3Marker } from '../packager/audio-format-check';
-import { getNetwork } from '../../shared/networks';
+import { getNetwork, maxSizeForFormat } from '../../shared/networks';
 import { resolveTemplate } from '../packager/template-resolver';
 import { validateLauncher, LauncherCheck } from '../packager/launcher-builder';
 import { AXON_EVENTS } from '../packager/axon-events';
@@ -811,7 +811,7 @@ export async function startPreviewServer(options: {
                 name: config?.name || id,
                 format: config?.format || 'html',
                 mraid: config?.mraid || false,
-                maxSize: config?.maxSize || 0,
+                maxSize: config ? maxSizeForFormat(config, config.format) : 0,
                 size: getBuildSize(outputDir, id),
                 requiresStoreUrl,
                 hasGooglePlayUrl: store.google,
@@ -888,7 +888,7 @@ export async function startPreviewServer(options: {
           const utilScript = generatePreviewUtil({
             networkId,
             mraid: config?.mraid || false,
-            maxSize: config?.maxSize || 0,
+            maxSize: config ? maxSizeForFormat(config, config.format) : 0,
             mraidMode,
           });
 

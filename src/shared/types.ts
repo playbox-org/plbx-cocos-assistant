@@ -13,7 +13,10 @@ export interface NetworkConfig {
   id: string;
   name: string;
   format: OutputFormat;
-  maxSize: number;           // bytes
+  maxSize: number;           // bytes — ceiling for the primary/zip output
+  /** Per-format override for the HTML output when a network caps single-HTML tighter
+   *  than its ZIP total (e.g. Facebook: index.html <= 2 MB, ZIP total <= 5 MB). */
+  htmlMaxSize?: number;      // bytes — applied to html-format output only
   mraid: boolean;
   sdkUrl?: string;           // external SDK script URL to inject
   sdkInline?: string;        // inline JS to inject

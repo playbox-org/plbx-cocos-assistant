@@ -262,6 +262,36 @@ describe('Network Adapters', () => {
     });
   });
 
+  describe('Snapchat adapter', () => {
+    it('should reference ScPlayableAd.onCTAClick() in the CTA bridge (not mraid)', () => {
+      const adapter = getAdapter('snapchat');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toContain('ScPlayableAd.onCTAClick()');
+      expect(html).toContain('if (window.ScPlayableAd)');
+    });
+
+    it('MUST NOT inject mraid.js or use the mraid bridge (Snap forbids MRAID)', () => {
+      const adapter = getAdapter('snapchat');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).not.toContain('mraid.open');
+      expect(html).not.toMatch(/src=["']mraid\.js["']/);
+    });
+
+    it('defines window.install → ScPlayableAd.onCTAClick (game CTA dispatchers bypass plbx_html.download)', () => {
+      const adapter = getAdapter('snapchat');
+      const builder = new HtmlBuilder(sampleHtml);
+      adapter.transform(builder, defaultConfig);
+      const html = builder.toHtml();
+      expect(html).toMatch(/window\.install\s*=\s*function/);
+      const installBlock = html.slice(html.indexOf('window.install'));
+      expect(installBlock).toContain('ScPlayableAd.onCTAClick()');
+    });
+  });
+
   describe('Mintegral adapter', () => {
     it('should inject Mintegral viewport meta', () => {
       const adapter = getAdapter('mintegral');

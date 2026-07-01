@@ -154,6 +154,22 @@ window.open = function(u) {
   );
 }
 
+/** Snapchat bridge — Snap App Playables provide window.ScPlayableAd (NOT MRAID; mraid.js is forbidden). */
+export function snapchatBridge(): string {
+  return buildPlbxBridge(
+    `if (window.ScPlayableAd) { ScPlayableAd.onCTAClick(); } else if (url) { window.open(url, "_blank"); }`,
+    // Route game dispatchers that call window.install()/window.open() directly to the
+    // Snap SDK — Snapchat only tracks the click via ScPlayableAd.onCTAClick(). Same
+    // shape as facebookBridge, swapping FbPlayableAd → ScPlayableAd.
+    `window.install = function() { if (window.ScPlayableAd && ScPlayableAd.onCTAClick) ScPlayableAd.onCTAClick(); };
+var _plbxOrigOpen = window.open;
+window.open = function(u) {
+  if (window.ScPlayableAd && ScPlayableAd.onCTAClick) { try { ScPlayableAd.onCTAClick(); } catch(e) {} return null; }
+  try { return _plbxOrigOpen.apply(window, arguments); } catch(e) { return null; }
+};`,
+  );
+}
+
 /** Google Ads bridge */
 export function googleBridge(): string {
   return buildPlbxBridge(

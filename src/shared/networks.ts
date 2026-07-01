@@ -1,7 +1,6 @@
 import { NetworkConfig, OutputFormat } from './types';
 
 const MB5 = 5 * 1024 * 1024; // 5242880 bytes
-const MB4 = 4 * 1024 * 1024; // 4194304 bytes
 const MB3 = 3 * 1024 * 1024; // 3145728 bytes
 const MB2 = 2 * 1024 * 1024; // 2097152 bytes
 
@@ -43,7 +42,9 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     id: 'adcolony',
     name: 'AdColony',
     format: 'html',
-    maxSize: MB2,
+    // No official DT Exchange / AdColony playable file-size limit is published;
+    // 5 MB is an internal cap (was MB2 — that figure had no source). Verified 2026-07-01.
+    maxSize: MB5,
     mraid: true,
     inlineAssets: true,
   },
@@ -100,7 +101,8 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     id: 'facebook',
     name: 'Facebook/Meta',
     format: 'html',
-    maxSize: MB5,
+    maxSize: MB5,        // ZIP total ceiling (<=100 files)
+    htmlMaxSize: MB2,    // single-HTML / index.html must be <=2 MB (Meta). Verified 2026-07-01.
     mraid: false,
     inlineAssets: true,
     dualFormat: true,
@@ -112,7 +114,8 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     maxSize: MB5,
     mraid: false,
     inlineAssets: true,
-    dualFormat: true,
+    // Moloco IEC guide: "Ad file must not be compressed into .zip" — HTML-only, no ZIP.
+    dualFormat: false,
   },
   molocoV2: {
     id: 'molocoV2',
@@ -152,9 +155,11 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     id: 'pangle',
     name: 'Pangle',
     format: 'zip',
-    maxSize: MB4,
+    maxSize: MB5,
     mraid: false,
-    sdkUrl: 'https://sf3-ttcdn-tos.pstatp.com/obj/union-fe-nc/playable/sdk/playable-sdk.js',
+    // Same union-fe-nc playable_sdk as TikTok; pstatp served a stale v3.4.1 build,
+    // ibytedtos i18n is the current v3.49.0 that official Pangle docs instruct. Verified 2026-07-01.
+    sdkUrl: 'https://sf16-muse-va.ibytedtos.com/obj/union-fe-nc-i18n/playable/sdk/playable-sdk.js',
     singleFileZip: true,
     inlineAssets: false,
   },
@@ -162,7 +167,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     id: 'tiktok',
     name: 'TikTok',
     format: 'zip',
-    maxSize: MB4,
+    maxSize: MB5,
     mraid: false,
     sdkUrl: 'https://sf16-muse-va.ibytedtos.com/obj/union-fe-nc-i18n/playable/sdk/playable-sdk.js',
     singleFileZip: true,
@@ -229,7 +234,10 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     name: 'Snapchat',
     format: 'zip',
     maxSize: MB5,
-    mraid: true,
+    // Snapchat App Playables use ScPlayableAd.onCTAClick() and forbid mraid.js —
+    // NOT MRAID. CTA handled by SnapchatAdapter/snapchatBridge. Verified 2026-07-01
+    // (Snap App Playables spec + smoud/playable-sdk).
+    mraid: false,
     zipConfig: { orientation: 1 },
     singleFileZip: true,
     inlineAssets: false,
@@ -249,8 +257,10 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     id: 'gdt',
     name: 'GDT (Tencent)',
     format: 'zip',
-    maxSize: MB5,
+    // 优量汇 spec: 包大小不大于3M. Verified 2026-07-01.
+    maxSize: MB3,
     mraid: false,
+    sdkUrl: 'https://qzs.gdtimg.com/union/res/union_sdk/page/unjs/unsdk.js',
     singleFileZip: true,
     inlineAssets: false,
   },
@@ -284,6 +294,12 @@ export const NETWORKS: Record<string, NetworkConfig> = {
 
 export function getNetwork(id: string): NetworkConfig | undefined {
   return NETWORKS[id];
+}
+
+/** Effective size ceiling for a given output format. Networks that cap single-HTML
+ *  tighter than their ZIP (e.g. Facebook: 2 MB HTML / 5 MB ZIP) set `htmlMaxSize`. */
+export function maxSizeForFormat(net: NetworkConfig, format: OutputFormat): number {
+  return format === 'html' && net.htmlMaxSize ? net.htmlMaxSize : net.maxSize;
 }
 
 export function getNetworksByFormat(format: OutputFormat): NetworkConfig[] {

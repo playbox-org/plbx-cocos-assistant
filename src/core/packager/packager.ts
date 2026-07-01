@@ -3,7 +3,7 @@ import { join, relative, extname, dirname, basename } from 'path';
 import { HtmlBuilder } from './html-builder';
 import { getAdapter } from './network-adapters';
 import { buildZip } from './zip-builder';
-import { getNetwork, NETWORKS } from '../../shared/networks';
+import { getNetwork, NETWORKS, maxSizeForFormat } from '../../shared/networks';
 import { PackageResult, OutputFormat } from '../../shared/types';
 import { PackagerOptions, PackagerResult } from './types';
 import { packDirectoryToZip } from './asset-inliner';
@@ -490,8 +490,8 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
                 networkName: network.name,
                 outputPath: variantPath,
                 outputSize: variantSize,
-                maxSize: network.maxSize,
-                withinLimit: variantSize <= network.maxSize,
+                maxSize: maxSizeForFormat(network, format),
+                withinLimit: variantSize <= maxSizeForFormat(network, format),
                 format,
                 warnings: warnings.length ? warnings : undefined,
               });
@@ -541,8 +541,8 @@ export async function packageForNetworks(options: PackagerOptions): Promise<Pack
             networkName: network.name,
             outputPath,
             outputSize,
-            maxSize: network.maxSize,
-            withinLimit: outputSize <= network.maxSize,
+            maxSize: maxSizeForFormat(network, format),
+            withinLimit: outputSize <= maxSizeForFormat(network, format),
             format,
             warnings: warnings.length ? warnings : undefined,
           });
