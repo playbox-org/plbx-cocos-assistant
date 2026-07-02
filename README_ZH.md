@@ -18,7 +18,7 @@
 一键将 web-mobile 构建打包为每个广告平台所需的独立 HTML 或 ZIP 可试玩广告。
 
 - **选择平台** — 按项目选择所需平台
-- **自动生成适配脚本** — 生成包含各平台 CTA 和生命周期逻辑的 `plbx_playable.ts`
+- **自动生成适配脚本** — 生成包含各平台 CTA 和生命周期逻辑的 `plbx_html_playable.ts`
 - **自动检测构建** — 自动识别最新的 Cocos Creator web-mobile 构建
 - **自动打包** — Cocos Creator 构建完成后可选择自动重新打包（可开关）
 - **自定义输出命名** — 支持 `{networkId}`、`{ext}` 及自定义变量的模板路径
@@ -52,36 +52,11 @@
 
 ## 支持的广告平台
 
-| 平台 | 体积限制 |
-|------|---------|
-| AppLovin | 5 MB |
-| Unity Ads | 5 MB |
-| ironSource | 5 MB |
-| Facebook / Meta | 5 MB |
-| Google Ads | 5 MB |
-| Mintegral | 5 MB |
-| TikTok / Pangle | 5 MB |
-| Vungle | 5 MB |
-| Liftoff | 5 MB |
-| Moloco | 5 MB |
-| Moloco V2 (Launcher API) | 5 MB payload · 3 KB launcher |
-| Snapchat | 5 MB |
-| Bigo Ads | 5 MB |
-| GDT（腾讯） | 5 MB |
-| Chartboost | 3 MB |
-| Yandex | 3 MB |
-| AdColony | 2 MB |
-| MyTarget | 2 MB |
-| Tapjoy | 1.9 MB |
-| Appreciate | 5 MB |
-| Smadex | 5 MB |
-| Rubeex | 5 MB |
-| Nefta | 5 MB |
-| NewsBreak | 5 MB |
-| Kwai | 5 MB |
-| inMobi | 5 MB |
-| Adikteev | 5 MB |
-| Bigabid | 5 MB |
+打包器会自动为每个平台选择正确的输出格式和 SDK 适配器。
+
+- **HTML** — AppLovin、Unity Ads、ironSource、AdColony、Tapjoy、Appreciate、Chartboost、Liftoff、Smadex、Rubeex、Facebook / Meta、Moloco、Nefta、inMobi、NewsBreak
+- **ZIP** — Google Ads、Pangle、TikTok、Vungle、MyTarget、Mintegral、Adikteev、Bigabid、Snapchat、Bigo Ads、GDT（腾讯）、Kwai、Yandex
+- **Launcher API** — Moloco V2.0（`launcher.html` + `payload.js`）
 
 ## 使用方法
 
@@ -91,27 +66,39 @@
 
 ### 2. 添加适配脚本
 
-在 Package 标签页点击 **"Generate plbx_playable.ts"**，将在 `assets/Scripts/plbx_html/plbx_playable.ts` 创建一个薄层适配器，向游戏代码暴露平台无关的方法：
+在 Package 标签页点击 **Generate plbx_html.ts**，将在 `assets/Scripts/plbx_html/plbx_html_playable.ts` 创建一个薄层适配器，向游戏代码暴露平台无关的方法：
 
 ```typescript
-import plbx from './plbx_html/plbx_playable';
+import plbx from './plbx_html/plbx_html_playable';
 
-plbx.download();    // 跳转到应用商店（CTA）
-plbx.game_end();    // 通知广告平台游戏结束
-plbx.is_audio();    // 检查是否允许音频
+plbx.game_ready();  // 场景加载完成，游戏就绪
+plbx.tap();         // 玩家每次点击
+plbx.download();    // CTA — 跳转到应用商店
+plbx.game_end();    // 游戏结束
+if (plbx.is_muted()) { /* 不要启动音频 */ }
+
+// 注册一个外部调用方 / Playbox Preview 可触发的命令：
+plbx.expose('show_endcard', () => this.showEndcard(), 'Show endcard');
 ```
 
 在游戏中调用这些方法——打包器会在构建时自动注入各平台对应的实现。
+
+> **AppLovin — Axon 分析事件（可选）。** AppLovin 需要通过 `ALPlayableAnalytics.trackEvent(...)` 上报 [Axon 可试玩分析事件](https://support.axon.ai/en/growth/promoting-your-apps/creatives/playable-analytics-integration)。在 Package 标签页点击 **Generate AppLovin events** 在 `plbx_html` 旁生成 helper，然后从游戏逻辑中触发这些事件（`DISPLAYED` 为必需）。内置验证器会提取你的 `trackEvent()` 调用，并在 Preview 时检查它们是否按正确顺序且去重触发。
 
 ### 3. 打包
 
 选择平台并点击 **Package**。打包器将：
 
 1. 获取 web-mobile 构建
-2. 注入 `window.plbx_html`（及别名 `window.super_html`），包含各平台的 CTA 和生命周期路由
+2. 注入 `window.plbx_html` —— 各平台的 CTA 和生命周期路由
 3. 生成独立的 HTML 或 ZIP 文件
 
-`super_html` 注入对所有打包构建自动生效，无论目标平台如何。游戏代码保持平台无关，所有路由由打包器处理。
+游戏代码保持平台无关，所有路由由打包器处理。
+
+> **super-html 兼容性。** 为方便起见，打包器同时将 `window.super_html` 作为
+> `plbx_html` 的别名暴露。如果你之前在项目中使用过 super-html，现有的
+> `super_html.*` 调用在 plbx 构建中可继续正常工作——无需改写。新项目直接使用
+> `plbx_html` 即可。
 
 ### 4. 验证
 

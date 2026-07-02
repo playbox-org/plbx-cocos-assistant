@@ -18,7 +18,7 @@
 Упакуйте web-mobile билд в самодостаточный HTML или ZIP playable для каждой рекламной сети одной кнопкой.
 
 - **Выбор сетей** — выбирайте только нужные сети для каждого проекта
-- **Автогенерация адаптера** — генерирует `plbx_playable.ts` с логикой CTA и lifecycle для каждой сети
+- **Автогенерация адаптера** — генерирует `plbx_html_playable.ts` с логикой CTA и lifecycle для каждой сети
 - **Автоопределение билда** — автоматически подхватывает последний web-mobile билд Cocos Creator
 - **Автоупаковка** — переупаковка автоматически после каждой сборки в Cocos Creator (вкл/выкл)
 - **Кастомные имена файлов** — шаблоны путей с переменными `{networkId}`, `{ext}` и пользовательскими токенами
@@ -52,36 +52,11 @@
 
 ## Поддерживаемые сети
 
-| Сеть | Лимит размера |
-|------|--------------|
-| AppLovin | 5 MB |
-| Unity Ads | 5 MB |
-| ironSource | 5 MB |
-| Facebook / Meta | 5 MB |
-| Google Ads | 5 MB |
-| Mintegral | 5 MB |
-| TikTok / Pangle | 5 MB |
-| Vungle | 5 MB |
-| Liftoff | 5 MB |
-| Moloco | 5 MB |
-| Moloco V2 (Launcher API) | 5 MB payload · 3 KB launcher |
-| Snapchat | 5 MB |
-| Bigo Ads | 5 MB |
-| GDT (Tencent) | 5 MB |
-| Chartboost | 3 MB |
-| Yandex | 3 MB |
-| AdColony | 2 MB |
-| MyTarget | 2 MB |
-| Tapjoy | 1.9 MB |
-| Appreciate | 5 MB |
-| Smadex | 5 MB |
-| Rubeex | 5 MB |
-| Nefta | 5 MB |
-| NewsBreak | 5 MB |
-| Kwai | 5 MB |
-| inMobi | 5 MB |
-| Adikteev | 5 MB |
-| Bigabid | 5 MB |
+Упаковщик автоматически выбирает нужный формат вывода и SDK-адаптер под каждую сеть.
+
+- **HTML** — AppLovin, Unity Ads, ironSource, AdColony, Tapjoy, Appreciate, Chartboost, Liftoff, Smadex, Rubeex, Facebook / Meta, Moloco, Nefta, inMobi, NewsBreak
+- **ZIP** — Google Ads, Pangle, TikTok, Vungle, MyTarget, Mintegral, Adikteev, Bigabid, Snapchat, Bigo Ads, GDT (Tencent), Kwai, Yandex
+- **Launcher API** — Moloco V2.0 (`launcher.html` + `payload.js`)
 
 ## Как использовать
 
@@ -91,27 +66,40 @@
 
 ### 2. Добавить адаптер
 
-Нажмите **"Generate plbx_playable.ts"** во вкладке Package. Будет создан файл `assets/Scripts/plbx_html/plbx_playable.ts` — тонкая обёртка, которая предоставляет сетенезависимые методы коду игры:
+Во вкладке Package нажмите **Generate plbx_html.ts**. Будет создан файл `assets/Scripts/plbx_html/plbx_html_playable.ts` — тонкая обёртка с сетенезависимыми методами для кода игры:
 
 ```typescript
-import plbx from './plbx_html/plbx_playable';
+import plbx from './plbx_html/plbx_html_playable';
 
-plbx.download();    // переход в магазин (CTA)
-plbx.game_end();    // уведомить рекламную сеть об окончании геймплея
-plbx.is_audio();    // проверить, разрешён ли звук
+plbx.game_ready();  // сцена загружена, игра готова
+plbx.tap();         // каждый тап игрока
+plbx.download();    // CTA — переход в магазин
+plbx.game_end();    // геймплей завершён
+if (plbx.is_muted()) { /* не запускать звук */ }
+
+// команда, которую могут вызвать внешний код / Playbox Preview:
+plbx.expose('show_endcard', () => this.showEndcard(), 'Show endcard');
 ```
 
 Вызывайте эти методы в игре — упаковщик подставит правильную реализацию для каждой сети при сборке.
+
+> **AppLovin — Axon-аналитика (опционально).** AppLovin ожидает [Axon playable-analytics события](https://support.axon.ai/en/growth/promoting-your-apps/creatives/playable-analytics-integration) через `ALPlayableAnalytics.trackEvent(...)`. Нажмите **Generate AppLovin events** во вкладке Package, чтобы сгенерировать helper рядом с `plbx_html`, затем вызывайте события из геймплея (`DISPLAYED` обязателен). Встроенный валидатор извлекает ваши вызовы `trackEvent()` и проверяет, что они срабатывают — в правильном порядке и без дублей — во время Preview.
 
 ### 3. Упаковать
 
 Выберите сети и нажмите **Package**. Упаковщик:
 
 1. Берёт web-mobile билд
-2. Инжектирует `window.plbx_html` (и алиас `window.super_html`) с роутингом CTA и lifecycle под каждую сеть
+2. Инжектирует `window.plbx_html` — роутинг CTA и lifecycle под каждую сеть
 3. Генерирует самодостаточные HTML или ZIP файлы
 
-Инжект `super_html` происходит автоматически для каждого упакованного билда вне зависимости от сети. Код игры остаётся сетенезависимым — весь роутинг на стороне упаковщика.
+Код игры остаётся сетенезависимым — весь роутинг на стороне упаковщика.
+
+> **Совместимость с super-html.** Для удобства упаковщик также выставляет
+> `window.super_html` как алиас `plbx_html`. Если вы раньше использовали super-html
+> в своём проекте, ваши существующие вызовы `super_html.*` продолжат работать в
+> plbx-билдах без изменений — переписывать ничего не нужно. В новых проектах
+> используйте `plbx_html`.
 
 ### 4. Валидация
 

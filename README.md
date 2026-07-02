@@ -18,7 +18,7 @@
 Package your web-mobile build into a self-contained HTML or ZIP playable for each ad network in one click.
 
 - **Select networks** — choose only the networks you need per project
-- **Auto-generate adapter script** — generates `plbx_playable.ts` with network-specific CTA and lifecycle logic
+- **Auto-generate adapter script** — generates `plbx_html_playable.ts` with network-specific CTA and lifecycle logic
 - **Auto-detect build** — automatically picks up the latest Cocos Creator web-mobile build
 - **Auto-package** — optionally re-package every time Cocos Creator finishes a build
 - **Custom output naming** — template-based paths with `{networkId}`, `{ext}`, and custom variables
@@ -52,36 +52,11 @@ Compress images (WebP / JPEG / PNG / AVIF) and audio (MP3 / OGG) with live previ
 
 ## Supported Networks
 
-| Network | Size Limit |
-|---------|-----------|
-| AppLovin | 5 MB |
-| Unity Ads | 5 MB |
-| ironSource | 5 MB |
-| Facebook / Meta | 5 MB |
-| Google Ads | 5 MB |
-| Mintegral | 5 MB |
-| TikTok / Pangle | 5 MB |
-| Vungle | 5 MB |
-| Liftoff | 5 MB |
-| Moloco | 5 MB |
-| Moloco V2 (Launcher API) | 5 MB payload · 3 KB launcher |
-| Snapchat | 5 MB |
-| Bigo Ads | 5 MB |
-| GDT (Tencent) | 5 MB |
-| Chartboost | 3 MB |
-| Yandex | 3 MB |
-| AdColony | 2 MB |
-| MyTarget | 2 MB |
-| Tapjoy | 1.9 MB |
-| Appreciate | 5 MB |
-| Smadex | 5 MB |
-| Rubeex | 5 MB |
-| Nefta | 5 MB |
-| NewsBreak | 5 MB |
-| Kwai | 5 MB |
-| inMobi | 5 MB |
-| Adikteev | 5 MB |
-| Bigabid | 5 MB |
+The packager picks the right output format and SDK adapter per network automatically.
+
+- **HTML** — AppLovin, Unity Ads, ironSource, AdColony, Tapjoy, Appreciate, Chartboost, Liftoff, Smadex, Rubeex, Facebook / Meta, Moloco, Nefta, inMobi, NewsBreak
+- **ZIP** — Google Ads, Pangle, TikTok, Vungle, MyTarget, Mintegral, Adikteev, Bigabid, Snapchat, Bigo Ads, GDT (Tencent), Kwai, Yandex
+- **Launcher API** — Moloco V2.0 (`launcher.html` + `payload.js`)
 
 ## How to Use
 
@@ -91,27 +66,39 @@ Build your project as **web-mobile** in Cocos Creator. The extension will detect
 
 ### 2. Add the adapter script
 
-Click **"Generate plbx_playable.ts"** in the Package tab. This creates `assets/Scripts/plbx_html/plbx_playable.ts` — a thin bridge that exposes network-agnostic methods to your game code:
+In the Package tab, click **Generate plbx_html.ts**. This creates `assets/Scripts/plbx_html/plbx_html_playable.ts` — a thin bridge exposing network-agnostic methods to your game code:
 
 ```typescript
-import plbx from './plbx_html/plbx_playable';
+import plbx from './plbx_html/plbx_html_playable';
 
-plbx.download();    // redirect to store (CTA)
-plbx.game_end();    // notify ad network that gameplay ended
-plbx.is_audio();    // check if audio is allowed
+plbx.game_ready();  // scene loaded, game ready
+plbx.tap();         // every user tap
+plbx.download();    // CTA — redirect to store
+plbx.game_end();    // gameplay ended
+if (plbx.is_muted()) { /* don't start audio */ }
+
+// register a command external callers / Playbox Preview can trigger:
+plbx.expose('show_endcard', () => this.showEndcard(), 'Show endcard');
 ```
 
-Call these methods in your game — the packager injects the correct network-specific implementation at build time.
+Call these in your game — the packager injects the correct network-specific implementation at build time.
+
+> **AppLovin — Axon analytics (optional).** AppLovin expects [Axon playable-analytics events](https://support.axon.ai/en/growth/promoting-your-apps/creatives/playable-analytics-integration) via `ALPlayableAnalytics.trackEvent(...)`. Click **Generate AppLovin events** in the Package tab to scaffold the helper next to `plbx_html`, then fire the events from your gameplay (`DISPLAYED` is mandatory). The built-in validator extracts your `trackEvent()` calls and checks they fire — in order and deduped — during Preview.
 
 ### 3. Package
 
 Select networks and click **Package**. The packager:
 
 1. Takes your web-mobile build
-2. Injects `window.plbx_html` (and `window.super_html` as an alias) with network-specific CTA and lifecycle routing
+2. Injects `window.plbx_html` — network-specific CTA and lifecycle routing, generated per network
 3. Produces self-contained HTML or ZIP output files
 
-The `super_html` injection is fully automatic — every packaged build gets it regardless of network. Your game code stays network-agnostic; the packager handles all routing.
+Your game code stays network-agnostic — the packager handles all routing.
+
+> **super-html compatibility.** For convenience, the packager also exposes
+> `window.super_html` as an alias of `plbx_html`. If you previously used super-html
+> in your project, your existing `super_html.*` calls keep working in plbx builds
+> unchanged — no rewriting needed. New projects can just use `plbx_html`.
 
 ### 4. Validate
 
