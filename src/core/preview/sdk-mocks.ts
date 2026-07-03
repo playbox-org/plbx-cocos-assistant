@@ -493,13 +493,61 @@ export function generatePreviewUtil(params: PreviewUtilParams): string {
 
   if (networkId === 'tiktok' || networkId === 'pangle') {
     parts.push(`
-  // TikTok/Pangle playable SDK mock
-  window.playableSDK = window.playableSDK || {
-    openAppStore: function() { report('cta', { method: 'playable_sdk' }); },
-    reportGameReady: function() { report('game_ready', { method: 'playableSDK.reportGameReady' }); },
-    reportGameClose: function() { report('game_end', { method: 'playableSDK.reportGameClose' }); }
-  };
-  // Alias
+  // TikTok/Pangle playable SDK — WRAP the real SDK, don't replace it, so the
+  // validator tests the honest build. The build's external playable-sdk.js
+  // loads normally (all ~44 real methods stay live); we only decorate the 3
+  // observable calls so the checklist sees CTA + lifecycle, then delegate to
+  // the real method. The real SDK assigns window.playableSDK as a plain,
+  // configurable data property, so an accessor trap installed here (before the
+  // SDK <script> runs) catches the assignment. Idempotent per-method decoration
+  // + a bounded poll cover late attachment / reassignment; if the SDK never
+  // loads (offline / CDN blocked) an install-once mock keeps preview working.
+  (function() {
+    var BEACON = {
+      openAppStore:    function() { report('cta', { method: 'playable_sdk' }); },
+      reportGameReady: function() { report('game_ready', { method: 'playableSDK.reportGameReady' }); },
+      reportGameClose: function() { report('game_end', { method: 'playableSDK.reportGameClose' }); }
+    };
+    function decorate(sdk) {
+      if (!sdk) return sdk;
+      Object.keys(BEACON).forEach(function(name) {
+        var cur = sdk[name];
+        if (cur && cur.__plbxBeacon) return; // already our wrapper
+        var orig = typeof cur === 'function' ? cur.bind(sdk) : null;
+        var beacon = BEACON[name];
+        var wrapped = function() {
+          try { beacon(); } catch(e) {}
+          if (orig) { try { return orig.apply(null, arguments); } catch(e) {} }
+        };
+        wrapped.__plbxBeacon = true;
+        sdk[name] = wrapped;
+      });
+      return sdk;
+    }
+    function mock() {
+      return decorate({
+        // real SDK's common query methods, no-op'd so off-contract games survive offline
+        isViewable: function() { return true; }, isReady: function() { return true; },
+        isMuted: function() { return false; }, isPangle: function() { return ${networkId === 'pangle'}; },
+        addEventListener: function() {}, removeEventListener: function() {}
+      });
+    }
+    var backing;
+    Object.defineProperty(window, 'playableSDK', {
+      configurable: true,
+      get: function() { return backing; },
+      set: function(v) { backing = decorate(v); }
+    });
+    var tries = 0;
+    var iv = setInterval(function() {
+      if (backing) decorate(backing);        // re-wrap late-attached / reassigned methods
+      if (++tries >= 30) {                    // ~3s at 100ms
+        clearInterval(iv);
+        if (!backing) backing = mock();       // no real SDK arrived → offline fallback
+      }
+    }, 100);
+  })();
+  // Some builds call the bare global directly.
   window.openAppStore = function() { report('cta', { method: 'openAppStore' }); };
 `);
   }
