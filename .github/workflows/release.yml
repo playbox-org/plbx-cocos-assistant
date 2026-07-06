@@ -35,14 +35,17 @@ jobs:
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
           echo "TAG=$TAG" >> "$GITHUB_ENV"
-          rm -rf bundle
-          mkdir -p bundle
+          rm -rf bundle prod
+          mkdir -p bundle prod
           cp -r dist static package.json sharp-worker.js bundle/
-          cp package-lock.json bundle/
-          # Runtime deps only: --omit=dev drops playwright/typescript/vitest,
-          # --omit=optional drops sharp/@img. --ignore-scripts skips the sharp rebuild.
-          ( cd bundle && npm ci --omit=dev --omit=optional --ignore-scripts )
-          rm -f bundle/package-lock.json
+          # Build runtime node_modules from a manifest that lists ONLY prod deps.
+          # npm's --omit=dev/--omit=optional proved unreliable for this project
+          # (dev + optional trees still installed), so we sidestep it: a manifest
+          # with no devDependencies and no optionalDependencies simply cannot pull
+          # in playwright or sharp/@img.
+          node -e "const p=require('./package.json'); require('fs').writeFileSync('prod/package.json', JSON.stringify({name:'plbx-bundle-deps',version:'0.0.0',dependencies:p.dependencies},null,2))"
+          ( cd prod && npm install --no-package-lock --ignore-scripts --no-audit --no-fund )
+          cp -r prod/node_modules bundle/node_modules
 
       - name: Guard — bundle must be native-free
         run: |
