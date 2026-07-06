@@ -113,37 +113,54 @@ plbx.expose('show_endcard', () => this.showEndcard(), 'Show endcard');
 
 ## Установка
 
+### Для пользователей (рекомендуется)
+
+Скачайте готовую сборку — без git, `npm` и шага компиляции.
+
+1. Возьмите `plbx-cocos-extension-vX.Y.Z.zip` из [последнего релиза](https://github.com/playbox-org/plbx-cocos-assistant/releases/latest).
+2. Распакуйте в глобальную папку расширений Cocos:
+   - **macOS:** `~/.CocosCreator/extensions/plbx-cocos-extension/`
+   - **Windows:** `%USERPROFILE%\.CocosCreator\extensions\plbx-cocos-extension\`
+
+   (или в `<ваш-проект>/extensions/` для одного проекта)
+3. Перезапустите Cocos Creator. Панель — **Panel → Playbox**.
+
+Дальше **обновление в один клик** из панели держит расширение свежим: скачивает
+последний релиз и подменяет на месте — нужно лишь перезапустить редактор.
+
+### Для разработчиков расширения
+
 ```bash
-cd your-cocos-project/extensions
 git clone https://github.com/playbox-org/plbx-cocos-assistant.git plbx-cocos-extension
 cd plbx-cocos-extension
 npm install
 npm run build
 ```
 
-Откройте Cocos Creator — расширение загрузится автоматически. Откройте панель через **Panel → Playbox**.
+В Cocos Creator: **Extension Manager → Developer Import** → выбрать эту папку.
+Это симлинк на ваш checkout, поэтому self-update здесь отключён — обновляйтесь
+через `git pull` (и `npm install` / `npm run build`, если менялись зависимости).
 
 ### Требования
 
 - Cocos Creator **3.8.0+**
-- Node.js **18+**
+- Node.js **18+** *(только для установки из исходников; пользовательская сборка уже собрана)*
 - FFmpeg *(опционально — нужен для сжатия аудио)*
 
 ## Решение проблем
 
-**Сжатие изображений не работает — "Could not load sharp"**
+**Сжатие изображений просит установить `sharp`**
 
-Библиотека `sharp` использует нативные бинарники для каждой платформы. Если появилась эта ошибка, пересоберите для вашей ОС:
+`sharp` — опциональная нативная библиотека под каждую платформу, поэтому она
+поставляется *вне* сборки. При первом сжатии картинки панель предложит установку
+в один клик — **Установить sharp** — примите её, и сжатие готово.
+
+Если авто-установка не удалась, выполните в папке расширения и снова откройте
+вкладку «Сжатие»:
 
 ```bash
-# Windows
-npm install --os=win32 --cpu=x64 sharp
-
-# macOS / Linux
-npm rebuild sharp
+npm install sharp
 ```
-
-Выполните в папке расширения (`extensions/plbx-cocos-extension/`), затем перезапустите Cocos Creator.
 
 ## Разработка
 

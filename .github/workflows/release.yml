@@ -1,0 +1,73 @@
+name: Release bundle
+
+# Builds a self-contained, prebuilt extension bundle and attaches it to the
+# GitHub Release for the pushed tag. Consumers download this zip and let the
+# panel's one-click self-update overlay it in place — no git/npm/tsc on their
+# machine. See docs/superpowers/specs/2026-07-06-stable-delivery-and-sharp-guard-design.md
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install (full) and build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Assemble bundle
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          rm -rf bundle
+          mkdir -p bundle
+          cp -r dist static package.json sharp-worker.js bundle/
+          cp package-lock.json bundle/
+          # Runtime deps only: --omit=dev drops playwright/typescript/vitest,
+          # --omit=optional drops sharp/@img. --ignore-scripts skips the sharp rebuild.
+          ( cd bundle && npm ci --omit=dev --omit=optional --ignore-scripts )
+          rm -f bundle/package-lock.json
+
+      - name: Guard — bundle must be native-free
+        run: |
+          set -euo pipefail
+          for forbidden in playwright playwright-core @playwright sharp @img; do
+            if [ -e "bundle/node_modules/$forbidden" ]; then
+              echo "::error::bundle contains $forbidden — it must ship outside the artifact"
+              exit 1
+            fi
+          done
+          echo "bundle node_modules: $(ls bundle/node_modules)"
+
+      - name: Zip + checksum
+        run: |
+          set -euo pipefail
+          ZIP="plbx-cocos-extension-${TAG}.zip"
+          ( cd bundle && zip -rqX "../$ZIP" . )
+          sha256sum "$ZIP" > "$ZIP.sha256"
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Attach to release (create if missing)
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" "$ZIP.sha256" --clobber
+          else
+            gh release create "$TAG" "$ZIP" "$ZIP.sha256" --title "$TAG" --generate-notes
+          fi

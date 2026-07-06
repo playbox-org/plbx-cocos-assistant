@@ -112,37 +112,51 @@ plbx.expose('show_endcard', () => this.showEndcard(), 'Show endcard');
 
 ## 安装
 
+### 面向用户（推荐）
+
+下载预构建包——无需 git、`npm` 或编译步骤。
+
+1. 从[最新 Release](https://github.com/playbox-org/plbx-cocos-assistant/releases/latest) 下载 `plbx-cocos-extension-vX.Y.Z.zip`。
+2. 解压到 Cocos 全局扩展目录：
+   - **macOS：** `~/.CocosCreator/extensions/plbx-cocos-extension/`
+   - **Windows：** `%USERPROFILE%\.CocosCreator\extensions\plbx-cocos-extension\`
+
+   （或解压到 `<你的项目>/extensions/` 用于单个项目）
+3. 重启 Cocos Creator。通过 **Panel → Playbox** 打开面板。
+
+此后面板的**一键更新**会保持其最新：下载最新 Release 并就地替换——你只需重启编辑器。
+
+### 面向扩展开发者
+
 ```bash
-cd your-cocos-project/extensions
 git clone https://github.com/playbox-org/plbx-cocos-assistant.git plbx-cocos-extension
 cd plbx-cocos-extension
 npm install
 npm run build
 ```
 
-打开 Cocos Creator——扩展将自动加载。通过 **Panel → Playbox** 打开面板。
+在 Cocos Creator 中：**Extension Manager → Developer Import** → 选择此文件夹。
+这是指向你 checkout 的软链接，因此这里禁用自更新——请用 `git pull` 更新
+（若依赖有变动再执行 `npm install` / `npm run build`）。
 
 ### 系统要求
 
 - Cocos Creator **3.8.0+**
-- Node.js **18+**
+- Node.js **18+** *(仅源码安装需要；用户包已预构建)*
 - FFmpeg *(可选——音频压缩所需)*
 
 ## 常见问题
 
-**图片压缩失败——"Could not load sharp"**
+**图片压缩提示安装 `sharp`**
 
-`sharp` 库使用平台相关的原生二进制文件。如果出现此错误，请为您的操作系统重新构建：
+`sharp` 是可选的、平台相关的原生库，因此它随包*之外*分发。首次压缩图片时面板会
+提供一键**安装 sharp**——接受即可，压缩随即就绪。
+
+如果自动安装失败，请在扩展文件夹中执行，然后重新打开压缩标签页：
 
 ```bash
-# Windows
-npm install --os=win32 --cpu=x64 sharp
-
-# macOS / Linux
-npm rebuild sharp
+npm install sharp
 ```
-
-在扩展文件夹（`extensions/plbx-cocos-extension/`）中执行，然后重启 Cocos Creator。
 
 ## 开发
 

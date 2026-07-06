@@ -16,7 +16,8 @@ import { fillLauncherPayloadUrl } from './core/packager/launcher-builder';
 import { startPreviewServer, stopPreviewServer } from './core/preview/server';
 import { getAllNetworks } from './shared/networks';
 import { runFreshnessCheck, decideAction, formatCheckResult } from './core/freshness/freshness-check';
-import { runExtensionUpdate } from './core/updater/update';
+import { runExtensionUpdate, defaultRunner } from './core/updater/update';
+import { checkSharpAvailable, installSharp, defaultProber } from './core/compression/sharp-status';
 import { join, resolve } from 'path';
 import { existsSync, readFileSync } from 'fs';
 
@@ -69,6 +70,30 @@ function startExtensionUpdate(): { running: boolean } {
         ..._updateState,
         running: false,
         result: { ok: false, steps: [], message: 'Update crashed: ' + (e?.message || String(e)) },
+      };
+    });
+  return { running: true };
+}
+
+/**
+ * Async sharp install, polled by the panel like the updater. `npm install sharp`
+ * can take ~30s (native download), too long for a single blocking IPC request,
+ * so `installSharp` kicks it off and the panel polls `getSharpInstallState`.
+ */
+let _sharpInstallState: { running: boolean; result: any | null } = { running: false, result: null };
+
+function startSharpInstall(): { running: boolean } {
+  if (_sharpInstallState.running) return { running: true };
+  _sharpInstallState = { running: true, result: null };
+  void installSharp(defaultRunner(REPO_ROOT))
+    .then((result) => {
+      _sharpInstallState = { running: false, result };
+      console.log('[plbx] sharp install:', result.message);
+    })
+    .catch((e) => {
+      _sharpInstallState = {
+        running: false,
+        result: { ok: false, output: '', message: 'sharp install crashed: ' + (e?.message || String(e)) },
       };
     });
   return { running: true };
@@ -273,6 +298,21 @@ export const methods: Record<string, (...args: any[]) => any> = {
 
   async checkFfmpeg() {
     return isFFmpegAvailable();
+  },
+
+  /** True if sharp loads in the worker context (image compression works). */
+  async checkSharp() {
+    return checkSharpAvailable(defaultProber(REPO_ROOT));
+  },
+
+  /** Kick off `npm install sharp`; returns immediately. Poll getSharpInstallState. */
+  installSharp() {
+    return startSharpInstall();
+  },
+
+  /** Poll target for the sharp-install popup: { running, result }. */
+  getSharpInstallState() {
+    return _sharpInstallState;
   },
 
   async compressAudioAsset(inputPath: string, format: string, bitrate: number) {
@@ -857,7 +897,7 @@ export const methods: Record<string, (...args: any[]) => any> = {
     }
   },
 
-  /** Kick off the one-click update (git pull → npm install → npm run build). Returns immediately. */
+  /** Kick off the one-click update (download prebuilt release → verify → overlay). Returns immediately. */
   startUpdate() {
     return startExtensionUpdate();
   },

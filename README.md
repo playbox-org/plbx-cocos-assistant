@@ -112,37 +112,54 @@ Open the **Package** tab, select a network, and click **Preview**. The built-in 
 
 ## Installation
 
+### For users (recommended)
+
+Download the prebuilt bundle — no git, no `npm`, no build step.
+
+1. Grab `plbx-cocos-extension-vX.Y.Z.zip` from the [latest Release](https://github.com/playbox-org/plbx-cocos-assistant/releases/latest).
+2. Extract it into your Cocos global extensions folder:
+   - **macOS:** `~/.CocosCreator/extensions/plbx-cocos-extension/`
+   - **Windows:** `%USERPROFILE%\.CocosCreator\extensions\plbx-cocos-extension\`
+
+   (or into `<your-project>/extensions/` for a single project)
+3. Restart Cocos Creator. Open the panel via **Panel → Playbox**.
+
+From then on the panel's **one-click update** keeps it current: it downloads the
+latest release and swaps it in place — you just restart the editor.
+
+### For extension developers
+
 ```bash
-cd your-cocos-project/extensions
 git clone https://github.com/playbox-org/plbx-cocos-assistant.git plbx-cocos-extension
 cd plbx-cocos-extension
 npm install
 npm run build
 ```
 
-Open Cocos Creator — the extension loads automatically. Open the panel via **Panel → Playbox**.
+In Cocos Creator: **Extension Manager → Developer Import** → select this folder.
+This is a soft link to your checkout, so self-update is disabled here — update
+with `git pull` (then `npm install` / `npm run build` if dependencies changed).
 
 ### Requirements
 
 - Cocos Creator **3.8.0+**
-- Node.js **18+**
+- Node.js **18+** *(developer install only; the user bundle is prebuilt)*
 - FFmpeg *(optional — required for audio compression)*
 
 ## Troubleshooting
 
-**Image compression fails with "Could not load sharp"**
+**Image compression asks to install `sharp`**
 
-The `sharp` library uses platform-specific native binaries. If you see this error, rebuild it for your OS:
+`sharp` is an optional, per-platform native library, so it ships *outside* the
+bundle. The first time you compress an image the panel offers a one-click
+**Install sharp** — accept it and compression is ready.
+
+If the automatic install fails, run this inside the extension folder, then
+reopen the Compress tab:
 
 ```bash
-# Windows
-npm install --os=win32 --cpu=x64 sharp
-
-# macOS / Linux
-npm rebuild sharp
+npm install sharp
 ```
-
-Run this inside the extension folder (`extensions/plbx-cocos-extension/`), then restart Cocos Creator.
 
 ## Development
 

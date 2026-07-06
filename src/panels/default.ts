@@ -84,6 +84,7 @@ module.exports = Editor.Panel.define({
     compressQuality:  '#compress-quality',
     compressQualityVal:'#compress-quality-val',
     ffmpegStatus:     '#ffmpeg-status',
+    sharpStatus:      '#sharp-status',
     btnCompressAll:   '#btn-compress-all',
     compressFormat:   '#compress-format',
     compressTbody:    '#compress-tbody',
@@ -348,11 +349,13 @@ module.exports = Editor.Panel.define({
       const btn = this.$.panelUpdateBtn as HTMLButtonElement | null;
       if (!bar || !textEl) return;
 
-      // Human labels for the update steps (keys match UPDATE_STEPS names).
+      // Human labels for the update steps (keys match update.ts ProgressEvent step names).
       const STEP_LABELS: Record<string, string> = {
-        pull: 'Pulling latest from GitHub',
-        install: 'Installing dependencies',
-        build: 'Compiling extension',
+        detect: 'Checking install type',
+        download: 'Downloading latest release',
+        verify: 'Verifying checksum',
+        extract: 'Unpacking',
+        apply: 'Applying update',
       };
 
       const setBar = (message: string, severity: string) => {
@@ -363,7 +366,7 @@ module.exports = Editor.Panel.define({
 
       const renderProgress = (state: any) => {
         const idx = state.index || 0;
-        const total = state.total || 3;
+        const total = state.total || 5;
         const label = STEP_LABELS[state.step] || state.step || 'Starting…';
         const done = (state.done || [])
           .map((d: string) => '✓ ' + (STEP_LABELS[d] || d))
@@ -760,6 +763,7 @@ module.exports = Editor.Panel.define({
       const qualitySlider  = this.$.compressQuality as HTMLInputElement;
       const qualityVal     = this.$.compressQualityVal as HTMLSpanElement;
       const ffmpegStatus   = this.$.ffmpegStatus as HTMLSpanElement;
+      const sharpStatus    = this.$.sharpStatus as HTMLSpanElement;
       const btnCompressAll = this.$.btnCompressAll as HTMLButtonElement;
 
       qualitySlider?.addEventListener('input', () => {
@@ -783,6 +787,16 @@ module.exports = Editor.Panel.define({
             ? translate(this._lang || 'en', 'compress.ffmpegAvailable')
             : translate(this._lang || 'en', 'compress.ffmpegMissing');
           ffmpegStatus.style.color = ok ? '#4caf50' : '#ff9800';
+        }
+      }).catch((e: any) => { console.warn('[plbx]', e); });
+
+      Editor.Message.request('plbx-cocos-extension', 'check-sharp').then((ok: boolean) => {
+        this._sharpReady = ok;
+        if (sharpStatus) {
+          sharpStatus.textContent = ok
+            ? translate(this._lang || 'en', 'compress.sharpAvailable')
+            : translate(this._lang || 'en', 'compress.sharpMissing');
+          sharpStatus.style.color = ok ? '#4caf50' : '#ff9800';
         }
       }).catch((e: any) => { console.warn('[plbx]', e); });
 
@@ -930,6 +944,68 @@ module.exports = Editor.Panel.define({
       }
     },
 
+    _refreshSharpStatus(this: any, ok: boolean) {
+      const el = this.$.sharpStatus as HTMLSpanElement | null;
+      if (!el) return;
+      el.textContent = translate(this._lang || 'en', ok ? 'compress.sharpAvailable' : 'compress.sharpMissing');
+      el.style.color = ok ? '#4caf50' : '#ff9800';
+    },
+
+    /**
+     * Gate image compression on sharp being installed. Cached after the first
+     * success so "Compress All" prompts at most once. Audio never calls this.
+     * Returns true only when sharp is ready to use.
+     */
+    async _ensureSharp(this: any): Promise<boolean> {
+      if (this._sharpReady) return true;
+      const lang = this._lang || 'en';
+
+      // Re-probe: it may have been installed since the panel opened.
+      try {
+        if (await Editor.Message.request('plbx-cocos-extension', 'check-sharp')) {
+          this._sharpReady = true;
+          this._refreshSharpStatus(true);
+          return true;
+        }
+      } catch { /* fall through to the install prompt */ }
+
+      const dlg = await Editor.Dialog.info(translate(lang, 'compress.sharpInstallPrompt'), {
+        title: 'Playbox',
+        buttons: [translate(lang, 'compress.sharpInstallBtn'), 'Cancel'],
+        default: 0,
+        cancel: 1,
+      });
+      if (!dlg || dlg.response !== 0) return false;
+
+      const el = this.$.sharpStatus as HTMLSpanElement | null;
+      if (el) { el.textContent = translate(lang, 'compress.sharpInstalling'); el.style.color = '#ff9800'; }
+      try {
+        await Editor.Message.request('plbx-cocos-extension', 'install-sharp');
+      } catch { /* ignore — the poll below reports the real outcome */ }
+
+      const result: any = await new Promise((resolve) => {
+        const poll = setInterval(async () => {
+          let state: any;
+          try { state = await Editor.Message.request('plbx-cocos-extension', 'get-sharp-install-state'); }
+          catch { return; } // transient; keep polling
+          if (!state || state.running) return;
+          clearInterval(poll);
+          resolve(state.result || { ok: false, message: 'No result.' });
+        }, 1000);
+      });
+
+      if (result.ok) {
+        this._sharpReady = true;
+        this._refreshSharpStatus(true);
+        return true;
+      }
+      this._refreshSharpStatus(false);
+      await Editor.Dialog.info(translate(lang, 'compress.sharpInstallFailed'), {
+        title: 'Playbox', buttons: ['OK'], default: 0,
+      });
+      return false;
+    },
+
     async _compressSingle(this: any, asset: any, format: string, quality: number, tdComp: HTMLElement, tdSav: HTMLElement, tdStatus: HTMLElement, btn: HTMLButtonElement) {
       btn.disabled = true;
       clearChildren(tdStatus);
@@ -944,6 +1020,13 @@ module.exports = Editor.Panel.define({
           const audioFormat = format === 'mp3' || format === 'ogg' ? format : 'mp3';
           result = await Editor.Message.request('plbx-cocos-extension', 'compress-audio', asset.file, audioFormat, quality);
         } else {
+          if (!(await this._ensureSharp())) {
+            clearChildren(tdStatus);
+            const b = makeBadge('badge-fail', 'error');
+            b.title = translate(this._lang || 'en', 'compress.sharpMissing');
+            tdStatus.appendChild(b);
+            return; // finally re-enables the button
+          }
           result = await Editor.Message.request('plbx-cocos-extension', 'compress-image', asset.file, format, quality);
         }
         const newSize  = result?.outputSize ?? result?.size ?? 0;
@@ -1100,6 +1183,11 @@ module.exports = Editor.Panel.define({
         if (isAudio) {
           result = await Editor.Message.request('plbx-cocos-extension', 'compress-audio-preview', asset.file, format, quality);
         } else {
+          if (!this._sharpReady) {
+            if (spinner) spinner.style.display = 'none';
+            if (compMeta) compMeta.textContent = translate(this._lang || 'en', 'compress.sharpMissing');
+            return;
+          }
           result = await Editor.Message.request('plbx-cocos-extension', 'compress-image-preview', asset.file, format, quality);
         }
 
@@ -1174,6 +1262,7 @@ module.exports = Editor.Panel.define({
           const audioFormat = format === 'mp3' || format === 'ogg' ? format : 'mp3';
           result = await Editor.Message.request('plbx-cocos-extension', 'compress-audio', asset.file, audioFormat, quality);
         } else {
+          if (!(await this._ensureSharp())) return; // finally re-enables Apply
           result = await Editor.Message.request('plbx-cocos-extension', 'compress-image', asset.file, format, quality);
         }
 

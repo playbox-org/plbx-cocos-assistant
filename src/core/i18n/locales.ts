@@ -227,6 +227,12 @@ export const LOCALES: Record<Lang, LocaleDict> = {
     'compress.previewTitle': 'Preview: {name}',
     'compress.ffmpegAvailable': 'FFmpeg: available (audio compression enabled)',
     'compress.ffmpegMissing': 'FFmpeg: not found (audio compression disabled)',
+    'compress.sharpAvailable': 'sharp: available (image compression enabled)',
+    'compress.sharpMissing': 'sharp: not installed (image compression disabled)',
+    'compress.sharpInstallPrompt': 'Image compression needs the sharp library (~15 MB, one-time). Install it now?',
+    'compress.sharpInstallBtn': 'Install sharp',
+    'compress.sharpInstalling': 'Installing sharp…',
+    'compress.sharpInstallFailed': 'sharp install failed. Run "npm install sharp" in the extension folder, then reopen Compress.',
 
     // Build Report — dynamic strings
     'buildReport.noAssetsFound': 'No assets found',
@@ -450,6 +456,12 @@ export const LOCALES: Record<Lang, LocaleDict> = {
     'compress.previewTitle': 'Предпросмотр: {name}',
     'compress.ffmpegAvailable': 'FFmpeg: доступен (сжатие аудио включено)',
     'compress.ffmpegMissing': 'FFmpeg: не найден (сжатие аудио отключено)',
+    'compress.sharpAvailable': 'sharp: доступен (сжатие изображений включено)',
+    'compress.sharpMissing': 'sharp: не установлен (сжатие изображений отключено)',
+    'compress.sharpInstallPrompt': 'Для сжатия изображений нужна библиотека sharp (~15 МБ, разово). Установить сейчас?',
+    'compress.sharpInstallBtn': 'Установить sharp',
+    'compress.sharpInstalling': 'Установка sharp…',
+    'compress.sharpInstallFailed': 'Не удалось установить sharp. Выполните «npm install sharp» в папке расширения и снова откройте «Сжатие».',
 
     // Build Report — dynamic strings
     'buildReport.noAssetsFound': 'Ассеты не найдены',
@@ -673,6 +685,12 @@ export const LOCALES: Record<Lang, LocaleDict> = {
     'compress.previewTitle': '预览：{name}',
     'compress.ffmpegAvailable': 'FFmpeg：可用（音频压缩已启用）',
     'compress.ffmpegMissing': 'FFmpeg：未找到（音频压缩已禁用）',
+    'compress.sharpAvailable': 'sharp：可用（图像压缩已启用）',
+    'compress.sharpMissing': 'sharp：未安装（图像压缩已禁用）',
+    'compress.sharpInstallPrompt': '图像压缩需要 sharp 库（约 15 MB，一次性）。现在安装吗？',
+    'compress.sharpInstallBtn': '安装 sharp',
+    'compress.sharpInstalling': '正在安装 sharp…',
+    'compress.sharpInstallFailed': 'sharp 安装失败。请在扩展文件夹中运行 “npm install sharp”，然后重新打开压缩。',
 
     // Build Report — dynamic strings
     'buildReport.noAssetsFound': '未找到资源',

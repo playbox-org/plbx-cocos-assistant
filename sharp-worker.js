@@ -1,5 +1,19 @@
 'use strict';
 const path = require('path');
+
+// Availability probe — must answer BEFORE the top-level sharp require, which
+// throws when sharp is absent. Prints 'ok'/'missing' so sharp-status.ts can
+// decide whether to offer a one-click install.
+if (process.argv.includes('--probe')) {
+  try {
+    require(path.join(__dirname, 'node_modules', 'sharp'));
+    process.stdout.write('ok');
+  } catch {
+    process.stdout.write('missing');
+  }
+  process.exit(0);
+}
+
 const sharp = require(path.join(__dirname, 'node_modules', 'sharp'));
 const { statSync, renameSync } = require('fs');
 let input = '';
