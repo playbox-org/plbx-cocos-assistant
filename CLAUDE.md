@@ -42,14 +42,31 @@ preview validator, and deploy to the Playbox platform (plbx.ai).
   `gh release create vX.Y.Z --title "..." --notes-file <file> --latest`.
   Notes cover highlights (features/fixes, user-facing impact) + the commit list
   since the previous release. Do this as part of the bump, never skip it.
+- CI (`.github/workflows/release.yml`): on tag `v*`, builds a prebuilt bundle
+  (`dist` + `static` + `package.json` + `sharp-worker.js` + runtime-only
+  `node_modules`) and attaches `plbx-cocos-extension-<tag>.zip` + `.sha256` to
+  the Release. Creating the Release (`gh release create`) makes the tag →
+  triggers CI → CI `--clobber`-uploads the asset. GOTCHA: the bundle's
+  `node_modules` is built from a generated prod-only manifest (only
+  `dependencies`), NOT `npm ci --omit=dev --omit=optional` — `--omit` proved
+  unreliable and leaked playwright + sharp/@img into the bundle.
 - Update check (`src/core/freshness/freshness-check.ts`): compares local
   `package.json` version against the max semver tag from the public GitHub
   `/tags` API. Pure version comparison — intentionally no git involvement
   (a detached HEAD / missing upstream / GUI PATH without git used to break
   it). Cached 10 min in `main.ts`.
-- One-click update (`src/core/updater/update.ts`): git pull → npm install →
-  npm run build, polled by the panel via `startUpdate`/`getUpdateState`.
-  Requires a clean attached checkout; editor restart afterwards.
+- One-click update (`src/core/updater/update.ts`): prebuilt-artifact delivery,
+  polled by the panel via `startUpdate`/`getUpdateState`. Two channels by a
+  `.git` check on the extension root: a Developer Import (soft link → git
+  checkout, has `.git`) REFUSES self-update and points to `git pull` — never
+  overwrites a working tree; a packaged copy (no `.git`) downloads the release
+  zip → verifies sha256 → overlays in place (an on-demand `node_modules/sharp`
+  survives — overlay, not clean-swap). Bundle is native-free JS so in-place
+  overwrite is safe on macOS + Windows. Editor restart afterwards.
+- `sharp` ships OUTSIDE the bundle (optional, per-platform native; bundling
+  libvips would take on LGPL-3.0). Compress checks `sharp-worker.js --probe`
+  and offers a one-click `npm install sharp` (IPC `checkSharp`/`installSharp`/
+  `getSharpInstallState`).
 
 ## Key gotchas
 
