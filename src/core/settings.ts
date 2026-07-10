@@ -1,6 +1,6 @@
 declare const Editor: any;
 
-import type { PackageConfig } from '../shared/types';
+import type { PackageConfig } from '@playbox-ai/playable-kit';
 import { normalizeLang, DEFAULT_LANG, type Lang } from './i18n/locales';
 
 export interface ProjectSettings {

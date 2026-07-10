@@ -3,7 +3,7 @@ declare const Editor: any;
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { translate, normalizeLang } from '../core/i18n/locales';
-import { AXON_SPEC_URL } from '../core/packager/axon-events';
+import { AXON_SPEC_URL } from '@playbox-ai/playable-kit';
 
 const template = readFileSync(join(__dirname, '../../static/template/index.html'), 'utf-8');
 const style = readFileSync(join(__dirname, '../../static/style/index.css'), 'utf-8');

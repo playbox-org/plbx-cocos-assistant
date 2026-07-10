@@ -321,15 +321,13 @@
   "devDependencies": {
     "@cocos/creator-types": "3.8.7",
     "@playwright/test": "^1.58.2",
-    "@types/clean-css": "^4.2.11",
     "@types/node": "^25.3.3",
     "playwright": "^1.58.2",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"
   },
   "dependencies": {
-    "cheerio": "^1.0.0",
-    "clean-css": "^5.3.0",
+    "@playbox-ai/playable-kit": "~0.3.1",
     "jszip": "^3.10.0"
   },
   "optionalDependencies": {

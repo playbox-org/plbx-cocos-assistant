@@ -1,4 +1,4 @@
-import { AssetReportItem, BuildReport } from '../../shared/types';
+import type { AssetReportItem, BuildReport } from '@playbox-ai/playable-kit';
 import { estimateBuildSize } from './size-estimator';
 import { statSync } from 'fs';
 import { scanBuildDirectory } from './build-scanner';
@@ -119,8 +119,8 @@ export async function scanAssetsHybrid(
   let buildDirExists = false;
   let buildTimestamp: number | undefined;
   let totalActualBuildSize: number | undefined;
-  let buildCategories: import('../../shared/types').BuildCategories | undefined;
-  let packedHtmls: import('../../shared/types').PackedHtmlEntry[] | undefined;
+  let buildCategories: import('@playbox-ai/playable-kit').BuildCategories | undefined;
+  let packedHtmls: import('@playbox-ai/playable-kit').PackedHtmlEntry[] | undefined;
 
   if (buildDir) {
     const buildScan = await scanBuildDirectory(buildDir);

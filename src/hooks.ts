@@ -1,7 +1,7 @@
 declare const Editor: any;
 
 import { getProjectSettings, toPackageConfig } from './core/settings';
-import { packageForNetworks } from './core/packager/packager';
+import { packageForNetworks } from '@playbox-ai/playable-kit';
 import { resolve } from 'path';
 
 export async function onAfterBuild(options: any, result: any): Promise<void> {

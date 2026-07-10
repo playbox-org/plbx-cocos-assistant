@@ -7,7 +7,7 @@
  *   tests/fixtures/spades-build/output/         — our packager output (inspectable)
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { packageForNetworks } from '../../src/core/packager/packager';
+import { packageForNetworks } from '@playbox-ai/playable-kit';
 import { existsSync, statSync, readFileSync, rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
 

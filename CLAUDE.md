@@ -4,6 +4,12 @@ Cocos Creator 3.8+ extension that packages `web-mobile` builds into playable
 ads for 25+ ad networks (HTML or ZIP per network), with compression, a local
 preview validator, and deploy to the Playbox platform (plbx.ai).
 
+The packaging engine itself is NOT in this repo — it is the shared
+`@playbox-ai/playable-kit` npm package (public, `~0.3.1`). This extension is a
+*consumer*: it wires the kit into the Cocos editor (panels, IPC, deploy,
+compression, self-update) but the packaging/validation/preview-mock/network
+rules are the kit's. See "Shared kit" below.
+
 ## Commands
 
 - Build: `npm run build` (tsc → `dist/`), watch: `npm run watch`
@@ -20,19 +26,50 @@ preview validator, and deploy to the Playbox platform (plbx.ai).
   method in `main.ts`. All IPC data must be JSON-serializable.
 - `src/panels/default.ts` + `static/template/index.html` + `static/style/` —
   dockable panel UI (Build Report / Compress / Package / Deploy tabs).
-- `src/core/` — editor-independent business logic:
-  - `packager/` — HTML/ZIP builders, network adapters
-    (`network-adapters/`), self-contained runtime loader
-    (`runtime-loader.ts`), loading splash (`splash.ts`), Moloco V2
-    launcher+payload (`launcher-builder.ts`), store-URL scan/fix
-    (`store-url-extractor.ts`)
-  - `preview/` — local HTTP validator (`server.ts`, UI in
-    `static/preview/`) + SDK mocks (`sdk-mocks.ts`)
-  - `compression/` — sharp (images) + ffmpeg (audio)
-  - `deployer/` — Playbox API client + uploader
-  - `freshness/` + `updater/` — self-update (see below)
-  - `settings.ts` — Cocos profile read/write
+- Packaging / validation / preview-mocks / network registry / packaging types
+  come from `@playbox-ai/playable-kit` — imported from the barrel
+  (`import { packageForNetworks, HtmlBuilder, validateArtifact, getNetwork,
+  generatePreviewUtil, ... } from '@playbox-ai/playable-kit'`) or the
+  `/networks` (fs-free registry) and `/types` subpaths. There is NO local
+  `src/core/packager/`, `src/shared/`, or `src/core/preview/{sdk-mocks,
+  loader-health}` — those were deleted when the kit was adopted.
+- `src/core/` — editor-specific business logic that stays out of the kit:
+  - `preview/server.ts` — dev preview HTTP server (editor runtime; unzips
+    builds with `jszip`, serves the kit's `generatePreviewUtil` mock + UI in
+    `static/preview/`). The only thing left under `preview/`.
+  - `build-report/` — asset scan for the panel's Build Report tab.
+  - `compression/` — sharp (images) + ffmpeg (audio).
+  - `deployer/` — Playbox API client + uploader.
+  - `freshness/` + `updater/` — self-update (see below).
+  - `settings.ts` — Cocos profile read/write.
+- `src/main.ts` / `src/hooks.ts` — call the kit's `packageForNetworks` etc.
+- `jszip` is a direct dep (used Node-side by `preview/server.ts` +
+  `updater/update.ts`); `cheerio`/`clean-css` are transitive through the kit.
 - `tests/fixtures/roadside-build/` — real Cocos web-mobile build used by tests.
+  Unit tests for packaging/validation/preview-mocks live in the kit repo, NOT
+  here; the extension keeps only integration tests (`tests/integration/*`
+  package a real build through the kit and browser-verify it) + editor-glue
+  tests (server, settings, build-report, freshness, updater).
+
+## Shared kit (`@playbox-ai/playable-kit`)
+
+- Public npm package (`github.com/playbox-org/playable-kit`, local clone at a
+  sibling path). Owns packaging + validation + preview-mocks + network registry
+  + packaging types. Ships prebuilt `dist` (ESM + CJS); the extension's `tsc`
+  build just needs it resolvable — no bundler change.
+- Pin `~0.3.x` (patch-only) so the extension tracks kit patches, not breaking
+  minors. Bump BOTH repos together on any packaging-rule change.
+- Same code by construction — the kit was extracted from this extension, so the
+  packaged output is byte-identical EXCEPT the console banner (now emits the
+  kit's name/origin, not the extension's — expected, not a regression).
+- GOTCHA — add-export-don't-fork: if the extension needs a symbol the kit
+  doesn't export, it is almost always already defined in the kit's source but
+  missing from its barrel (`src/index.ts`). Add the re-export in the kit repo,
+  patch-bump, publish, re-pin — do NOT reintroduce a local copy. The kit's
+  deep-path tests never import the barrel, so missing re-exports are invisible
+  there; `tests/public-api.test.ts` in the kit guards the public surface.
+  (0.3.1 added `resolveTemplate`, `buildOutputRows`/`OutputFileStat`/
+  `OutputBuildRow`, `parse{Risky,Hostile}*Marker`, `AXON_SPEC_URL` this way.)
 
 ## Releases & self-update
 
@@ -49,7 +86,9 @@ preview validator, and deploy to the Playbox platform (plbx.ai).
   triggers CI → CI `--clobber`-uploads the asset. GOTCHA: the bundle's
   `node_modules` is built from a generated prod-only manifest (only
   `dependencies`), NOT `npm ci --omit=dev --omit=optional` — `--omit` proved
-  unreliable and leaked playwright + sharp/@img into the bundle.
+  unreliable and leaked playwright + sharp/@img into the bundle. `dependencies`
+  is now `@playbox-ai/playable-kit` + `jszip`; the kit + its transitive deps
+  (cheerio/clean-css/jszip) are all pure JS, so the bundle stays native-free.
 - Update check (`src/core/freshness/freshness-check.ts`): compares local
   `package.json` version against the max semver tag from the public GitHub
   `/tags` API. Pure version comparison — intentionally no git involvement

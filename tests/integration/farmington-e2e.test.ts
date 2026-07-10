@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { chromium, Browser, Page } from 'playwright';
-import { packageForNetworks } from '../../src/core/packager/packager';
+import { packageForNetworks } from '@playbox-ai/playable-kit';
 import { existsSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 

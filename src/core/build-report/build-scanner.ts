@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
 import { join, relative } from 'path';
 import { extractUuidFromPath, decompressUuid } from './uuid-utils';
-import { BuildCategories, PackedHtmlEntry } from '../../shared/types';
+import type { BuildCategories, PackedHtmlEntry } from '@playbox-ai/playable-kit';
 
 export interface BuildAssetData {
   buildPaths: string[];
