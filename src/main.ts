@@ -22,7 +22,20 @@ import { MolocoCdnClient } from './core/deployer/moloco-cdn';
 import { startPreviewServer, stopPreviewServer } from './core/preview/server';
 import { runFreshnessCheck, decideAction, formatCheckResult } from './core/freshness/freshness-check';
 import { runExtensionUpdate, defaultRunner } from './core/updater/update';
-import { checkSharpAvailable, installSharp, defaultProber } from './core/compression/sharp-status';
+import {
+  checkSharpAvailable,
+  installSharp,
+  defaultProber,
+  defaultSharpInstallIO,
+} from './core/compression/sharp-status';
+import { classifyKit, formatKitBanner } from './core/kit/kit-freshness';
+import {
+  readInstalledKitVersion,
+  readDeclaredRange,
+  fetchKitVersions,
+  installKit,
+  defaultKitInstallIO,
+} from './core/kit/kit-update';
 import { join, resolve } from 'path';
 import { existsSync, readFileSync } from 'fs';
 
@@ -54,6 +67,8 @@ let _updateState: {
 
 function startExtensionUpdate(): { running: boolean } {
   if (_updateState.running) return { running: true };
+  // The kit install rewrites node_modules too — the overlay must not land mid-way.
+  if (_kitInstallState.running) return { running: false };
   _updateState = { running: true, step: null, phase: null, index: 0, total: 0, done: [], result: null };
 
   void runExtensionUpdate(REPO_ROOT, (e) => {
@@ -90,7 +105,7 @@ let _sharpInstallState: { running: boolean; result: any | null } = { running: fa
 function startSharpInstall(): { running: boolean } {
   if (_sharpInstallState.running) return { running: true };
   _sharpInstallState = { running: true, result: null };
-  void installSharp(defaultRunner(REPO_ROOT))
+  void installSharp(REPO_ROOT, defaultSharpInstallIO())
     .then((result) => {
       _sharpInstallState = { running: false, result };
       console.log('[plbx] sharp install:', result.message);
@@ -99,6 +114,65 @@ function startSharpInstall(): { running: boolean } {
       _sharpInstallState = {
         running: false,
         result: { ok: false, output: '', message: 'sharp install crashed: ' + (e?.message || String(e)) },
+      };
+    });
+  return { running: true };
+}
+
+/**
+ * Packaging-kit freshness. The kit (@playbox-ai/playable-kit) is an npm dependency
+ * that ships inside the release bundle, so a validator patch can reach users
+ * without an extension release — the panel offers a one-click install of any newer
+ * kit INSIDE the declared pin. Cached like the extension check: the npm registry
+ * has no business being polled on every panel open.
+ */
+const KIT_TTL_MS = 10 * 60 * 1000;
+let _kitCache: { at: number; payload: any } | null = null;
+let _kitInstallState: { running: boolean; result: any | null } = { running: false, result: null };
+
+async function getKitFreshness(force = false): Promise<any> {
+  if (!force && _kitCache && Date.now() - _kitCache.at < KIT_TTL_MS) return _kitCache.payload;
+
+  const verdict = classifyKit({
+    installed: readInstalledKitVersion(REPO_ROOT),
+    range: readDeclaredRange(REPO_ROOT),
+    published: await fetchKitVersions(),
+  });
+  // A Developer Import (git checkout) must never be mutated from under the
+  // developer — self-update refuses there and so do we; show the command instead.
+  const devImport = existsSync(join(REPO_ROOT, '.git'));
+  const canInstall = verdict.state === 'update-available' && !devImport;
+  let banner = formatKitBanner(verdict);
+  if (banner && verdict.state === 'update-available' && devImport) {
+    banner += ' Run "npm update @playbox-ai/playable-kit" in the extension folder.';
+  }
+
+  const payload = { verdict, banner, canInstall };
+  _kitCache = { at: Date.now(), payload };
+  return payload;
+}
+
+function startKitInstall(): { running: boolean } {
+  // Both jobs rewrite node_modules — never let them overlap.
+  if (_kitInstallState.running || _updateState.running) return { running: _kitInstallState.running };
+
+  _kitInstallState = { running: true, result: null };
+  void getKitFreshness(false)
+    .then((p) =>
+      p.verdict.state === 'update-available'
+        ? installKit(REPO_ROOT, p.verdict.target, defaultKitInstallIO(REPO_ROOT))
+        : { ok: false, output: '', message: 'No kit update available.' },
+    )
+    .then((result) => {
+      _kitInstallState = { running: false, result };
+      // Drop the cached verdict, else the banner lingers for up to 10 minutes.
+      if (result.ok) _kitCache = null;
+      console.log('[plbx] kit install:', result.message);
+    })
+    .catch((e) => {
+      _kitInstallState = {
+        running: false,
+        result: { ok: false, output: '', message: 'Kit install crashed: ' + (e?.message || String(e)) },
       };
     });
   return { running: true };
@@ -910,6 +984,38 @@ export const methods: Record<string, (...args: any[]) => any> = {
   /** Poll target for the panel: { running, result } of the in-flight/last update. */
   getUpdateState() {
     return _updateState;
+  },
+
+  /**
+   * Is a newer packaging kit published inside our declared pin?
+   * Returns { verdict, banner, canInstall } — plain JSON. Cached 10 min; `force` re-checks.
+   */
+  async checkKitVersion(force?: boolean) {
+    try {
+      return await getKitFreshness(force === true);
+    } catch (e: any) {
+      return {
+        verdict: {
+          state: 'unknown',
+          installed: '',
+          range: '',
+          target: '',
+          latest: '',
+          reason: e?.message || String(e),
+        },
+        banner: '',
+        canInstall: false,
+      };
+    }
+  },
+
+  /** Kick off the kit install (scratch resolve → nested move). Poll getKitUpdateState. */
+  startKitUpdate() {
+    return startKitInstall();
+  },
+
+  getKitUpdateState() {
+    return _kitInstallState;
   },
 
   /**

@@ -380,12 +380,41 @@ module.exports = Editor.Panel.define({
 
       // Wire the one-click update. The button is a tiny state machine so it
       // can't re-trigger an update after success — once done it switches to
-      // prompting a restart instead.
-      if (btn) {
-        let mode: 'update' | 'restart' = 'update';
+      // prompting a restart instead. `kit` is the same machine pointed at the
+      // packaging kit: the bar and the button are shared, and the two updates are
+      // mutually exclusive (the extension one wins — see the check below).
+      let mode: 'update' | 'kit' | 'restart' = 'update';
 
+      if (btn) {
         const promptRestart = () => {
           Editor.Message.request('plbx-cocos-extension', 'promptRestart').catch(() => {});
+        };
+
+        const startKitUpdate = () => {
+          btn.disabled = true;
+          btn.textContent = translate(this._lang || 'en', 'settings.updating');
+          setBar(translate(this._lang || 'en', 'settings.updatingKit'), 'warn');
+          Editor.Message.request('plbx-cocos-extension', 'startKitUpdate').catch(() => {});
+          const poll = setInterval(async () => {
+            let state: any;
+            try {
+              state = await Editor.Message.request('plbx-cocos-extension', 'getKitUpdateState');
+            } catch {
+              return; // transient; keep polling
+            }
+            if (!state || state.running) return;
+            clearInterval(poll);
+            const result = state.result || { ok: false, message: 'No result.' };
+            btn.disabled = false;
+            setBar((result.ok ? '✓ ' : '✗ ') + result.message, result.ok ? 'info' : 'warn');
+            if (result.ok) {
+              mode = 'restart';
+              btn.textContent = translate(this._lang || 'en', 'settings.restartEditor');
+              promptRestart(); // the old kit sits in the require cache until reload
+            } else {
+              btn.textContent = translate(this._lang || 'en', 'settings.retry');
+            }
+          }, 1000);
         };
 
         const startUpdate = () => {
@@ -423,14 +452,35 @@ module.exports = Editor.Panel.define({
 
         btn.addEventListener('click', () => {
           if (mode === 'restart') promptRestart();
+          else if (mode === 'kit') startKitUpdate();
           else startUpdate();
         });
       }
 
+      // Extension first: when it is behind, that banner wins the bar and the kit
+      // one stays quiet — a newer bundle carries a newer kit anyway. Only when no
+      // extension update is being offered do we surface the packaging kit.
       Editor.Message.request('plbx-cocos-extension', 'checkFreshness')
         .then((res: any) => {
           const action = res?.action;
-          if (action?.notify) setBar(action.message, action.severity);
+          if (action?.notify) {
+            setBar(action.message, action.severity);
+            return;
+          }
+          return Editor.Message.request('plbx-cocos-extension', 'checkKitVersion').then((kit: any) => {
+            if (!kit?.banner) return;
+            setBar(kit.banner, 'info');
+            if (!btn) return;
+            if (!kit.canInstall) {
+              // Developer Import (never mutate a working tree), or the newer kit is
+              // out of our pin — either way there is nothing to click.
+              btn.hidden = true;
+              return;
+            }
+            btn.hidden = false;
+            mode = 'kit';
+            btn.textContent = translate(this._lang || 'en', 'settings.updateKit');
+          });
         })
         .catch(() => {});
     },

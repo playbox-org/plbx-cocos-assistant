@@ -278,6 +278,21 @@
           "startUpdate"
         ]
       },
+      "checkKitVersion": {
+        "methods": [
+          "checkKitVersion"
+        ]
+      },
+      "startKitUpdate": {
+        "methods": [
+          "startKitUpdate"
+        ]
+      },
+      "getKitUpdateState": {
+        "methods": [
+          "getKitUpdateState"
+        ]
+      },
       "getUpdateState": {
         "methods": [
           "getUpdateState"

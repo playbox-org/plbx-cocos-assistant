@@ -172,6 +172,8 @@ export const LOCALES: Record<Lang, LocaleDict> = {
     'settings.updating': 'Updating…',
     'settings.restartEditor': 'Restart editor',
     'settings.retry': 'Retry',
+    'settings.updateKit': 'Update packaging kit',
+    'settings.updatingKit': 'Installing packaging kit…',
     'settings.tokenSaved': 'Token saved (not verified)',
 
     // Transient status (scan / package / preview / deploy shared)
@@ -401,6 +403,8 @@ export const LOCALES: Record<Lang, LocaleDict> = {
     'settings.updating': 'Обновление…',
     'settings.restartEditor': 'Перезапустить редактор',
     'settings.retry': 'Повторить',
+    'settings.updateKit': 'Обновить движок паковки',
+    'settings.updatingKit': 'Установка движка паковки…',
     'settings.tokenSaved': 'Токен сохранён (не проверен)',
 
     // Transient status (scan / package / preview / deploy shared)
@@ -630,6 +634,8 @@ export const LOCALES: Record<Lang, LocaleDict> = {
     'settings.updating': '更新中…',
     'settings.restartEditor': '重启编辑器',
     'settings.retry': '重试',
+    'settings.updateKit': '更新打包内核',
+    'settings.updatingKit': '正在安装打包内核…',
     'settings.tokenSaved': '令牌已保存（未验证）',
 
     // Transient status (scan / package / preview / deploy shared)
