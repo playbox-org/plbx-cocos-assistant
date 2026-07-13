@@ -216,22 +216,43 @@ import { get as httpsGet } from 'https';
  * GUI apps (the Cocos Editor) launch with a trimmed PATH that often omits
  * Homebrew/node dirs, so `npm`/`node` may be invisible even though they work in
  * a terminal. Prepend the usual suspects so the spawn can find them.
+ *
+ * Windows is returned untouched on purpose: its PATH separator is ';', so
+ * splitting on ':' would shred every "C:\..." entry into garbage.
  */
-function augmentedEnv(): NodeJS.ProcessEnv {
+export function augmentedEnv(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  if (platform === 'win32') return { ...env };
   const extra = ['/usr/local/bin', '/opt/homebrew/bin', '/usr/bin', '/bin'];
-  const current = (process.env.PATH || '').split(':');
+  const current = (env.PATH || '').split(':');
   const path = [...new Set([...current, ...extra])].filter(Boolean).join(':');
-  return { ...process.env, PATH: path };
+  return { ...env, PATH: path };
 }
 
-/** execFile-based command runner (used by the on-demand `npm install sharp`). */
+/** On Windows npm is a .cmd shim, which execFile cannot spawn as a bare 'npm'. */
+export function npmCmd(platform: NodeJS.Platform = process.platform): string {
+  return platform === 'win32' ? 'npm.cmd' : 'npm';
+}
+
+/** execFile-based command runner (the on-demand `npm install sharp` + kit install). */
 export function defaultRunner(repoRoot: string): Runner {
   return (cmd, args) =>
     new Promise((resolve) => {
       execFile(
         cmd,
         args,
-        { cwd: repoRoot, env: augmentedEnv(), maxBuffer: 16 * 1024 * 1024, timeout: 300000, windowsHide: true },
+        {
+          cwd: repoRoot,
+          env: augmentedEnv(),
+          maxBuffer: 16 * 1024 * 1024,
+          timeout: 300000,
+          windowsHide: true,
+          // Node refuses to spawn a .cmd shell-less (CVE-2024-27980). Every argument
+          // we pass is a literal or a /^\d+\.\d+\.\d+$/-validated version string.
+          shell: process.platform === 'win32',
+        },
         (err, stdout, stderr) => {
           const output = (stdout?.toString() || '') + (stderr?.toString() || '');
           resolve({ ok: !err, output: output.trim() });
