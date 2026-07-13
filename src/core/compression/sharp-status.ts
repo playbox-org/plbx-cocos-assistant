@@ -15,7 +15,20 @@
  * is unit-testable without spawning node/npm. Real IO sides live at the bottom.
  */
 
-import type { Runner } from '../updater/update';
+import { readFileSync as defaultReadFile } from 'fs';
+import { join as joinPath } from 'path';
+import {
+  ScratchInstallIO,
+  defaultScratchInstallIO,
+  scratchInstall,
+} from '../npm/scratch-install';
+
+const defaultReadPkg = (p: string) => defaultReadFile(p, 'utf8');
+
+/** IO bundle for the on-demand sharp install (scratch dir kept apart from the kit's). */
+export function defaultSharpInstallIO(): ScratchInstallIO {
+  return defaultScratchInstallIO('.plbx-sharp-staged');
+}
 
 /** Resolves the probe worker's stdout ('ok' | 'missing'); rejects if it cannot spawn. */
 export type Prober = () => Promise<string>;
@@ -35,16 +48,55 @@ export interface InstallSharpResult {
   message: string;
 }
 
-/** Run `npm install sharp` in the extension folder via the injected runner. */
-export async function installSharp(run: Runner): Promise<InstallSharpResult> {
-  const r = await run('npm', ['install', 'sharp']);
-  return {
-    ok: r.ok,
-    output: r.output,
-    message: r.ok
-      ? 'sharp installed — image compression is ready.'
-      : 'sharp install failed. Run "npm install sharp" in the extension folder, then reopen Compress.',
-  };
+/** Fallback when the extension's package.json cannot be read. */
+const SHARP_FALLBACK_SPEC = '^0.33.5';
+
+/** The spec to install — whatever the extension declares in optionalDependencies. */
+export function readSharpSpec(root: string, readPkg: (p: string) => string = defaultReadPkg): string {
+  try {
+    const pkg = JSON.parse(readPkg(joinPath(root, 'package.json')));
+    return pkg?.optionalDependencies?.sharp || pkg?.dependencies?.sharp || SHARP_FALLBACK_SPEC;
+  } catch {
+    return SHARP_FALLBACK_SPEC;
+  }
+}
+
+/**
+ * Install sharp into the extension folder — via an isolated scratch resolve, NOT
+ * `npm install sharp` in the extension root.
+ *
+ * The bundle ships the extension's real package.json (devDependencies and all), so
+ * npm in that root reifies the whole ideal tree: `npm install sharp --dry-run` there
+ * adds 128 packages including playwright and @playwright/test, and pulls browser
+ * downloads through their postinstall. Scratch-resolving sharp and moving just that
+ * subtree in keeps a user's install to what they asked for.
+ *
+ * Scripts stay ENABLED here (unlike the kit install): sharp's platform binary comes
+ * from its own optional @img/* packages and their install step.
+ */
+export async function installSharp(root: string, io: ScratchInstallIO): Promise<InstallSharpResult> {
+  try {
+    const r = await scratchInstall({
+      root,
+      pkg: 'sharp',
+      spec: readSharpSpec(root),
+      io,
+      allowScripts: true,
+    });
+    return {
+      ok: r.ok,
+      output: r.output,
+      message: r.ok
+        ? 'sharp installed — image compression is ready.'
+        : 'sharp install failed. Run "npm install sharp" in the extension folder, then reopen Compress.',
+    };
+  } catch (e: any) {
+    return {
+      ok: false,
+      output: '',
+      message: 'sharp install failed: ' + (e?.message || String(e)),
+    };
+  }
 }
 
 // ── Real (non-injected) IO ──────────────────────────────────────────────────
