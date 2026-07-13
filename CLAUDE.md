@@ -102,10 +102,32 @@ rules are the kit's. See "Shared kit" below.
   zip → verifies sha256 → overlays in place (an on-demand `node_modules/sharp`
   survives — overlay, not clean-swap). Bundle is native-free JS so in-place
   overwrite is safe on macOS + Windows. Editor restart afterwards.
+- Kit update channel (`src/core/kit/`): the packaging engine is an npm dep that
+  rides inside the bundle, so a validator patch would otherwise need a full
+  extension release. The panel checks the npm registry (cached 10 min, IPC
+  `checkKitVersion`) and offers a one-click install of any newer kit INSIDE the
+  declared pin (`startKitUpdate`/`getKitUpdateState`); an out-of-pin version
+  (0.4.x under a `~0.3.1` pin) points at the extension self-update instead.
+  Range dialect is `~`/exact only — npm's caret has a 0.x special case and a 0.x
+  minor may break the API, so anything else fails closed. Developer Import
+  refuses (manual `npm update`). Kit install and self-update are mutually
+  exclusive — both rewrite `node_modules`.
 - `sharp` ships OUTSIDE the bundle (optional, per-platform native; bundling
   libvips would take on LGPL-3.0). Compress checks `sharp-worker.js --probe`
-  and offers a one-click `npm install sharp` (IPC `checkSharp`/`installSharp`/
+  and offers a one-click install (IPC `checkSharp`/`installSharp`/
   `getSharpInstallState`).
+- GOTCHA — never run `npm install <pkg>` with the extension root as cwd. The
+  bundle ships the REAL `package.json` (devDependencies, optionalDependencies,
+  postinstall) while its `node_modules` comes from a throwaway prod-only
+  manifest that never enters the zip, so npm reifies the FULL ideal tree there:
+  `npm install sharp --dry-run` in a shipped bundle adds 128 packages
+  (playwright + browser downloads, vitest, typescript), and `--save` rewrites
+  the pins we read. Both on-demand installs (sharp, kit) go through
+  `src/core/npm/scratch-install.ts`: scratch dir + one-line manifest, then the
+  package moved in with its deps NESTED under it. Nesting is load-bearing —
+  `jszip` is declared by the extension (`preview/server.ts`, and `update.ts`
+  requires it inside the updater) AND by the kit, so a hoisted copy would
+  eventually upgrade the root's out from under code that never declared it.
 
 ## Key gotchas
 
