@@ -146,17 +146,18 @@ rules are the kit's. See "Shared kit" below.
 
 ## Docs index
 
-- `docs/plans/` — feature design + implementation plans
-  (e.g. `2026-05-28-moloco-v2-target-design.md` for the Moloco V2
-  launcher/payload pipeline).
-- `docs/networks/` — per-network specs we target
-  (`axon-playable-analytics.md` — AppLovin Axon events).
-- `docs/research/` — ad-network reference notes
-  (`ad-networks-reference.md`), Cocos extension API notes, prior-art
-  analysis (super-html runtime loader).
-- `docs/superpowers/specs/` — approved feature specs (splash screen,
-  self-contained loader, perf HUD, …); `docs/superpowers/plans/` — their
-  implementation plans.
+Packaging, validation and ad-network docs live in the KIT repo
+(`playable-kit/docs/`), not here — network specs (`docs/networks/`), the
+ad-network reference + prior-art research (`docs/research/`), and the specs for
+packaging features (self-contained loader, splash, loader-health / risky-audio
+validation, Moloco V2, plbx_html external commands). Write network rules there.
+
+What stays here is editor-side:
+
+- `docs/plans/` — extension design/implementation, compress + preview server.
+- `docs/research/cocos-creator-extension-api.md` — Cocos extension API notes.
+- `docs/superpowers/specs/` + `plans/` — editor features: build report, perf
+  HUD, stable delivery + sharp guard, kit freshness.
 
 Docs are public — no absolute local paths, client project names, or personal
 data in them.
