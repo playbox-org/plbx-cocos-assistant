@@ -1,6 +1,6 @@
 {
   "package_version": 2,
-  "version": "0.5.0",
+  "version": "0.5.1",
   "name": "plbx-cocos-extension",
   "title": "i18n:plbx-cocos-extension.title",
   "description": "i18n:plbx-cocos-extension.description",
