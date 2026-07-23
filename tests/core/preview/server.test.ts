@@ -79,6 +79,26 @@ describe('Preview Server', () => {
     expect(applovin.checks.map((c: { id: string }) => c.id)).not.toContain('no_forbidden_literals');
   });
 
+  // molocoV2 launcher-payload: the launcher is a <3 KB tag with no loader — the
+  // loader ships inside payload.js as an ESCAPED JS string ('\\.' on disk where
+  // the plain loader has '\.'). Loader-health must scan launcher + unescaped
+  // payload; scanning the launcher alone used to fail all three fingerprints.
+  it('scans payload.js for loader-health on launcher-payload networks', async () => {
+    mkdirSync(join(TMP, 'molocoV2'), { recursive: true });
+    writeFileSync(join(TMP, 'molocoV2', 'launcher.html'),
+      '<html><head></head><body><script src="#PAYLOAD_URL#"></script></body></html>');
+    writeFileSync(join(TMP, 'molocoV2', 'payload.js'),
+      "var h = 'plbx loader v0.3.5\\n" +
+      "function __plbx_pre_boot() { poll(1); if (innerWidth && document.visibilityState) {} }\\n" +
+      "function _isVirtualScheme(u) { return /^(\\\\.\\\\/)?(chunks|virtual|blob|data|about):/.test(u); }';");
+
+    const { url } = await startPreviewServer({ outputDir: TMP, networks: ['molocoV2'] });
+    const data = JSON.parse((await httpGet(url + '/api/networks')).body);
+    const lh = data[0].loaderHealth as Array<{ id: string; pass: boolean; detail: string }>;
+    expect(lh.length).toBeGreaterThan(0);
+    for (const c of lh) expect(c.pass, `${c.id}: ${c.detail}`).toBe(true);
+  });
+
   it('should serve /preview/{networkId} with injected preview-util.js', async () => {
     mkdirSync(join(TMP, 'ironsource'), { recursive: true });
     writeFileSync(join(TMP, 'ironsource', 'index.html'),

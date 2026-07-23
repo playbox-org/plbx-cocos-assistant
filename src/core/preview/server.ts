@@ -264,6 +264,11 @@ function buildLauncherChecks(outputDir: string, networkId: string): LauncherChec
  * (zip-aware) and runs the capability scan (robust defer-boot gate, virtual-scheme
  * guard, boot-safety version floor). All checks are blocking. Returns [] when the
  * build can't be read so a transient read error never masquerades as a pass.
+ *
+ * Launcher-payload networks (molocoV2): the launcher is a <3 KB tag with no
+ * loader inside — the loader ships in the sibling payload.js, embedded as an
+ * escaped JS string ('\\.' for '\.'). Scan launcher + payload with the double
+ * backslashes collapsed so the fingerprints match their plain-HTML form.
  */
 async function buildLoaderHealth(
   outputDir: string,
@@ -274,7 +279,10 @@ async function buildLoaderHealth(
     const file = findBuildFile(outputDir, networkId);
     if (!file) return [];
     const html = file.isZip ? await extractHtmlFromZip(file.path) : readFileSync(file.path, 'utf-8');
-    return scanLoaderHealth(html, { mraid });
+    const scanTarget = file.payloadPath
+      ? html + '\n' + readFileSync(file.payloadPath, 'utf-8').replace(/\\\\/g, '\\')
+      : html;
+    return scanLoaderHealth(scanTarget, { mraid });
   } catch {
     return [];
   }
