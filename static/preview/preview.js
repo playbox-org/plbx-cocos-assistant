@@ -680,6 +680,18 @@
         net.hasAppStoreUrl ? 'Found in build' : 'MISSING — set via set_app_store_url(...) in game code');
     }
 
+    // Forbidden literals ('mraid.js') — non-MRAID upload validators (Moloco,
+    // Facebook) substring-scan the raw HTML and reject on any hit, even in a
+    // comment. Set from the server-side scan; the check def only exists for
+    // non-MRAID networks (setCheck is a no-op otherwise).
+    if (net && !net.mraid) {
+      var forbidden = net.forbiddenLiterals || [];
+      setCheck('no_forbidden_literals', forbidden.length ? 'fail' : 'pass',
+        forbidden.length
+          ? 'Found: ' + forbidden.join(', ') + ' — repackage with the current kit'
+          : 'Not found in build');
+    }
+
     // Regional/localization params in the store URL — should be absent for global
     // delivery (all networks). The check def exists only when the build has a store
     // URL; setCheck is a no-op otherwise.

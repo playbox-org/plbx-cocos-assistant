@@ -54,6 +54,31 @@ describe('Preview Server', () => {
     expect(data[0].size).toBeGreaterThan(0);
   });
 
+  // Moloco/Facebook moderation substring-scans the raw HTML and rejects any
+  // 'mraid.js' occurrence — even inside a JS comment or a conditional (builds
+  // from pre-split-token packagers leaked it exactly that way). The preview
+  // validator must surface that statically via forbiddenLiterals.
+  it('flags mraid.js literals in a non-MRAID build via forbiddenLiterals', async () => {
+    mkdirSync(join(TMP, 'moloco'), { recursive: true });
+    writeFileSync(join(TMP, 'moloco', 'index.html'),
+      '<html><body><script>// SDK\'s mraid.js note\n' +
+      "if (u.indexOf('mraid.js') !== -1) {}</script></body></html>");
+    mkdirSync(join(TMP, 'applovin'), { recursive: true });
+    writeFileSync(join(TMP, 'applovin', 'index.html'),
+      '<html><head><script src="mraid.js"></script></head><body></body></html>');
+
+    const { url } = await startPreviewServer({ outputDir: TMP, networks: ['moloco', 'applovin'] });
+    const data = JSON.parse((await httpGet(url + '/api/networks')).body);
+    const moloco = data.find((n: { id: string }) => n.id === 'moloco');
+    const applovin = data.find((n: { id: string }) => n.id === 'applovin');
+
+    expect(moloco.forbiddenLiterals).toEqual(['mraid.js']);
+    expect(moloco.checks.map((c: { id: string }) => c.id)).toContain('no_forbidden_literals');
+    // MRAID networks legitimately ship the tag — no check def, empty scan.
+    expect(applovin.forbiddenLiterals).toEqual([]);
+    expect(applovin.checks.map((c: { id: string }) => c.id)).not.toContain('no_forbidden_literals');
+  });
+
   it('should serve /preview/{networkId} with injected preview-util.js', async () => {
     mkdirSync(join(TMP, 'ironsource'), { recursive: true });
     writeFileSync(join(TMP, 'ironsource', 'index.html'),
