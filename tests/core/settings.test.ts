@@ -25,8 +25,8 @@ describe('toPackageConfig', () => {
     expect(config.orientation).toBe('landscape');
   });
 
-  it('defaults splashMode to playbox', () => {
-    expect(DEFAULT_SETTINGS.splashMode).toBe('playbox');
+  it('defaults splashMode to none', () => {
+    expect(DEFAULT_SETTINGS.splashMode).toBe('none');
   });
 
   it('derives showSplash + customSplashLogo from splashMode', () => {

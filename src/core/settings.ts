@@ -53,7 +53,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   templateVariables: {},
   loaderMode: 'self-contained',
   legacyLoaderNetworks: [],
-  splashMode: 'playbox',
+  splashMode: 'none',
   customSplashLogo: '',
   assetEncodings: ['base64'],
   molocoAdAccountId: '',
