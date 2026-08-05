@@ -44,7 +44,7 @@ describe('Integration: custom splash logo scale reaches the build', () => {
       { splashMode: 'custom', customSplashLogo: LOGO, splashLogoScale: 60 },
       join(OUTPUT_DIR, 'scaled'),
     );
-    expect(html).toContain('max-width:60vmin');
+    expect(html).toContain('width:60vmin');
     expect(html).toContain('max-height:60vmin');
     expect(html).not.toContain('max-width:96px');
   }, 120_000);

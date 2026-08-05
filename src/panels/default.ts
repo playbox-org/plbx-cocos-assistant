@@ -3,6 +3,7 @@ declare const Editor: any;
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { translate, normalizeLang } from '../core/i18n/locales';
+import { formatLogoDimensions } from '../core/splash/logo-dimensions';
 import { AXON_SPEC_URL } from '@playbox-ai/playable-kit';
 
 const template = readFileSync(join(__dirname, '../../static/template/index.html'), 'utf-8');
@@ -118,6 +119,7 @@ module.exports = Editor.Panel.define({
     pkgLogoClear:     '#pkg-logo-clear',
     pkgLogoCost:      '#pkg-logo-cost',
     pkgLogoError:     '#pkg-logo-error',
+    pkgLogoNatural:   '#pkg-logo-natural',
     pkgLogoScale:     '#pkg-logo-scale',
     pkgLogoScaleNum:  '#pkg-logo-scale-num',
     pkgSplashFrame:   '#pkg-splash-frame',
@@ -1695,7 +1697,22 @@ module.exports = Editor.Panel.define({
         Editor.Message.request('plbx-cocos-extension', 'get-splash-logo-info', path)
           .then((info: any) => {
             if (!info?.ok) { showErr(); return; }
-            if (preview) { preview.src = info.dataUrl; preview.style.display = 'block'; }
+            if (preview) {
+              // The scale enlarges an undersized logo, so show the asset's own
+              // pixel size — measurable only once the browser has decoded it.
+              const showNatural = () => {
+                const el = this.$.pkgLogoNatural as HTMLElement | null;
+                if (el) {
+                  el.textContent = formatLogoDimensions(
+                    preview.naturalWidth, preview.naturalHeight, this._lang || 'en',
+                  );
+                }
+              };
+              preview.onload = showNatural;
+              preview.src = info.dataUrl;
+              preview.style.display = 'block';
+              if (preview.complete) showNatural();
+            }
             if (costEl) {
               const kb = (info.bytes / 1024).toFixed(1);
               costEl.textContent = translate(this._lang || 'en', 'settings.customLogoCost').replace('{kb}', kb);

@@ -4,6 +4,7 @@ import {
   buildSplashPreview,
   playboxSplashBytes,
 } from '../../src/core/splash/splash-preview';
+import { formatLogoDimensions } from '../../src/core/splash/logo-dimensions';
 
 const FIXTURES = join(__dirname, '../fixtures');
 const LOGO = join(FIXTURES, 'fake-texture.png');
@@ -20,16 +21,16 @@ describe('buildSplashPreview', () => {
 
   it('renders the requested scale, so the preview tracks the slider', () => {
     expect(buildSplashPreview({ logoPath: LOGO, scale: 71 }).srcdoc).toContain(
-      'max-width:71vmin',
+      'width:71vmin',
     );
   });
 
   it('leaves the clamping to the kit rather than duplicating the rule', () => {
     expect(buildSplashPreview({ logoPath: LOGO, scale: 999 }).srcdoc).toContain(
-      'max-width:100vmin',
+      'width:100vmin',
     );
     expect(buildSplashPreview({ logoPath: LOGO, scale: 0 }).srcdoc).toContain(
-      'max-width:5vmin',
+      'width:5vmin',
     );
   });
 
@@ -64,6 +65,27 @@ describe('buildSplashPreview', () => {
   it('stays JSON-serializable — it crosses the editor IPC boundary', () => {
     const res = buildSplashPreview({ logoPath: LOGO, scale: 40 });
     expect(JSON.parse(JSON.stringify(res))).toEqual(res);
+  });
+});
+
+describe('formatLogoDimensions', () => {
+  // The scale now ENLARGES a small logo instead of leaving it alone, so the
+  // operator needs the asset's own pixel size to judge how far past it they are.
+  it('renders the asset size', () => {
+    expect(formatLogoDimensions(200, 80, 'en')).toContain('200');
+    expect(formatLogoDimensions(200, 80, 'en')).toContain('80');
+  });
+
+  it('is localized', () => {
+    expect(formatLogoDimensions(200, 80, 'ru')).not.toBe(
+      formatLogoDimensions(200, 80, 'en'),
+    );
+  });
+
+  it('returns empty for dimensions a browser has not measured yet', () => {
+    // <img>.naturalWidth is 0 until the image decodes; "0×0 px" is noise.
+    expect(formatLogoDimensions(0, 0, 'en')).toBe('');
+    expect(formatLogoDimensions(NaN, 80, 'en')).toBe('');
   });
 });
 

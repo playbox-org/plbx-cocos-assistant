@@ -74,7 +74,7 @@ The size is stored as a **number, 5–100, meaning percent of the viewport's
 smaller side**, and emitted as `vmin`:
 
 ```css
-#lg{max-width:38vmin;max-height:38vmin;width:auto;height:auto;object-fit:contain;…}
+#lg{width:38vmin;height:auto;max-height:38vmin;object-fit:contain;…}
 ```
 
 `vmin` is the right basis because a playable is a full-viewport surface in an
@@ -82,6 +82,26 @@ unknown container: `vmin` tracks the *narrow* dimension in both orientations, so
 one number cannot overflow the screen in either. `vw` would blow up in
 landscape; `vh` in portrait; `%` would resolve against the flex container, not
 the screen.
+
+**`width`, not `max-width`** — revised after review of kit PR #11, which shipped
+the shrink-only form. A cap only ever shrinks, so an asset whose intrinsic size
+sits below it keeps that size and the setting silently stops responding above
+it, at a threshold that is invisible because it depends on the asset. The
+complaint that started this was "make the logo bigger", so the scale is the
+authority on rendered size in **both** directions.
+
+The aspect ratio survives: `height:auto` derives the height from the width, and
+`max-height` catches a tall logo — for a replaced element the constrained height
+re-derives the width (CSS 2.1 §10.4), so nothing stretches.
+
+The cost is that a logo smaller than the scale is now **enlarged and looks
+soft** — a real change from both the old `96px` and from PR #11 as merged, where
+such an asset rendered at its intrinsic size. It is the operator's call, so the
+panel makes it visible instead of discoverable in production: it previews the
+result and prints the asset's own pixel size next to the slider
+(`formatLogoDimensions`, in `core/splash/logo-dimensions.ts` — deliberately free
+of kit imports, since the panel runs in the editor's renderer and must not load
+the packaging engine to format one string).
 
 **Default 26.** On the 375 pt reference viewport, `26vmin` = 97.5 px ≈ the
 current 96 px. Projects that never touch the setting keep essentially today's
