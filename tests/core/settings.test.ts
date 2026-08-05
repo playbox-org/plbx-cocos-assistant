@@ -43,3 +43,32 @@ describe('toPackageConfig', () => {
     expect(cu.customSplashLogo).toBe('/x/logo.png');
   });
 });
+
+describe('custom splash logo scale', () => {
+  it('defaults to 26 — the vmin equivalent of the old fixed 96px cap', () => {
+    expect(DEFAULT_SETTINGS.splashLogoScale).toBe(26);
+  });
+
+  it('forwards the scale to PackageConfig in custom mode', () => {
+    const config = toPackageConfig({
+      ...DEFAULT_SETTINGS,
+      splashMode: 'custom',
+      customSplashLogo: '/x/logo.png',
+      splashLogoScale: 64,
+    });
+    expect(config.splashLogoScale).toBe(64);
+  });
+
+  it('omits the scale outside custom mode', () => {
+    // A stored scale must not leak onto the branded splash, which keeps its
+    // own fixed size. Mirrors how customSplashLogo is already gated.
+    for (const splashMode of ['none', 'playbox'] as const) {
+      const config = toPackageConfig({
+        ...DEFAULT_SETTINGS,
+        splashMode,
+        splashLogoScale: 64,
+      });
+      expect(config.splashLogoScale, splashMode).toBeUndefined();
+    }
+  });
+});

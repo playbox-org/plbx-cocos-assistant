@@ -26,6 +26,12 @@ export interface ProjectSettings {
   /** Absolute path to a client logo (PNG/JPG/WebP) for splashMode 'custom'.
    *  Persisted across mode switches so toggling back to custom keeps the file. */
   customSplashLogo: string;
+  /** Size of the custom splash logo as a percentage of the screen's SHORTER
+   *  side (emitted as `vmin`). Default 26 — matches the fixed 96px cap it
+   *  replaced on a 375pt-wide screen, so untouched projects look unchanged.
+   *  Only reaches the packager in splashMode 'custom'; the branded Playbox
+   *  splash keeps its own fixed size. Clamped 5–100 inside the kit. */
+  splashLogoScale: number;
   /** Asset-container encodings to emit (self-contained loader only). Default
    *  ['base64'] (most stable, fastest boot, larger file). base122 is ~14% smaller
    *  but less robust. ['base64','base122'] emits both — index.html (base122) +
@@ -55,6 +61,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   legacyLoaderNetworks: [],
   splashMode: 'none',
   customSplashLogo: '',
+  splashLogoScale: 26,
   assetEncodings: ['base64'],
   molocoAdAccountId: '',
   molocoAssetProvider: '',
@@ -75,6 +82,7 @@ export function toPackageConfig(s: ProjectSettings): PackageConfig {
     legacyLoaderNetworks: s.legacyLoaderNetworks,
     showSplash: s.splashMode !== 'none',
     customSplashLogo: s.splashMode === 'custom' ? s.customSplashLogo || '' : '',
+    splashLogoScale: s.splashMode === 'custom' ? s.splashLogoScale : undefined,
     assetEncodings: s.assetEncodings && s.assetEncodings.length ? s.assetEncodings : ['base64'],
   };
 }

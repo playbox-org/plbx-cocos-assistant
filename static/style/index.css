@@ -710,6 +710,50 @@ body,
   display: none;
 }
 
+.pkg-logo-scale-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.pkg-logo-scale-row .form-slider {
+  flex: 1;
+  max-width: 180px;
+}
+.pkg-scale-num {
+  width: 56px;
+  flex: none;
+}
+
+.pkg-splash-preview-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+/* Phone-shaped viewport for the splash preview. The size is a scale MODEL: the
+   iframe's own dimensions are what the splash CSS's vmin units resolve against,
+   so this frame's aspect ratio (~9:19.5) is what makes the preview faithful. */
+.pkg-splash-frame {
+  width: 160px;
+  height: 346px;
+  border: 1px solid #3a3a3a;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000;
+  flex: none;
+}
+.pkg-splash-frame.landscape {
+  width: 346px;
+  height: 160px;
+}
+.pkg-splash-frame iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
 .pkg-var-chips {
   display: flex;
   gap: 4px;

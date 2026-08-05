@@ -254,6 +254,19 @@
               <div id="pkg-logo-hint" class="pkg-hint" data-i18n="settings.customLogoHint">PNG/JPG/WebP shown on a black screen</div>
               <div id="pkg-logo-cost" class="pkg-hint"></div>
               <div id="pkg-logo-error" class="pkg-hint pkg-logo-error"></div>
+              <div class="pkg-logo-scale-row">
+                <span class="form-label" data-i18n="settings.logoScale">Logo size</span>
+                <input type="range" id="pkg-logo-scale" class="form-slider" min="5" max="100" step="1" value="26" />
+                <input type="number" id="pkg-logo-scale-num" class="form-input pkg-scale-num" min="5" max="100" step="1" value="26" />
+                <span class="pkg-hint">%</span>
+              </div>
+              <div class="pkg-hint" data-i18n="settings.logoScaleHint">% of the screen's shorter side — scales with the device</div>
+              <div class="pkg-splash-preview-row">
+                <div id="pkg-splash-frame" class="pkg-splash-frame">
+                  <iframe id="pkg-splash-preview" sandbox title="Splash preview"></iframe>
+                </div>
+                <button id="pkg-preview-orient" class="btn-secondary btn-small" data-i18n="settings.previewLandscape">Landscape</button>
+              </div>
             </div>
           </div>
           <div class="form-group">

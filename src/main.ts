@@ -13,6 +13,7 @@ import {
   buildOutputRows,
   OutputFileStat,
   fillLauncherPayloadUrl,
+  fixRegionalStoreUrls,
   getAllNetworks,
 } from '@playbox-ai/playable-kit';
 import { PlayboxApiClient } from './core/deployer/api-client';
@@ -28,6 +29,7 @@ import {
   defaultProber,
   defaultSharpInstallIO,
 } from './core/compression/sharp-status';
+import { buildSplashPreview, playboxSplashBytes } from './core/splash/splash-preview';
 import { classifyKit, formatKitBanner } from './core/kit/kit-freshness';
 import {
   readInstalledKitVersion,
@@ -482,8 +484,6 @@ export const methods: Record<string, (...args: any[]) => any> = {
    *  Returns counts so the panel can warn that a re-package is needed. */
   fixStoreUrls(buildDir: string) {
     try {
-      const { resolve, join } = require('path');
-      const { fixRegionalStoreUrls } = require('./core/packager/store-url-extractor');
       const projectPath = Editor.Project.path || '';
       const absBuildDir = resolve(projectPath, buildDir || '');
       const buildRes = fixRegionalStoreUrls(absBuildDir);
@@ -914,8 +914,7 @@ export const methods: Record<string, (...args: any[]) => any> = {
 
   /** Byte cost the PLBX splash adds to each HTML build (uncompressed). */
   getSplashInfo() {
-    const { splashByteCost } = require('./core/packager/splash');
-    return { bytes: splashByteCost() };
+    return { bytes: playboxSplashBytes() };
   },
 
   /** Open a file dialog to pick a custom splash logo. Returns the chosen path. */
@@ -933,14 +932,22 @@ export const methods: Record<string, (...args: any[]) => any> = {
     }
   },
 
-  /** Preview + build-cost for a custom splash logo. `bytes` already counts the
+  /** Thumbnail + build-cost for a custom splash logo. `bytes` already counts the
    *  base64 (+~33%) form, since the logo is embedded as a data: URL. */
-  getSplashLogoInfo(path: string) {
-    const { resolveSplashLogoDataUrl } = require('./core/packager/packager');
-    const { splashByteCost } = require('./core/packager/splash');
-    const dataUrl = resolveSplashLogoDataUrl(path);
-    if (!dataUrl) return { ok: false, error: 'unreadable' };
-    return { ok: true, dataUrl, bytes: splashByteCost({ customLogo: { dataUrl } }) };
+  getSplashLogoInfo(path: string, scale?: number) {
+    const res = buildSplashPreview({ logoPath: path, scale });
+    if (!res.ok) return { ok: false, error: res.error };
+    return { ok: true, dataUrl: res.dataUrl, bytes: res.bytes };
+  },
+
+  /** Live splash preview for the Package tab: a full document for an
+   *  <iframe srcdoc>, built from the kit's own splash markup + CSS so the
+   *  preview cannot drift from what the packager emits. */
+  getSplashPreview(payload: { logoPath: string; scale?: number }) {
+    return buildSplashPreview({
+      logoPath: payload?.logoPath || '',
+      scale: payload?.scale,
+    });
   },
 
   async getToken() {

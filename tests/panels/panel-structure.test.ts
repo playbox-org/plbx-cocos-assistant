@@ -177,6 +177,25 @@ describe('template structure', () => {
     expect(templateHtml).toContain('id="deploy-result"');
   });
 
+  it('should have custom splash logo size + preview elements', () => {
+    // The reported bug was a custom logo shipping at a fixed size with no way
+    // to see it before the build. Both the control and the preview must exist.
+    expect(templateHtml).toContain('id="pkg-logo-scale"');
+    expect(templateHtml).toContain('id="pkg-logo-scale-num"');
+    expect(templateHtml).toContain('id="pkg-splash-frame"');
+    expect(templateHtml).toContain('id="pkg-splash-preview"');
+    expect(templateHtml).toContain('id="pkg-preview-orient"');
+  });
+
+  it('sandboxes the splash preview iframe', () => {
+    // The iframe embeds an operator-chosen file as a data: URL; it must not be
+    // able to script the panel document.
+    const iframe = templateHtml
+      .split('id="pkg-splash-preview"')[1]
+      .split('>')[0];
+    expect(iframe).toContain('sandbox');
+  });
+
   it('should have preview overlay elements', () => {
     expect(templateHtml).toContain('id="preview-overlay"');
     expect(templateHtml).toContain('id="preview-format"');
@@ -246,6 +265,11 @@ describe('CSS completeness', () => {
     expect(cssContent).toContain('.preview-body');
     expect(cssContent).toContain('.preview-controls');
   });
+
+  it('should style the splash preview frame', () => {
+    expect(cssContent).toContain('.pkg-splash-frame');
+    expect(cssContent).toContain('.pkg-splash-frame.landscape');
+  });
 });
 
 describe('package.json panel config', () => {
@@ -286,6 +310,27 @@ describe('package.json panel config', () => {
     expect(msgs['save-settings']).toBeDefined();
     expect(msgs['get-token']).toBeDefined();
     expect(msgs['save-token']).toBeDefined();
+    expect(msgs['get-splash-preview']).toBeDefined();
+  });
+
+  it('maps every splash message to a method that exists in main.ts', () => {
+    // Regression: get-splash-info / get-splash-logo-info stayed registered while
+    // their handlers required a deleted module, so both threw at runtime and the
+    // panel silently showed no thumbnail and no cost.
+    const mainSrc = readFileSync(join(ROOT, 'src/main.ts'), 'utf-8');
+    const splashMsgs = Object.entries(
+      pkg.contributions.messages as Record<string, { methods: string[] }>,
+    ).filter(([name]) => name.includes('splash'));
+    expect(splashMsgs.length).toBeGreaterThanOrEqual(4);
+    for (const [name, def] of splashMsgs) {
+      for (const method of def.methods) {
+        expect(mainSrc, `${name} → ${method}`).toMatch(
+          new RegExp(`\\b${method}\\s*\\(`),
+        );
+      }
+    }
+    // …and none of them reaches for the packager module deleted at kit adoption.
+    expect(mainSrc).not.toContain('./core/packager/');
   });
 });
 

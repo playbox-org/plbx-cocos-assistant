@@ -118,6 +118,11 @@ module.exports = Editor.Panel.define({
     pkgLogoClear:     '#pkg-logo-clear',
     pkgLogoCost:      '#pkg-logo-cost',
     pkgLogoError:     '#pkg-logo-error',
+    pkgLogoScale:     '#pkg-logo-scale',
+    pkgLogoScaleNum:  '#pkg-logo-scale-num',
+    pkgSplashFrame:   '#pkg-splash-frame',
+    pkgSplashPreview: '#pkg-splash-preview',
+    pkgPreviewOrient: '#pkg-preview-orient',
     pkgEncoding:      '#pkg-encoding',
     pkgEncWarn:       '#pkg-enc-warn',
     pkgTemplatePreset:'#pkg-template-preset',
@@ -1624,6 +1629,46 @@ module.exports = Editor.Panel.define({
           .catch((e: any) => { console.warn('[plbx]', e); });
       };
 
+      // Custom splash logo size. Kept in a local so the slider, the number box
+      // and the preview all read one value; the kit clamps it for real.
+      let currentLogoScale = 26;
+
+      // Live splash preview: the kit builds the SAME markup + CSS the packager
+      // emits and we drop it into a phone-shaped iframe, so what the operator
+      // sizes here is what ships. Empty path → nothing to preview.
+      const refreshSplashPreview = (path: string, scale: number) => {
+        const frame = this.$.pkgSplashPreview as HTMLIFrameElement | null;
+        if (!frame) return;
+        if (!path) { frame.removeAttribute('srcdoc'); return; }
+        Editor.Message.request('plbx-cocos-extension', 'get-splash-preview', { logoPath: path, scale })
+          .then((res: any) => {
+            if (res?.ok) frame.srcdoc = res.srcdoc;
+            else frame.removeAttribute('srcdoc');
+          })
+          .catch((e: any) => { console.warn('[plbx]', e); });
+      };
+
+      // Persisting on every slider tick would write the Cocos profile dozens of
+      // times per drag; the preview itself refreshes immediately.
+      let scaleSaveTimer: any = null;
+      const saveLogoScale = (scale: number) => {
+        if (scaleSaveTimer) clearTimeout(scaleSaveTimer);
+        scaleSaveTimer = setTimeout(() => {
+          Editor.Message.request('plbx-cocos-extension', 'save-settings', { splashLogoScale: scale })
+            .catch((e: any) => { console.warn('[plbx]', e); });
+        }, 250);
+      };
+
+      const applyLogoScale = (scale: number, opts?: { persist?: boolean }) => {
+        currentLogoScale = scale;
+        const slider = this.$.pkgLogoScale as HTMLInputElement | null;
+        const num = this.$.pkgLogoScaleNum as HTMLInputElement | null;
+        if (slider && slider.value !== String(scale)) slider.value = String(scale);
+        if (num && num.value !== String(scale)) num.value = String(scale);
+        refreshSplashPreview(currentLogoPath, scale);
+        if (opts?.persist) saveLogoScale(scale);
+      };
+
       // Custom splash logo: preview + build cost (incl. base64 +33%). Empty
       // path → default PLBX splash, no preview.
       const refreshCustomLogo = (path: string) => {
@@ -1640,6 +1685,7 @@ module.exports = Editor.Panel.define({
             errEl.style.display = 'block';
           }
         };
+        refreshSplashPreview(path, currentLogoScale);
         if (!path) {
           if (preview) { preview.style.display = 'none'; preview.removeAttribute('src'); }
           if (clearBtn) clearBtn.style.display = 'none';
@@ -1671,14 +1717,17 @@ module.exports = Editor.Panel.define({
           ? translate(this._lang || 'en', 'settings.splashCost').replace('{kb}', splashKb)
           : '';
       };
-      const applySplashMode = (mode: string, logoPath: string) => {
+      const applySplashMode = (mode: string, logoPath: string, logoScale?: number) => {
         currentLogoPath = logoPath;
         const sel = this.$.pkgSplashMode as HTMLSelectElement | null;
         if (sel) sel.value = mode;
         const block = this.$.pkgCustomLogo as HTMLElement | null;
         if (block) block.style.display = mode === 'custom' ? 'block' : 'none';
         renderSplashCost();
-        if (mode === 'custom') refreshCustomLogo(logoPath);
+        if (mode === 'custom') {
+          applyLogoScale(typeof logoScale === 'number' ? logoScale : currentLogoScale);
+          refreshCustomLogo(logoPath);
+        }
       };
 
       // --- Restore settings ---
@@ -1692,7 +1741,11 @@ module.exports = Editor.Panel.define({
         refreshAxonAdvisory(settings?.buildDir, settings?.selectedNetworks);
         if (outputDirInput && settings?.outputDir) outputDirInput.value = settings.outputDir;
         if (autoPackageCb) autoPackageCb.checked = settings?.autoPackage !== false;
-        applySplashMode(settings?.splashMode || 'playbox', settings?.customSplashLogo || '');
+        applySplashMode(
+          settings?.splashMode || 'playbox',
+          settings?.customSplashLogo || '',
+          typeof settings?.splashLogoScale === 'number' ? settings.splashLogoScale : 26,
+        );
         const encArr: string[] = Array.isArray(settings?.assetEncodings) && settings.assetEncodings.length
           ? settings.assetEncodings
           : ['base64'];
@@ -1794,6 +1847,36 @@ module.exports = Editor.Panel.define({
         Editor.Message.request('plbx-cocos-extension', 'save-settings', { customSplashLogo: '' })
           .then(() => refreshCustomLogo(''))
           .catch((e: any) => { console.warn('[plbx]', e); });
+      });
+
+      // Logo size: slider and number box drive each other; the preview follows
+      // every tick, the project profile only after the drag settles. Range
+      // bounds mirror the kit's clamp, which stays the single authority.
+      const readScale = (raw: string): number => {
+        const n = Math.round(Number(raw));
+        if (!Number.isFinite(n)) return currentLogoScale;
+        return Math.min(100, Math.max(5, n));
+      };
+      (this.$.pkgLogoScale as HTMLInputElement)?.addEventListener('input', (e) => {
+        applyLogoScale(readScale((e.target as HTMLInputElement).value), { persist: true });
+      });
+      (this.$.pkgLogoScaleNum as HTMLInputElement)?.addEventListener('change', (e) => {
+        applyLogoScale(readScale((e.target as HTMLInputElement).value), { persist: true });
+      });
+
+      // Orientation is a viewing control for the preview frame only — a logo has
+      // one size, and vmin already keeps it inside either orientation.
+      (this.$.pkgPreviewOrient as HTMLElement)?.addEventListener('click', () => {
+        const frame = this.$.pkgSplashFrame as HTMLElement | null;
+        const btn = this.$.pkgPreviewOrient as HTMLElement | null;
+        if (!frame) return;
+        const landscape = frame.classList.toggle('landscape');
+        if (btn) {
+          btn.textContent = translate(
+            this._lang || 'en',
+            landscape ? 'settings.previewPortrait' : 'settings.previewLandscape',
+          );
+        }
       });
 
       // Asset-encoding dropdown (base64 default / base122 / both). Maps the single
