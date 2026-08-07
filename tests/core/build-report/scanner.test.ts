@@ -182,7 +182,9 @@ describe('scanAssetsHybrid', () => {
     expect(report.totalBuildSize).toBe(expectedTotal);
   });
 
-  it('should use real build data when build dir exists', async () => {
+  // Gitignored real-build fixture — skip instead of failing on a clean clone.
+  const itIfFixture = existsSync(join(__dirname, '../../fixtures/roadside-build/web-mobile')) ? it : it.skip;
+  itIfFixture('should use real build data when build dir exists', async () => {
     const queryFn = createMockQueryFn(mockAssets);
     const buildFixture = join(__dirname, '../../fixtures/roadside-build/web-mobile');
 

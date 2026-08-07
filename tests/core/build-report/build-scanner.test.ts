@@ -1,8 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { join } from 'path';
+import { existsSync } from 'fs';
 import { scanBuildDirectory } from '../../../src/core/build-report/build-scanner';
 
 const FIXTURE_BUILD = join(__dirname, '../../fixtures/roadside-build/web-mobile');
+
+// The fixture is a real Cocos build, too large for the repo (.gitignore). Without
+// this guard these specs FAIL on every clean clone instead of skipping, which
+// buries real regressions in permanent red — the integration suites already
+// guard the same way.
+const itIfFixture = existsSync(FIXTURE_BUILD) ? it : it.skip;
 
 describe('scanBuildDirectory', () => {
   it('should return null for non-existent directory', async () => {
@@ -10,14 +17,14 @@ describe('scanBuildDirectory', () => {
     expect(result).toBeNull();
   });
 
-  it('should scan the fixture build directory successfully', async () => {
+  itIfFixture('should scan the fixture build directory successfully', async () => {
     const result = await scanBuildDirectory(FIXTURE_BUILD);
     expect(result).not.toBeNull();
     expect(result!.buildDir).toBe(FIXTURE_BUILD);
     expect(result!.buildTimestamp).toBeGreaterThan(0);
   });
 
-  it('should find native assets and map them by UUID', async () => {
+  itIfFixture('should find native assets and map them by UUID', async () => {
     const result = await scanBuildDirectory(FIXTURE_BUILD);
     expect(result!.assetMap.size).toBeGreaterThan(0);
 
@@ -28,7 +35,7 @@ describe('scanBuildDirectory', () => {
     expect(pngAsset!.buildPaths.length).toBeGreaterThan(0);
   });
 
-  it('should group sub-asset fragments by base UUID', async () => {
+  itIfFixture('should group sub-asset fragments by base UUID', async () => {
     const result = await scanBuildDirectory(FIXTURE_BUILD);
     // UUID 590beb63-46ba-4749-b258-454caa4dbe46 has multiple @fragment files
     const meshAsset = result!.assetMap.get('590beb63-46ba-4749-b258-454caa4dbe46');
@@ -37,7 +44,7 @@ describe('scanBuildDirectory', () => {
     // actualSize should be sum of all fragments
   });
 
-  it('should detect font assets stored as UUID directories', async () => {
+  itIfFixture('should detect font assets stored as UUID directories', async () => {
     const result = await scanBuildDirectory(FIXTURE_BUILD);
     // c559e99c-fba0-41a0-b733-6d5f5bb3878c is a directory containing firasans-black-webfont.ttf
     const fontAsset = result!.assetMap.get('c559e99c-fba0-41a0-b733-6d5f5bb3878c');
@@ -45,7 +52,7 @@ describe('scanBuildDirectory', () => {
     expect(fontAsset!.actualSize).toBeGreaterThan(0);
   });
 
-  it('should calculate totalBuildSize as sum of asset files + pack files', async () => {
+  itIfFixture('should calculate totalBuildSize as sum of asset files + pack files', async () => {
     const result = await scanBuildDirectory(FIXTURE_BUILD);
     expect(result!.totalBuildSize).toBeGreaterThan(0);
 
@@ -64,13 +71,13 @@ describe('scanBuildDirectory', () => {
     expect(result!.assetFilesSize).toBe(assetSum + result!.packFileSize);
   });
 
-  it('should track pack file sizes separately', async () => {
+  itIfFixture('should track pack file sizes separately', async () => {
     const result = await scanBuildDirectory(FIXTURE_BUILD);
     // 0d50e9a82.json is a pack file
     expect(result!.packFileSize).toBeGreaterThan(0);
   });
 
-  it('should populate bundledUuids from config.json', async () => {
+  itIfFixture('should populate bundledUuids from config.json', async () => {
     const result = await scanBuildDirectory(FIXTURE_BUILD);
     expect(result!.bundledUuids.size).toBeGreaterThan(0);
     // Should contain hex UUIDs, not compressed ones
@@ -79,7 +86,7 @@ describe('scanBuildDirectory', () => {
     }
   });
 
-  it('should categorize files correctly', async () => {
+  itIfFixture('should categorize files correctly', async () => {
     const result = await scanBuildDirectory(FIXTURE_BUILD);
     const cats = result!.categories;
 
@@ -96,7 +103,7 @@ describe('scanBuildDirectory', () => {
     expect(sum).toBe(result!.totalBuildSize);
   });
 
-  it('should scan sibling plbx-html directory for packed HTMLs', async () => {
+  itIfFixture('should scan sibling plbx-html directory for packed HTMLs', async () => {
     const result = await scanBuildDirectory(FIXTURE_BUILD);
     expect(result!.packedHtmls).toBeDefined();
     expect(result!.packedHtmls.length).toBe(3);
@@ -116,7 +123,7 @@ describe('scanBuildDirectory', () => {
     }
   });
 
-  it('should return empty packedHtmls when no plbx-html sibling exists', async () => {
+  itIfFixture('should return empty packedHtmls when no plbx-html sibling exists', async () => {
     // Create a minimal valid build dir in a temp location with no plbx-html sibling
     const { mkdtempSync, mkdirSync, writeFileSync } = await import('fs');
     const { tmpdir } = await import('os');

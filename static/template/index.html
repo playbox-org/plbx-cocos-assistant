@@ -207,6 +207,10 @@
           <div class="form-group">
             <span class="form-label" data-i18n="package.buildDirectory">Build Directory</span>
             <input type="text" id="pkg-build-dir" class="form-input" value="build/web-mobile" placeholder="build/web-mobile" />
+            <div id="pkg-build-dir-warn" class="pkg-build-dir-warn" style="display:none;">
+              <span id="pkg-build-dir-warn-text"></span>
+              <button id="pkg-build-dir-use" class="btn-secondary btn-small" data-i18n="package.useLastBuild">Use last build</button>
+            </div>
           </div>
           <div class="form-group">
             <span class="form-label" data-i18n="package.outputDirectory">Output Directory</span>

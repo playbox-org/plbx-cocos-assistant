@@ -1561,3 +1561,12 @@ body,
   opacity: 0.5;
   cursor: default;
 }
+
+.pkg-build-dir-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #e0a000;
+}

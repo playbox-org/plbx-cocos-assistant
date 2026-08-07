@@ -37,6 +37,12 @@ export interface ProjectSettings {
    *  but less robust. ['base64','base122'] emits both — index.html (base122) +
    *  sibling index.b64.html. Invariant: at least one entry. */
   assetEncodings: ('base64' | 'base122')[];
+  /** Directory Cocos actually built into (`result.dest` of the last build),
+   *  project-relative. The Build Directory field is a hand-typed setting that
+   *  nobody kept in sync with it, so Pack All could package a stale leftover
+   *  build while auto-package packaged the fresh one. Persisted rather than kept
+   *  in memory so the reconciliation survives an editor restart. */
+  lastBuildDest: string;
   /** Moloco Ad Account ID for CDN asset uploads (per-project; API key is global). */
   molocoAdAccountId: string;
   /** Moloco launcher ASSET_PROVIDER metadata override (empty → network default "Playbox"). */
@@ -63,6 +69,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   customSplashLogo: '',
   splashLogoScale: 26,
   assetEncodings: ['base64'],
+  lastBuildDest: '',
   molocoAdAccountId: '',
   molocoAssetProvider: '',
   molocoAssetTitle: '',

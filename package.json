@@ -1,6 +1,6 @@
 {
   "package_version": 2,
-  "version": "0.5.7",
+  "version": "0.5.8",
   "name": "plbx-cocos-extension",
   "title": "i18n:plbx-cocos-extension.title",
   "description": "i18n:plbx-cocos-extension.description",
@@ -66,6 +66,11 @@
       "scan-assets-hybrid": {
         "methods": [
           "scanAssetsHybrid"
+        ]
+      },
+      "get-build-dir-state": {
+        "methods": [
+          "getBuildDirState"
         ]
       },
       "get-last-build-result": {

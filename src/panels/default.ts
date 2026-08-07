@@ -107,6 +107,9 @@ module.exports = Editor.Panel.define({
     pkgStoreRegionalText: '#pkg-store-regional-text',
     pkgStoreRegionalFix: '#pkg-store-regional-fix',
     pkgBuildDir:      '#pkg-build-dir',
+    pkgBuildDirWarn:  '#pkg-build-dir-warn',
+    pkgBuildDirWarnText: '#pkg-build-dir-warn-text',
+    pkgBuildDirUse:   '#pkg-build-dir-use',
     pkgOutputDir:     '#pkg-output-dir',
     pkgResultsTbody:  '#pkg-results-tbody',
     pkgWarnings:      '#pkg-warnings',
@@ -1631,6 +1634,49 @@ module.exports = Editor.Panel.define({
           .catch((e: any) => { console.warn('[plbx]', e); });
       };
 
+      // Build Directory vs the directory Cocos actually built into. A build task
+      // named anything but the default writes elsewhere (e.g. build/web-mobile-001),
+      // and Pack All then packaged a stale leftover while auto-package packaged the
+      // fresh output — same project, ~800 KB apart, no warning. Untouched default →
+      // adopt silently (nothing was chosen); hand-edited → surface, never override.
+      let lastBuildDestRel = '';
+      const refreshBuildDirState = () => {
+        const warn = this.$.pkgBuildDirWarn as HTMLElement | null;
+        const warnText = this.$.pkgBuildDirWarnText as HTMLElement | null;
+        const input = this.$.pkgBuildDir as HTMLInputElement | null;
+        Editor.Message.request('plbx-cocos-extension', 'get-build-dir-state')
+          .then((state: any) => {
+            lastBuildDestRel = state?.lastDestRelative || '';
+            if (state?.action === 'adopt' && input) {
+              input.value = state.effective;
+              if (warn) warn.style.display = 'none';
+              Editor.Message.request('plbx-cocos-extension', 'save-settings', { buildDir: state.effective })
+                .then(() => { refreshDetectedStoreUrls(state.effective); })
+                .catch((e: any) => { console.warn('[plbx]', e); });
+              return;
+            }
+            if (state?.action === 'mismatch' && warn && warnText) {
+              warnText.textContent = translate(this._lang || 'en', 'package.buildDirMismatch')
+                .replace('{dest}', lastBuildDestRel);
+              warn.style.display = 'flex';
+              return;
+            }
+            if (warn) warn.style.display = 'none';
+          })
+          .catch((e: any) => { console.warn('[plbx]', e); });
+      };
+      (this.$.pkgBuildDirUse as HTMLElement)?.addEventListener('click', () => {
+        const input = this.$.pkgBuildDir as HTMLInputElement | null;
+        if (!input || !lastBuildDestRel) return;
+        input.value = lastBuildDestRel;
+        Editor.Message.request('plbx-cocos-extension', 'save-settings', { buildDir: lastBuildDestRel })
+          .then(() => {
+            refreshDetectedStoreUrls(lastBuildDestRel);
+            refreshBuildDirState();
+          })
+          .catch((e: any) => { console.warn('[plbx]', e); });
+      });
+
       // Custom splash logo size. Kept in a local so the slider, the number box
       // and the preview all read one value; the kit clamps it for real.
       let currentLogoScale = 26;
@@ -1754,6 +1800,7 @@ module.exports = Editor.Panel.define({
         const autoPackageCb = this.$.pkgAutoPackage as HTMLInputElement;
 
         if (buildDirInput && settings?.buildDir) buildDirInput.value = settings.buildDir;
+        refreshBuildDirState();
         refreshDetectedStoreUrls(settings?.buildDir);
         refreshAxonAdvisory(settings?.buildDir, settings?.selectedNetworks);
         if (outputDirInput && settings?.outputDir) outputDirInput.value = settings.outputDir;

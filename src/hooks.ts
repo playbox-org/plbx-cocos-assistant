@@ -1,8 +1,8 @@
 declare const Editor: any;
 
-import { getProjectSettings, toPackageConfig } from './core/settings';
+import { getProjectSettings } from './core/settings';
+import { buildPackageRequest } from './core/package-request';
 import { packageForNetworks } from '@playbox-ai/playable-kit';
-import { resolve } from 'path';
 
 export async function onAfterBuild(options: any, result: any): Promise<void> {
   const pkgOptions = options.packages?.['plbx-cocos-extension'];
@@ -14,6 +14,10 @@ export async function onAfterBuild(options: any, result: any): Promise<void> {
     dest,
     platform: options?.platform,
   });
+
+  // `dest` is recorded by main.onBuildFinished, which the message above always
+  // reaches — including when auto-package is off, which is exactly the case that
+  // left Pack All packaging a stale directory. One writer, no double-write.
 
   // Auto-package if enabled in build settings
   if (!pkgOptions?.autoPackage) return;
@@ -30,26 +34,18 @@ export async function onAfterBuild(options: any, result: any): Promise<void> {
       return;
     }
 
-    const projectRoot = Editor.Project.path || '';
-    const buildDir = dest; // use actual build output path
-    const outputDir = resolve(projectRoot, settings.outputDir || 'build/plbx-html');
+    // Same request builder as the panel's Pack All — the two paths drifting is
+    // exactly what produced "one build, two different artifacts". `dest` is the
+    // one thing the hook knows better than settings: the real build output.
+    const request = buildPackageRequest({
+      settings,
+      projectRoot: Editor.Project.path || '',
+      buildDir: dest,
+    });
 
-    // toPackageConfig carries loaderMode/legacyLoaderNetworks so the loader-engine
-    // rollback path is honored in auto-package (not just manual packaging).
-    const config = toPackageConfig(settings);
-
-    console.log(`[plbx] Auto-packaging for ${networks.length} networks → ${outputDir}`);
+    console.log(`[plbx] Auto-packaging for ${request.networks.length} networks → ${request.outputDir}`);
     const result = await packageForNetworks({
-      buildDir,
-      outputDir,
-      networks,
-      config,
-      // Same Moloco launcher metadata as manual packaging (main.packageNetworks).
-      templateVariables: {
-        ...settings.templateVariables,
-        ...(settings.molocoAssetProvider ? { assetProvider: settings.molocoAssetProvider } : {}),
-        ...(settings.molocoAssetTitle ? { assetTitle: settings.molocoAssetTitle } : {}),
-      },
+      ...request,
       onProgress: (id, status, msg) => {
         console.log(`[plbx] ${id}: ${status} ${msg || ''}`);
       },

@@ -30,6 +30,8 @@ import {
   defaultSharpInstallIO,
 } from './core/compression/sharp-status';
 import { buildSplashPreview, playboxSplashBytes } from './core/splash/splash-preview';
+import { resolveBuildDir } from './core/build-dir';
+import { buildPackageRequest } from './core/package-request';
 import { classifyKit, formatKitBanner } from './core/kit/kit-freshness';
 import {
   readInstalledKitVersion,
@@ -305,7 +307,28 @@ export const methods: Record<string, (...args: any[]) => any> = {
   onBuildFinished(...args: any[]) {
     // Store build result for later use
     if (args[0]) lastBuildResult = args[0];
+    // Persist the directory Cocos actually built into. The Build Directory field
+    // is typed by hand and was never reconciled with it, so a build task named
+    // anything but the default (e.g. web-mobile-001) left Pack All packaging a
+    // stale leftover directory. In-memory alone would lose this on restart.
+    const dest = args[0]?.dest;
+    if (dest) {
+      saveProjectSettings({ lastBuildDest: dest }).catch((e: any) =>
+        console.warn('[plbx] lastBuildDest save failed:', e?.message ?? e),
+      );
+    }
     Editor.Panel.open('plbx-cocos-extension');
+  },
+
+  /** Reconcile the Build Directory field with the last real build output, so the
+   *  panel can adopt it (untouched default) or surface the disagreement. */
+  async getBuildDirState() {
+    const settings = await getProjectSettings();
+    return resolveBuildDir({
+      configured: settings.buildDir || '',
+      lastDest: settings.lastBuildDest || '',
+      projectRoot: Editor.Project.path || '',
+    });
   },
 
   onAutoPackageDone(result: any) {
@@ -418,30 +441,23 @@ export const methods: Record<string, (...args: any[]) => any> = {
     outputTemplate?: string,
     templateVariables?: Record<string, string>,
   ) {
-    const { resolve } = require('path');
-    const projectRoot = Editor.Project.path || '';
-    const absBuildDir  = resolve(projectRoot, buildDir);
-    const absOutputDir = resolve(projectRoot, outputDir);
-    // The panel sends store/orientation but NOT loaderMode/legacyLoaderNetworks
-    // (not UI-exposed — settings.json only). Backfill them from saved settings
-    // so the loader-engine rollback path actually reaches the packager. Explicit
-    // config keys (store/orientation, or a caller that does pass loaderMode) win.
+    // Same request builder as auto-package (hooks.onAfterBuild). The panel knows
+    // the checked networks and the orientation radio; everything else — output
+    // dir, loader mode, encodings, splash, output template, Moloco metadata —
+    // comes from settings once, so the two entry points cannot drift again.
     const settings = await getProjectSettings();
-    const fullConfig = { ...toPackageConfig(settings), ...config };
-    // Moloco launcher metadata from project settings (Deploy tab → Moloco CDN
-    // card). Explicit caller-passed templateVariables win over settings.
-    const fullTemplateVariables: Record<string, string> = {
-      ...(settings.molocoAssetProvider ? { assetProvider: settings.molocoAssetProvider } : {}),
-      ...(settings.molocoAssetTitle ? { assetTitle: settings.molocoAssetTitle } : {}),
-      ...templateVariables,
-    };
-    return packageForNetworks({
-      buildDir: absBuildDir,
-      outputDir: absOutputDir,
+    const request = buildPackageRequest({
+      settings,
+      projectRoot: Editor.Project.path || '',
+      buildDir,
       networks: networkIds,
-      config: fullConfig,
-      outputTemplate,
-      templateVariables: fullTemplateVariables,
+      config,
+      templateVariables,
+    });
+    return packageForNetworks({
+      ...request,
+      // A caller-supplied template still wins (panel edits it live, unsaved).
+      outputTemplate: outputTemplate || request.outputTemplate,
       onProgress: (_id, _status, _msg) => {
         // TODO: 'package-progress' message has no registered listener in the extension.
         // Panel does not handle this message type, so sending it is a no-op.

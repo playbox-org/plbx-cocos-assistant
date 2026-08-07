@@ -1,10 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { join } from 'path';
-import { statSync } from 'fs';
+import { statSync, existsSync } from 'fs';
 import { scanAssetsHybrid } from '../../../src/core/build-report/scanner';
 import type { QueryDependenciesFn } from '../../../src/core/build-report/dependency-resolver';
 
 const FIXTURE_BUILD = join(__dirname, '../../fixtures/roadside-build/web-mobile');
+
+// See build-scanner.test.ts: the real build fixture is gitignored, so this suite
+// skips rather than failing on a clean clone.
+const describeIfFixture = existsSync(FIXTURE_BUILD) ? describe : describe.skip;
 
 // Real file that exists on disk (required by scanAssets → statSync)
 const REAL_PNG = join(
@@ -12,7 +16,7 @@ const REAL_PNG = join(
   'assets/main/native/0d/0db0b555-969b-44fd-8b15-52f98db892ac.png',
 );
 
-describe('hybrid integration with real fixture', () => {
+describeIfFixture('hybrid integration with real fixture', () => {
   const projectAssets = [
     {
       uuid: '0db0b555-969b-44fd-8b15-52f98db892ac', // matches fixture native file
