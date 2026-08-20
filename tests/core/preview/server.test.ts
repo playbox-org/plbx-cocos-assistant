@@ -454,6 +454,39 @@ describe('Preview Server', () => {
     expect(rsrc![0]).toContain('luna-dock');
   });
 
+  // Both audio rows are advisory warns over markers the packager left in the
+  // <head>. They used to be dead ends: the hint (where the fix lives) rendered
+  // for 'fail' only, and hostile_mp3 had NO client feeder at all, so the row the
+  // server pushed sat 'pending' until the 30s sweep reddened it. A warn here
+  // means "WebKit is the only decoder that can settle this", so both hints must
+  // open with the device-validation call to action.
+  it('gives both iOS audio-risk rows a call to action the panel can render', async () => {
+    mkdirSync(join(TMP, 'applovin'), { recursive: true });
+    writeFileSync(join(TMP, 'applovin', 'index.html'),
+      '<html><head><!-- plbx-risky-audio: assets/sfx/hit.ogg -->' +
+      '<!-- plbx-hostile-mp3: assets/sfx/tap.mp3 --></head><body></body></html>');
+
+    const { url } = await startPreviewServer({ outputDir: TMP, networks: ['applovin'] });
+    const data = JSON.parse((await httpGet(url + '/api/networks')).body);
+    const net = data[0];
+
+    expect(net.riskyAudio).toEqual(['assets/sfx/hit.ogg']);
+    expect(net.hostileMp3).toEqual(['assets/sfx/tap.mp3']);
+
+    const byId = Object.fromEntries(
+      net.checks.map((c: { id: string; hint: string }) => [c.id, c.hint]));
+    // KEEP IN SYNC with the kit's IOS_AUDIO_RISK_CTA (validate-artifact.ts).
+    const CTA = 'MUST be validated on a real iOS device in Safari, or fixed';
+    expect(byId['risky_audio']).toContain(CTA);
+    expect(byId['hostile_mp3']).toContain(CTA);
+
+    const js = await httpGet(url + '/static/preview/preview.js');
+    // the hint is what carries the CTA, so warns must render it too
+    expect(js.body).toContain("if ((c.status === 'fail' || c.status === 'warn') && def.hint)");
+    // and hostile_mp3 needs a feeder, or the sweep fails a row nothing can pass
+    expect(js.body).toContain("setCheck('hostile_mp3', 'warn'");
+  });
+
   it('should stop server cleanly', async () => {
     mkdirSync(join(TMP, 'applovin'), { recursive: true });
     writeFileSync(join(TMP, 'applovin', 'index.html'), '<html><head></head><body></body></html>');

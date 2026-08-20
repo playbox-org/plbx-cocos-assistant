@@ -21,6 +21,19 @@ import {
   detectRegionalParams,
 } from '@playbox-ai/playable-kit';
 
+/**
+ * Call to action prefixed to both iOS/WebKit audio-risk hints.
+ *
+ * KEEP IN SYNC with `IOS_AUDIO_RISK_CTA` in the kit
+ * (`src/validation/validate-artifact.ts`), which prefixes the same sentence to
+ * the matching rows of the Validate report — the two surfaces judge the same
+ * markers and must not give different instructions. Mirrored rather than
+ * imported so this file keeps building against the current pin; switch to the
+ * kit export once the extension pins a kit that exports it (>= 0.3.9).
+ */
+const IOS_AUDIO_RISK_CTA =
+  'MUST be validated on a real iOS device in Safari, or fixed (re-encode the flagged files).';
+
 let _server: http.Server | null = null;
 let _port = 0;
 // Output-naming context from the active preview session, so findBuildFile can
@@ -615,7 +628,7 @@ export async function startPreviewServer(options: {
                 checks.push({
                   id: 'risky_audio',
                   label: 'No iOS-risky audio (ogg/opus/webm)',
-                  hint: 'Safari/iOS WebAudio decodeAudioData can\'t decode ogg/opus/webm on older / in-app WebViews — the playable may not open. Re-encode these to mp3/m4a in Cocos import settings.',
+                  hint: IOS_AUDIO_RISK_CTA + ' Safari/iOS WebAudio decodeAudioData can\'t decode ogg/opus/webm on older / in-app WebViews — the playable may not open. Re-encode these to mp3/m4a in Cocos import settings.',
                 });
               }
               // WebKit-hostile MP3 (ultra-short VBR/Xing) — advisory warn (heuristic).
@@ -624,7 +637,7 @@ export async function startPreviewServer(options: {
                 checks.push({
                   id: 'hostile_mp3',
                   label: 'No WebKit-hostile MP3 (ultra-short VBR)',
-                  hint: 'Safari/iOS WebAudio decodeAudioData can reject ultra-short VBR/Xing MP3s (written by some LAME encoders) even though Chrome/ffmpeg decode them — one bad clip can hang the playable. Re-encode to plain CBR (e.g. ffmpeg -c:a libmp3lame -write_xing 0).',
+                  hint: IOS_AUDIO_RISK_CTA + ' Safari/iOS WebAudio decodeAudioData can reject ultra-short VBR/Xing MP3s (written by some LAME encoders) even though Chrome/ffmpeg decode them — one bad clip can hang the playable. Re-encode to plain CBR (e.g. ffmpeg -c:a libmp3lame -write_xing 0).',
                 });
               }
               // Forbidden literals ('mraid.js') — non-MRAID upload validators
