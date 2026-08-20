@@ -191,8 +191,11 @@
         infoDiv.appendChild(detailDiv);
       }
 
-      // Show hint for failed checks
-      if (c.status === 'fail' && def.hint) {
+      // Show the hint for anything that is not passing. Warnings used to hide
+      // it, which left the two iOS audio rows as a red-flag label plus a file
+      // list and no instruction — the hint is where the "validate on a device
+      // in Safari or re-encode" call to action lives.
+      if ((c.status === 'fail' || c.status === 'warn') && def.hint) {
         var hintDiv = document.createElement('div');
         hintDiv.className = 'check-hint';
         hintDiv.textContent = def.hint;
@@ -1097,6 +1100,14 @@
     // when the packager flagged files, so this is always a warn when shown.
     if (net && net.riskyAudio && net.riskyAudio.length) {
       setCheck('risky_audio', 'warn', net.riskyAudio.join(', ') + ' — re-encode to mp3/m4a');
+    }
+
+    // WebKit-hostile MP3 (ultra-short VBR/Xing) — same deal. Without this feeder
+    // the row the server pushed stayed 'pending' and the 30s sweep flipped it to
+    // a red "Not detected within 30s", turning an advisory heuristic into a
+    // phantom failure.
+    if (net && net.hostileMp3 && net.hostileMp3.length) {
+      setCheck('hostile_mp3', 'warn', net.hostileMp3.join(', ') + ' — re-encode to plain CBR');
     }
 
     // Static loader-health fingerprint — pass/fail is known at fetch time.
