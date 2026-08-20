@@ -1105,6 +1105,7 @@ const PLBX_ADAPTER_TEMPLATE = `/**
  *   plbx.game_end();       // notify ad network that gameplay ended
  *   plbx.is_audio();       // check if audio is allowed
  *   plbx.expose(name, fn); // register a command external callers can trigger
+ *   plbx.log_event(name);  // custom analytics event (Luna)
  *
  * --- Wire these calls into your Cocos game lifecycle ---
  *
@@ -1113,6 +1114,10 @@ const PLBX_ADAPTER_TEMPLATE = `/**
  *   3. CTA button onClick:         plbx.download();
  *   4. level finished:             plbx.game_end();
  *   5. before audio init:          if (plbx.is_muted()) ctx.suspend();
+ *
+ * On Luna (Unity Playworks) the standard events (impression, engagement,
+ * click) are injected by Luna itself; only custom events are yours, through
+ * plbx.log_event(). Luna caps them at 256 per session / 32 per unique name.
  *
  * Without these calls, network validators (Moloco V2, Mintegral PlayTurbo,
  * etc.) will not detect lifecycle beacons and may flag the creative.
@@ -1193,6 +1198,26 @@ export class plbx_html_playable {
         if (window.plbx_html && plbx_html.report) { plbx_html.report(eventKey); }
         //@ts-ignore
         else if (window.super_html && super_html.report) { super_html.report(eventKey); }
+    }
+
+    /**
+     * Custom analytics event. On Luna (Unity Playworks) this reaches
+     * window.pi.logCustomEvent(name, value); the packager defaults the value to
+     * 1, queues calls made before Luna's SDK exists, and never throws. No-op on
+     * networks without a custom-event channel.
+     *
+     * Which events to fire is the game's decision. Luna's limits are hard:
+     * 256 events per session and 32 per unique name, names must be non-empty
+     * and whitespace-free, and nothing should be logged before startGame().
+     *
+     *   plbx.log_event('level_1_complete');
+     *   plbx.log_event('playtime_10s', 1);
+     */
+    log_event(name: string, value?: number) {
+        //@ts-ignore
+        if (window.plbx_html && plbx_html.log_event) { plbx_html.log_event(name, value); }
+        //@ts-ignore
+        else if (window.super_html && super_html.log_event) { super_html.log_event(name, value); }
     }
 
     is_audio(): boolean {
