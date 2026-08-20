@@ -8,7 +8,7 @@
 <body>
   <div class="network-tabs" id="tabs"></div>
   <div class="main">
-    <div class="sidebar sidebar-left" id="axon-sidebar" style="display:none;">
+    <div class="sidebar sidebar-left" id="left-sidebar" style="display:none;">
       <div id="axon-section">
         <h3 class="axon-title">Axon Events
           <a class="axon-spec-link" href="https://support.axon.ai/en/growth/promoting-your-apps/creatives/playable-analytics-integration" target="_blank" rel="noopener" title="AppLovin Axon event spec">spec ↗</a>
@@ -16,6 +16,14 @@
         <div id="axon-verdicts"></div>
         <div id="axon-events"></div>
         <div id="axon-empty" class="axon-empty">No trackEvent() fired yet</div>
+      </div>
+      <div id="luna-section" style="display:none;">
+        <h3 class="luna-title">Luna Events
+          <a class="axon-spec-link" href="https://docs.lunalabs.io/docs/playable/playable-setup/analytics/custom-events" target="_blank" rel="noopener" title="Luna custom + standard event spec">spec ↗</a>
+        </h3>
+        <div id="luna-verdicts"></div>
+        <div id="luna-events"></div>
+        <div id="luna-empty" class="axon-empty">No Luna events fired yet</div>
       </div>
     </div>
     <div class="preview-area" id="preview-area">
@@ -95,6 +103,26 @@
         <button class="mv2-btn" data-mv2-action="mute" type="button">Mute</button>
         <button class="mv2-btn" data-mv2-action="unmute" type="button">Unmute</button>
         <button class="mv2-btn mv2-btn-reset" id="mv2-reset" type="button">Reset</button>
+      </div>
+    </div>
+  </div>
+  <div id="luna-dock" class="mv2-dock luna-dock" style="display:none;">
+    <div class="mv2-dock-header">
+      <span class="mv2-dock-title">Luna triggers</span>
+      <button id="luna-dock-toggle" class="mv2-dock-toggle" type="button" title="Collapse">–</button>
+    </div>
+    <div class="mv2-dock-body">
+      <div class="mv2-controls-row">
+        <button class="mv2-btn" data-luna-action="build" type="button">Build</button>
+        <button class="mv2-btn" data-luna-action="start-game" type="button">Start game</button>
+        <button class="mv2-btn" data-luna-action="pause" type="button">Pause</button>
+        <button class="mv2-btn" data-luna-action="resume" type="button">Resume</button>
+      </div>
+      <div class="mv2-controls-row">
+        <button class="mv2-btn" data-luna-action="mute" type="button">Mute</button>
+        <button class="mv2-btn" data-luna-action="unmute" type="button">Unmute</button>
+        <button class="mv2-btn" data-luna-action="game-end" type="button">End game</button>
+        <button class="mv2-btn" data-luna-action="cta" type="button">CTA</button>
       </div>
     </div>
   </div>

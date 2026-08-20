@@ -349,8 +349,10 @@ body {
   border-right: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* When the Axon title heads its own column it doesn't need the section divider. */
-.sidebar-left .axon-title {
+/* A panel title heading its own column doesn't need the section divider it wears
+   when it sits below the checklist. */
+.sidebar-left .axon-title,
+.sidebar-left .luna-title {
   margin-top: 0;
   padding-top: 0;
   border-top: none;
@@ -764,3 +766,56 @@ h3 {
   user-select: text;
   -webkit-user-select: text;
 }
+
+/* ========== LUNA EVENTS ========== */
+/* Rows reuse the Axon vocabulary (.axon-event / .axon-verdict) — same shape,
+   same states; only the Luna-specific chrome lives here. */
+.luna-title {
+  margin-top: 1rem;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  color: #a78bfa;
+}
+
+.luna-group {
+  margin-top: 10px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.luna-event.fired .name,
+.luna-event.fired .count {
+  color: #a78bfa;
+}
+
+/* Over a cap / invalid name / missing value — red, like a non-spec Axon event. */
+.luna-event.invalid.fired .name,
+.luna-event.invalid.fired .count {
+  color: #f87171;
+}
+
+.luna-verdict.aggregate {
+  border-bottom-color: rgba(167, 139, 250, 0.35);
+}
+
+.luna-total {
+  margin-top: 8px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  font-variant-numeric: tabular-nums;
+}
+
+.luna-total.over { color: #f87171; }
+
+/* Same top-left slot as the MolocoV2 dock (the networks are mutually
+   exclusive), in Luna's colour. */
+/* The dock floats at left:1rem, which is empty space for MolocoV2 but the Luna
+   events column for us — shift it clear of the 320px sidebar so it never covers
+   the panel it drives. */
+.luna-dock {
+  border-color: rgba(167, 139, 250, 0.45);
+  left: calc(320px + 1rem);
+}
+.luna-dock .mv2-dock-title { color: #a78bfa; }
