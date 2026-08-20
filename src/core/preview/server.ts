@@ -27,9 +27,12 @@ import {
  * KEEP IN SYNC with `IOS_AUDIO_RISK_CTA` in the kit
  * (`src/validation/validate-artifact.ts`), which prefixes the same sentence to
  * the matching rows of the Validate report — the two surfaces judge the same
- * markers and must not give different instructions. Mirrored rather than
- * imported so this file keeps building against the current pin; switch to the
- * kit export once the extension pins a kit that exports it (>= 0.3.9).
+ * markers and must not give different instructions.
+ *
+ * Not imported from the kit despite the export existing: the kit's copy ends
+ * "re-encode the files below" because there the file list follows the CTA in
+ * one `details` string, while the panel renders the file list ABOVE the hint.
+ * Same instruction, different pointer — only the closing clause may differ.
  */
 const IOS_AUDIO_RISK_CTA =
   'MUST be validated on a real iOS device in Safari, or fixed (re-encode the flagged files).';
