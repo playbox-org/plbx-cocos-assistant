@@ -94,6 +94,25 @@ export function toPackageConfig(s: ProjectSettings): PackageConfig {
   };
 }
 
+/**
+ * Legacy boolean `showSplash` → `splashMode` (pre-dropdown settings).
+ *
+ * Returns undefined when there is nothing to migrate, so the caller keeps
+ * DEFAULT_SETTINGS. The guard matters: this used to run for ANY saved profile
+ * without `splashMode`, and its fall-through is 'playbox' — so a profile written
+ * after v0.5.6 (splash default OFF) that simply never stored the key came back
+ * with the splash ON, against the shipped default. Only a profile that actually
+ * carries one of the old keys expresses a legacy choice worth preserving.
+ */
+export function resolveSplashMode(
+  saved: any,
+): ProjectSettings['splashMode'] | undefined {
+  if (!saved || saved.splashMode !== undefined) return undefined;
+  if (saved.showSplash === undefined && !saved.customSplashLogo) return undefined;
+  if (saved.showSplash === false) return 'none';
+  return saved.customSplashLogo ? 'custom' : 'playbox';
+}
+
 /** Get project-scoped settings */
 export async function getProjectSettings(): Promise<ProjectSettings> {
   try {
@@ -101,11 +120,8 @@ export async function getProjectSettings(): Promise<ProjectSettings> {
     const rawName = sanitizeProjectName(saved?.projectName);
     const projectName = rawName || getDefaultProjectName();
     const merged = { ...DEFAULT_SETTINGS, ...saved, projectName };
-    // Migrate legacy boolean showSplash → splashMode (pre-dropdown settings).
-    if (saved && saved.splashMode === undefined) {
-      merged.splashMode = saved.showSplash === false ? 'none'
-        : saved.customSplashLogo ? 'custom' : 'playbox';
-    }
+    const migratedSplash = resolveSplashMode(saved);
+    if (migratedSplash) merged.splashMode = migratedSplash;
     return merged;
   } catch {
     return { ...DEFAULT_SETTINGS, projectName: getDefaultProjectName() };
