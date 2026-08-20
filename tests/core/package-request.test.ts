@@ -2,7 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { buildPackageRequest } from '../../src/core/package-request';
 import { DEFAULT_SETTINGS } from '../../src/core/settings';
 
-const ROOT = 'D:/PBGame/HighCore-C2';
+// Platform-native root. `resolve()` only treats 'D:/…' as absolute on Windows;
+// on macOS/Linux (and CI) it is a relative segment, so the whole drive path got
+// glued onto the cwd and every path assertion here failed. The Windows shape is
+// what the bug this file guards actually came from, so keep it where it is real
+// and use a POSIX root elsewhere.
+const ROOT = process.platform === 'win32'
+  ? 'D:/PBGame/HighCore-C2'
+  : '/PBGame/HighCore-C2';
 
 const settings = {
   ...DEFAULT_SETTINGS,
