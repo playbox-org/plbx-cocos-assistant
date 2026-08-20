@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_SETTINGS, toPackageConfig } from '../../src/core/settings';
+import { DEFAULT_SETTINGS, toPackageConfig, resolveSplashMode } from '../../src/core/settings';
 
 describe('loader mode settings', () => {
   it('defaults loaderMode to self-contained', () => {
@@ -70,5 +70,30 @@ describe('custom splash logo scale', () => {
       });
       expect(config.splashLogoScale, splashMode).toBeUndefined();
     }
+  });
+});
+
+describe('legacy splash migration', () => {
+  // v0.5.6 made the loading splash default OFF. The migration that maps the old
+  // boolean showSplash onto splashMode fired for ANY saved profile missing
+  // splashMode — including profiles written after v0.5.6 that simply never
+  // stored the key — and its else-branch is 'playbox', so those projects came
+  // up with the splash ON against the shipped default.
+  it('does not migrate a profile that carries no legacy splash keys', () => {
+    expect(resolveSplashMode({ selectedNetworks: ['luna'] })).toBeUndefined();
+    expect(resolveSplashMode({})).toBeUndefined();
+  });
+
+  it('preserves an explicit legacy choice', () => {
+    expect(resolveSplashMode({ showSplash: false })).toBe('none');
+    expect(resolveSplashMode({ showSplash: true })).toBe('playbox');
+    expect(resolveSplashMode({ customSplashLogo: '/tmp/logo.png' })).toBe('custom');
+    // an explicit opt-out wins over a leftover logo path
+    expect(resolveSplashMode({ showSplash: false, customSplashLogo: '/tmp/logo.png' })).toBe('none');
+  });
+
+  it('leaves an already-migrated profile alone', () => {
+    expect(resolveSplashMode({ splashMode: 'none', showSplash: true })).toBeUndefined();
+    expect(resolveSplashMode(undefined)).toBeUndefined();
   });
 });
