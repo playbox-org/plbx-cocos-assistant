@@ -16,6 +16,8 @@ import {
   validateLauncher,
   LauncherCheck,
   AXON_EVENTS,
+  LUNA_STANDARD_EVENTS,
+  LUNA_EVENT_CAPS,
   detectRegionalParams,
 } from '@playbox-ai/playable-kit';
 
@@ -119,6 +121,10 @@ export async function extractHtmlFromZip(zipPath: string): Promise<string> {
   const zipBase = basename(zipPath, extname(zipPath));
   const htmlFile =
     zip.file('index.html') ||
+    // Luna's archive contract names the entry source.html (index.html is absent),
+    // and the manifests beside it are .json — without this the search fell through
+    // to "first root-level .html", which is readdir-order dependent.
+    zip.file('source.html') ||
     zip.file(`${zipBase}.html`) ||
     zip.file(/^[^/]+\.html$/i)[0] ||
     zip.file(/\.html$/i)[0];
@@ -650,6 +656,13 @@ export async function startPreviewServer(options: {
                 // Canonical Axon event spec — the client renders these as the
                 // expected set and checks runtime-fired events against them.
                 axonEvents: id === 'applovin' ? AXON_EVENTS : null,
+                // Luna's standard-event names + its analytics caps. The preview
+                // panel renders the standard set as the expected group and checks
+                // runtime-fired custom events against the caps (32 per unique name,
+                // 256 per session) — both live in the kit so the panel's mirrored
+                // copy of the rules cannot drift from the packaged validator.
+                lunaEvents: id === 'luna' ? LUNA_STANDARD_EVENTS : null,
+                lunaCaps: id === 'luna' ? LUNA_EVENT_CAPS : null,
                 validatorUrl: VALIDATOR_URLS[id] || null,
               };
             }),

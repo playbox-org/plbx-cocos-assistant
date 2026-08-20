@@ -79,6 +79,13 @@
   var axonSequence = [];   // ordered fire log (with repeats) for spec validation
   var axonTimestamps = []; // ms timestamps aligned to axonSequence (CHALLENGE_* spacing)
   var currentValidatorUrl = null;
+  // Luna (Unity Playworks) state
+  var lunaEvents = {};           // { name: { count, kind, beforeStart, valueOk } }
+  var lunaOrder = [];            // first-seen order of analytics event names
+  var lunaTotal = 0;             // events this session (Luna's per-session cap)
+  var lunaLifecycle = {};        // { luna:pause: count } — container events, NOT analytics
+  var lunaLifecycleOrder = [];
+  var lunaCtaViaInstall = null;  // null = no CTA yet
   // MolocoV2 state
   var isMolocoV2 = false;
   var macroFires = {};           // { macroKey: { count, lastTs, lastUrl } }
@@ -356,19 +363,25 @@
     });
   }
 
+  // The left column hosts the per-network analytics panels — Axon for AppLovin,
+  // Luna for Luna. They are mutually exclusive (one network is previewed at a
+  // time), so the column itself is shown whenever either owns it and each
+  // section hides independently. Every other network gets no left column at all.
+  function updateLeftSidebar() {
+    var sidebar = document.getElementById('left-sidebar');
+    var axonSection = document.getElementById('axon-section');
+    if (sidebar) sidebar.style.display = (isAxonNetwork || isLunaNetwork) ? '' : 'none';
+    if (axonSection) axonSection.style.display = isAxonNetwork ? '' : 'none';
+  }
+
   function renderAxonEvents() {
-    var sidebar = document.getElementById('axon-sidebar');
     var container = document.getElementById('axon-events');
     var emptyMsg = document.getElementById('axon-empty');
     if (!container) return;
 
-    // Left sidebar only shown for AppLovin (Axon is AppLovin-specific).
-    if (!isAxonNetwork) {
-      if (sidebar) sidebar.style.display = 'none';
-      return;
-    }
+    updateLeftSidebar();
 
-    if (sidebar) sidebar.style.display = '';
+    if (!isAxonNetwork) return;
     renderAxonVerdicts();
     while (container.firstChild) container.removeChild(container.firstChild);
 
@@ -411,6 +424,381 @@
     });
   }
 
+  // ========== LUNA EVENTS ==========
+  var isLunaNetwork = false;
+
+  // Luna injects the standard events at export time, so the preview mock
+  // simulates them locally — the panel validates their PRECONDITIONS, not
+  // Luna's own delivery. Both lists are defaults: /api/networks overrides them
+  // from the kit (LUNA_STANDARD_EVENTS / LUNA_EVENT_CAPS) when it carries them.
+  var LUNA_STANDARD_EVENTS = [
+    'adLoading', 'adReady', 'adStarting', 'adImpression', 'adEngagement', 'adClick',
+  ];
+  var LUNA_CAPS = { perSession: 256, perName: 32 };
+
+  var LUNA_GROUPS = [
+    { kind: 'standard', label: 'Standard (simulated)' },
+    { kind: 'lifecycle', label: 'Lifecycle' },
+    { kind: 'custom', label: 'Custom' },
+  ];
+
+  var LUNA_HINTS = {
+    all_conformant: 'Every Luna event fired within the per-name and per-session caps, after startGame(), with a valid name and an integer value.',
+    caps_per_name: 'Luna drops an event name after 32 fires in one session. Aggregate or throttle the call site — the dropped fires never reach Insights.',
+    caps_session: 'Luna drops everything past 256 events in one session. The budget belongs to the custom events your game logs — Luna’s own standard events are not charged to it.',
+    events_before_start: 'Luna’s docs: avoid logging any event during the initialisation phase. Fire analytics only after startGame() has run.',
+    name_valid: 'Event names must be non-empty and whitespace-free — Luna keys the Insights funnel on the literal name.',
+    value_int: 'Luna requires an integer value for every string-named event; a missing value is a silent drop on their side (plbx_html.log_event defaults it to 1).',
+    cta_via_install: 'Route every CTA through Luna.Unity.Playable.InstallFullGame() — Luna’s standard Ad Click event fires from there and nowhere else.',
+  };
+
+  // Luna keys Insights on the literal name — non-empty and whitespace-free.
+  function lunaNameValid(name) {
+    return !!name && !/\s/.test(name);
+  }
+
+  // Luna's "avoid logging any event during the initialisation phase" advice is
+  // about the CUSTOM events the creative authors. adLoading/adReady/adStarting
+  // are Luna's OWN events and fire before startGame() by design — the mock
+  // simulates them at exactly those moments — so scanning every event for
+  // beforeStart failed this row on every conforming Luna build.
+  function lunaEarlyEvents(order, events) {
+    return order.filter(function(n) {
+      var e = events[n];
+      return !!e && !!e.beforeStart && e.kind !== 'standard';
+    });
+  }
+
+  // Session budget = custom events only. Luna's 256-per-session cap is spent by
+  // the events the game logs; the six standard ones are Luna's own and only
+  // exist locally because the mock simulates them. The mock carries the
+  // authoritative counter (already custom-only) — this is the fallback tally.
+  function lunaNextTotal(prev, data) {
+    if (typeof data.total === 'number') return data.total;
+    return data.kind === 'standard' ? prev : prev + 1;
+  }
+
+  // The network checklist's `luna_events` row is fed from these verdicts: green
+  // when no error-level check failed, warn on a warn-level failure only. Without
+  // it the row stayed 'pending' and the 30s sweep failed it on a good build.
+  //
+  // It reduces the EVENT rules only. `cta_via_install` is about CTA routing and
+  // already owns the `cta` row; `all_conformant` is the aggregate derived from
+  // the rest. Folding either in made a single bad CTA paint two red rows, one
+  // of them labelled "Analytics events within Luna caps" — a row lying about
+  // what it measures. Kept self-contained: server.test.ts evaluates this
+  // function standalone out of the served file.
+  function lunaEventsRowStatus(checks) {
+    var events = checks.filter(function(c) {
+      return c.id !== 'all_conformant' && c.id !== 'cta_via_install';
+    });
+    if (events.length === 0) return 'pending';
+    var failures = events.filter(function(c) { return c.ok === false; });
+    if (failures.length === 0) {
+      return events.some(function(c) { return c.status === 'pending'; }) ? 'pending' : 'pass';
+    }
+    return failures.some(function(c) { return c.level === 'error'; }) ? 'fail' : 'warn';
+  }
+
+  // Detail text for that row, from the same event-only slice — the aggregate's
+  // detail lists every failure INCLUDING the CTA row's label, which would leak
+  // the CTA violation back into the analytics row's text.
+  function lunaEventsRowDetail(checks) {
+    var failed = checks.filter(function(c) {
+      return c.ok === false && c.id !== 'all_conformant' && c.id !== 'cta_via_install';
+    });
+    return failed.map(function(c) { return c.label; }).join('; ') || 'Luna spec issue';
+  }
+
+  // The mock reports "startGame() was never defined" once its own retry window
+  // elapsed — the only signal the panel gets about Luna's boot gate.
+  function lunaStartGameDead(message) {
+    return typeof message === 'string' && message.indexOf('startGame() was never defined') !== -1;
+  }
+
+  // ...but that report is the HOST's give-up, not proof the creative is broken:
+  // the mock polls for a fixed window and then stops forever, and because it
+  // defines window.Luna the creative's own self-start fallback is disabled. On a
+  // slow unpack the preview therefore fails the row AND never boots. Say who
+  // gave up, and name the control that still starts it. Kept self-contained:
+  // server.test.ts evaluates this function standalone out of the served file.
+  function lunaStartGameGiveUpDetail(message) {
+    var waited = typeof message === 'string' ? message.match(/waited\s*([0-9]+\s*m?s)/) : null;
+    return 'preview host gave up waiting for startGame()' +
+      (waited ? ' after ' + waited[1] : '') +
+      ' — the creative may still be unpacking. Boot it with “Start game” in the Luna triggers dock.';
+  }
+
+  // The recovery the operator actually has: surface the dock, expand it, and
+  // flag its start-game button. Cleared as soon as a startGame does land.
+  function markLunaStartGameRecovery(needed) {
+    var dock = document.getElementById('luna-dock');
+    if (dock && needed) {
+      dock.style.display = '';
+      dock.classList.remove('collapsed');
+      var toggle = document.getElementById('luna-dock-toggle');
+      if (toggle) { toggle.textContent = '–'; toggle.title = 'Collapse'; }
+    }
+    var btn = document.querySelector('[data-luna-action="start-game"]');
+    if (btn) {
+      btn.style.outline = needed ? '2px solid #f5a623' : '';
+      btn.title = needed
+        ? 'The preview host stopped polling for startGame() — click to boot the creative now'
+        : '';
+    }
+    if (needed) log('startGame() poll gave up — click “Start game” in the Luna triggers dock to boot the creative', 'error');
+  }
+
+  // Mirrors validateLunaEvents() in playable-kit/src/validation/luna-events.ts
+  // (the unit-tested authority) — KEEP IN SYNC. The two static-only rows of the
+  // kit validator (no_sdk_redefine, dynamic_names) have no runtime signal and
+  // are deliberately absent here, exactly as computeAxonChecks() omits Axon's
+  // redefinition row.
+  function computeLunaChecks() {
+    // Before anything fires: a pending checklist so the user sees what's checked.
+    if (lunaOrder.length === 0) {
+      return [
+        { id: 'all_conformant', label: 'Waiting for events…', status: 'pending', hint: LUNA_HINTS.all_conformant },
+        { id: 'caps_per_name', label: 'No name over ' + LUNA_CAPS.perName + ' fires', status: 'pending', hint: LUNA_HINTS.caps_per_name },
+        { id: 'caps_session', label: '≤' + LUNA_CAPS.perSession + ' custom events this session', status: 'pending', hint: LUNA_HINTS.caps_session },
+        { id: 'events_before_start', label: 'No events before startGame()', status: 'pending', hint: LUNA_HINTS.events_before_start },
+        { id: 'name_valid', label: 'Valid event names', status: 'pending', hint: LUNA_HINTS.name_valid },
+        { id: 'value_int', label: 'Integer value per event', status: 'pending', hint: LUNA_HINTS.value_int },
+        { id: 'cta_via_install', label: 'CTA via InstallFullGame()', status: 'pending', hint: LUNA_HINTS.cta_via_install },
+      ];
+    }
+
+    var checks = [];
+    var over = [];
+    var early = [];
+    var invalid = [];
+    var noValue = [];
+    lunaOrder.forEach(function(name) {
+      var e = lunaEvents[name];
+      if (e.count > LUNA_CAPS.perName) over.push(name + '×' + e.count);
+      if (!lunaNameValid(name)) invalid.push(name || '(empty)');
+      if (e.valueOk === false) noValue.push(name);
+    });
+    early = lunaEarlyEvents(lunaOrder, lunaEvents);
+
+    checks.push({ id: 'caps_per_name', label: 'No name over ' + LUNA_CAPS.perName + ' fires', ok: over.length === 0, level: 'error',
+      detail: 'over Luna’s per-name cap — ' + over.join(', '), hint: LUNA_HINTS.caps_per_name });
+
+    checks.push({ id: 'caps_session', label: '≤' + LUNA_CAPS.perSession + ' custom events this session', ok: lunaTotal <= LUNA_CAPS.perSession, level: 'error',
+      detail: lunaTotal + ' custom events fired — everything past ' + LUNA_CAPS.perSession + ' is dropped', hint: LUNA_HINTS.caps_session });
+
+    checks.push({ id: 'events_before_start', label: 'No events before startGame()', ok: early.length === 0, level: 'warn',
+      detail: 'fired during initialisation — ' + early.join(', '), hint: LUNA_HINTS.events_before_start });
+
+    checks.push({ id: 'name_valid', label: 'Valid event names', ok: invalid.length === 0, level: 'error',
+      detail: 'empty or whitespace-bearing — ' + invalid.join(', '), hint: LUNA_HINTS.name_valid });
+
+    checks.push({ id: 'value_int', label: 'Integer value per event', ok: noValue.length === 0, level: 'warn',
+      detail: 'no integer value passed — ' + noValue.join(', '), hint: LUNA_HINTS.value_int });
+
+    // Runtime-only signal: emitted once a CTA has actually been clicked.
+    if (lunaCtaViaInstall !== null) {
+      checks.push({ id: 'cta_via_install', label: 'CTA via InstallFullGame()', ok: lunaCtaViaInstall, level: 'error',
+        detail: 'CTA bypassed Luna — the standard Ad Click event never fires', hint: LUNA_HINTS.cta_via_install });
+    }
+
+    var failures = checks.filter(function(c) { return !c.ok; });
+    checks.unshift({ id: 'all_conformant',
+      label: failures.length === 0 ? 'All events conform to spec' : (failures.length + ' spec issue(s)'),
+      ok: failures.length === 0,
+      level: failures.some(function(c) { return c.level === 'error'; }) ? 'error' : 'warn',
+      detail: failures.map(function(c) { return c.label; }).join('; '),
+      hint: LUNA_HINTS.all_conformant });
+    return checks;
+  }
+
+  // Same status mapping as the Axon verdicts.
+  function lunaCheckStatus(check) {
+    if (check.status) return check.status; // explicit (pending)
+    if (check.ok) return 'pass';
+    return check.level === 'error' ? 'fail' : 'warn';
+  }
+
+  function renderLunaVerdicts() {
+    var container = document.getElementById('luna-verdicts');
+    if (!container) return;
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    var lunaChecks = computeLunaChecks();
+
+    // The `luna_events` checklist row comes from getNetworkChecks('luna') and
+    // has no beacon of its own — these verdicts ARE its signal. Left unfed it
+    // sat 'pending' until the 30s sweep flipped it to "Not detected within 30s"
+    // on a perfectly conforming build.
+    var rowStatus = lunaEventsRowStatus(lunaChecks);
+    if (rowStatus !== 'pending') {
+      setCheck('luna_events', rowStatus,
+        rowStatus === 'pass' ? 'All events within Luna caps' : lunaEventsRowDetail(lunaChecks));
+    }
+
+    lunaChecks.forEach(function(check) {
+      var status = lunaCheckStatus(check);
+      var div = document.createElement('div');
+      div.className = 'axon-verdict luna-verdict ' + status + (check.id === 'all_conformant' ? ' aggregate' : '');
+      if (check.hint) div.title = check.hint;
+      var icon = document.createElement('span');
+      icon.className = 'icon';
+      icon.textContent = status === 'pass' ? '✓' : status === 'fail' ? '✗' : status === 'pending' ? '·' : '!';
+      div.appendChild(icon);
+      var text = document.createElement('span');
+      text.className = 'text';
+      text.textContent = check.label;
+      if (status !== 'pass' && status !== 'pending' && check.detail) {
+        var d = document.createElement('span');
+        d.className = 'detail';
+        d.textContent = check.detail;
+        text.appendChild(d);
+      }
+      div.appendChild(text);
+      container.appendChild(div);
+    });
+  }
+
+  // Rows for one group. Standard events keep their spec order; custom ones stay
+  // in first-seen order. Lifecycle comes from its own map — container events are
+  // not analytics and must never count against the caps.
+  function lunaGroupRows(kind) {
+    var rows = [];
+    if (kind === 'lifecycle') {
+      lunaLifecycleOrder.forEach(function(name) {
+        rows.push({ name: name, count: lunaLifecycle[name], bad: false, title: '' });
+      });
+      return rows;
+    }
+    var names;
+    if (kind === 'standard') {
+      names = LUNA_STANDARD_EVENTS.filter(function(n) { return !!lunaEvents[n]; });
+      // A standard-kind event outside the known list still belongs here.
+      lunaOrder.forEach(function(n) {
+        if (lunaEvents[n].kind === 'standard' && names.indexOf(n) === -1) names.push(n);
+      });
+    } else {
+      names = lunaOrder.filter(function(n) { return lunaEvents[n].kind !== 'standard'; });
+    }
+    names.forEach(function(name) {
+      var e = lunaEvents[name];
+      var title = '';
+      if (e.count > LUNA_CAPS.perName) title = LUNA_HINTS.caps_per_name;
+      else if (!lunaNameValid(name)) title = LUNA_HINTS.name_valid;
+      else if (e.valueOk === false) title = LUNA_HINTS.value_int;
+      rows.push({ name: name, count: e.count, bad: !!title, title: title });
+    });
+    return rows;
+  }
+
+  function buildLunaRow(row) {
+    var div = document.createElement('div');
+    div.className = 'axon-event luna-event fired' + (row.bad ? ' invalid' : '');
+    if (row.title) div.title = row.title;
+
+    var icon = document.createElement('span');
+    icon.className = 'icon';
+    icon.textContent = row.bad ? '⚠' : '⚡';
+    div.appendChild(icon);
+
+    var nameSpan = document.createElement('span');
+    nameSpan.className = 'name';
+    nameSpan.textContent = row.name;
+    div.appendChild(nameSpan);
+
+    var countSpan = document.createElement('span');
+    countSpan.className = 'count';
+    countSpan.textContent = '×' + row.count;
+    div.appendChild(countSpan);
+    return div;
+  }
+
+  function renderLunaEvents() {
+    var section = document.getElementById('luna-section');
+    var container = document.getElementById('luna-events');
+    var emptyMsg = document.getElementById('luna-empty');
+    if (!container) return;
+
+    // Luna-only panel — every other network hides it entirely.
+    if (section) section.style.display = isLunaNetwork ? '' : 'none';
+    updateLeftSidebar();
+    updateDockVisibility();
+    if (!isLunaNetwork) return;
+
+    renderLunaVerdicts();
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    var any = false;
+    LUNA_GROUPS.forEach(function(group) {
+      var rows = lunaGroupRows(group.kind);
+      if (rows.length === 0) return;
+      any = true;
+      var head = document.createElement('div');
+      head.className = 'luna-group';
+      head.textContent = group.label;
+      container.appendChild(head);
+      rows.forEach(function(row) { container.appendChild(buildLunaRow(row)); });
+    });
+
+    if (emptyMsg) emptyMsg.style.display = any ? 'none' : '';
+    if (!any) return;
+
+    // Session total — the per-session cap is the one no single row can show.
+    var totalDiv = document.createElement('div');
+    totalDiv.className = 'luna-total' + (lunaTotal > LUNA_CAPS.perSession ? ' over' : '');
+    totalDiv.textContent = lunaTotal + ' / ' + LUNA_CAPS.perSession + ' custom events this session';
+    container.appendChild(totalDiv);
+  }
+
+  function resetLunaState(id, net) {
+    lunaEvents = {};
+    lunaOrder = [];
+    lunaTotal = 0;
+    lunaLifecycle = {};
+    lunaLifecycleOrder = [];
+    lunaCtaViaInstall = null;
+    isLunaNetwork = (id === 'luna');
+    if (net && net.lunaEvents && net.lunaEvents.length) LUNA_STANDARD_EVENTS = net.lunaEvents.slice();
+    if (net && net.lunaCaps && net.lunaCaps.perName && net.lunaCaps.perSession) LUNA_CAPS = net.lunaCaps;
+    renderLunaEvents();
+  }
+
+  function recordLunaEvent(data) {
+    var name = data.name;
+    if (typeof name !== 'string') return;
+    if (!lunaEvents[name]) {
+      lunaEvents[name] = { count: 0, kind: data.kind || 'custom', beforeStart: false, valueOk: true };
+      lunaOrder.push(name);
+    }
+    var entry = lunaEvents[name];
+    // The mock carries authoritative counters; fall back to our own tally.
+    entry.count = typeof data.count === 'number' ? data.count : entry.count + 1;
+    if (data.beforeStart) entry.beforeStart = true;
+    if (data.valueOk === false) entry.valueOk = false;
+    lunaTotal = lunaNextTotal(lunaTotal, data);
+    log('Luna: ' + name + ' (×' + entry.count + ')', 'cta');
+    renderLunaEvents();
+  }
+
+  // Sticky-false. The kit's luna-events.ts cta_via_install reads "EVERY CTA went
+  // through InstallFullGame()", so one bypass fails the whole session — a later,
+  // correct CTA must NOT repaint the row green and hide the violation.
+  // `prev === null` (no CTA yet) keeps the row pending, as before.
+  function lunaCtaVerdict(prev, viaInstall) {
+    return prev === false ? false : viaInstall;
+  }
+
+  function recordLunaLifecycle(name) {
+    if (typeof name !== 'string' || !name) return;
+    if (!lunaLifecycle[name]) {
+      lunaLifecycle[name] = 0;
+      lunaLifecycleOrder.push(name);
+    }
+    lunaLifecycle[name]++;
+    log('Luna lifecycle: ' + name);
+    renderLunaEvents();
+  }
+
   // ========== MOLOCOV2 MACRO TRACKING ==========
   function resetMolocoV2State() {
     macroFires = {};
@@ -426,6 +814,10 @@
   function updateDockVisibility() {
     var mdock = document.getElementById('mv2-dock');
     if (mdock) mdock.style.display = isMolocoV2 ? '' : 'none';
+    // Luna trigger dock — same top-left slot as the MolocoV2 one; the two
+    // networks are mutually exclusive so they never overlap.
+    var ldock = document.getElementById('luna-dock');
+    if (ldock) ldock.style.display = isLunaNetwork ? '' : 'none';
     var cdock = document.getElementById('plbx-cmd-dock');
     if (cdock) {
       var hasCommands = false;
@@ -722,7 +1114,16 @@
     axonSequence = [];
     axonTimestamps = [];
     isAxonNetwork = (id === 'applovin');
+    // Set the Luna flag here too, not only inside resetLunaState below: both
+    // panels share one left column, so the first render must already know who
+    // owns it — otherwise a switch renders once against the previous network.
+    isLunaNetwork = (id === 'luna');
     renderAxonEvents();
+
+    // Luna Events: runtime-fired events (standard, lifecycle, custom) are
+    // checked client-side against Luna's caps + preconditions
+    // (computeLunaChecks). Reset per network switch.
+    resetLunaState(id, net);
 
     var frame = document.getElementById('preview-frame');
     frame.src = '/preview/' + id;
@@ -799,11 +1200,20 @@
       case 'game_ready': setCheck('game_ready', 'pass'); break;
       case 'game_start': setCheck('game_start', 'pass'); break;
       case 'cta':
+        // Luna's standard Ad Click fires from InstallFullGame() and nowhere
+        // else, so the CTA route itself is a Luna verdict row.
+        lunaCtaViaInstall = lunaCtaVerdict(lunaCtaViaInstall, data.method === 'luna_install');
+        renderLunaEvents();
         // Only the network's real CTA SDK method counts. A bare window.open()
         // (or any non-matching method) is NOT tracked by the real validator —
         // show it as a warning, not a green pass, so the preview tells the truth.
         if (data.correct === false) {
-          setCheck('cta', 'warn', (data.method || 'called') + " won't track — " + (data.expected || '?') + ' expected');
+          // Luna is stricter than the generic case: InstallFullGame() is the ONLY
+          // call that registers Luna's standard Ad Click, and Luna re-exports the
+          // creative to every network from that one signal — so a bypassed CTA is
+          // invisible everywhere downstream, not merely untracked here. Matches the
+          // error level the Luna verdict (cta_via_install) already assigns it.
+          setCheck('cta', isLunaNetwork ? 'fail' : 'warn', (data.method || 'called') + " won't track — " + (data.expected || '?') + ' expected');
           showCtaToast((data.method || 'CTA') + ' (won\'t track)', true);
         } else {
           setCheck('cta', 'pass', data.method || 'called');
@@ -812,7 +1222,16 @@
         break;
       case 'game_close': setCheck('game_close', 'pass'); break;
       case 'game_end': setCheck('game_end', 'pass'); break;
-      case 'error': setCheck('no_errors', 'fail', data.message || 'Exception detected'); break;
+      case 'error':
+        // Luna's boot gate: the mock waits out its own retry window before
+        // declaring startGame() undefined, and that report is the only signal
+        // the panel gets that the gate was never honoured.
+        if (lunaStartGameDead(data.message)) {
+          setCheck('start_game', 'fail', lunaStartGameGiveUpDetail(data.message));
+          markLunaStartGameRecovery(true);
+        }
+        setCheck('no_errors', 'fail', data.message || 'Exception detected');
+        break;
       case 'external_request': setCheck('no_external', 'fail', data.url || 'External request detected'); break;
       case 'axon_event':
         if (data.name) {
@@ -822,6 +1241,19 @@
           log('Axon: ' + data.name + ' (×' + axonFired[data.name] + ')', 'cta');
           renderAxonEvents();
         }
+        break;
+      case 'luna_event':
+        recordLunaEvent(data);
+        break;
+      case 'luna_lifecycle':
+        // Luna owns the boot — the mock calls window.startGame() the way Luna's
+        // host does and reports it here. This is what satisfies the `start_game`
+        // checklist row; nothing else ever did, so it auto-failed at 30s.
+        if (data.name === 'startGame') {
+          setCheck('start_game', 'pass', 'called by the host (' + (data.source || 'host') + ')');
+          markLunaStartGameRecovery(false);
+        }
+        recordLunaLifecycle(data.name);
         break;
       case 'macro_fire':
         if (data.macroKey) {
@@ -891,6 +1323,22 @@
     });
   }
 
+  // ========== LUNA MANUAL TRIGGERS ==========
+  // Luna's container drives the creative (startGame, luna:* events); the dock
+  // replays that contract locally through the mock's plbx:luna protocol.
+  function sendLunaTrigger(action) {
+    var frame = document.getElementById('preview-frame');
+    if (!frame || !frame.contentWindow) return;
+    frame.contentWindow.postMessage({ type: 'plbx:luna', action: action }, '*');
+    log('→ luna trigger: ' + action, 'cta');
+  }
+
+  document.querySelectorAll('[data-luna-action]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      sendLunaTrigger(btn.getAttribute('data-luna-action'));
+    });
+  });
+
   function wireDockToggle(toggleId, dockId) {
     var toggle = document.getElementById(toggleId);
     if (!toggle) return;
@@ -903,6 +1351,7 @@
     });
   }
   wireDockToggle('mv2-dock-toggle', 'mv2-dock');
+  wireDockToggle('luna-dock-toggle', 'luna-dock');
   wireDockToggle('plbx-cmd-toggle', 'plbx-cmd-dock');
 
   // ========== AUDIO CONTROL ==========
