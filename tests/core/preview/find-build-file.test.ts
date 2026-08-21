@@ -52,4 +52,29 @@ describe('findBuildFile honors the output-naming template', () => {
     });
     expect(f?.path).toBe(join(dir, 'applovin', 'zombie-miner.html'));
   });
+
+  // Mintegral's 2026 rule (htmlMatchesZipName) makes the packager rename the
+  // OUTER zip to match the sanitized inner HTML name — spaces/dashes in the
+  // literal project name baked into the template become `_`. A literal
+  // template substitution then misses the file that's actually on disk
+  // (previously: 404 + File Size 0/5 mb).
+  it('finds a htmlMatchesZipName network build whose filename the packager sanitized', () => {
+    const dir = join(root, 'mintegral-sanitized');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'Playturbo_B4C2_Bubble_Shooter_mintegral_EN.zip'), 'PK');
+    const f = findBuildFile(dir, 'mintegral', {
+      template: 'Playturbo_B4C2-Bubble Shooter_mintegral_EN.{ext}',
+    });
+    expect(f?.path).toBe(join(dir, 'Playturbo_B4C2_Bubble_Shooter_mintegral_EN.zip'));
+    expect(f?.isZip).toBe(true);
+  });
+
+  it('still returns null for a htmlMatchesZipName network when neither literal nor sanitized name exists', () => {
+    const dir = join(root, 'mintegral-missing');
+    mkdirSync(dir, { recursive: true });
+    const f = findBuildFile(dir, 'mintegral', {
+      template: 'Playturbo_B4C2-Bubble Shooter_mintegral_EN.{ext}',
+    });
+    expect(f).toBeNull();
+  });
 });

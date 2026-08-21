@@ -1,5 +1,5 @@
 import http from 'http';
-import { join, extname, basename } from 'path';
+import { join, extname, basename, dirname } from 'path';
 import { existsSync, readFileSync, statSync, readdirSync } from 'fs';
 import JSZip from 'jszip';
 import {
@@ -52,6 +52,20 @@ interface BuildFile {
   payloadPath?: string;
 }
 
+// TODO(kit patch-bump): duplicated from the kit's sanitizeFileBase() +
+// resolveInnerHtmlName()'s second-pass replace (src/packager/... in the kit
+// repo, not exported from its barrel). For htmlMatchesZipName networks
+// (Mintegral's 2026 rule), the packager renames the OUTER zip itself to match
+// the sanitized inner HTML name, so an Output Naming template with spaces/
+// dashes in the project name (e.g. `B4C2-Bubble Shooter`) produces a file on
+// disk that no longer matches the literal template substitution. Once the kit
+// exports resolveInnerHtmlName (or a thin wrapper), call that instead of this
+// copy so the two can't drift.
+function sanitizeLikeKitZipName(name: string): string {
+  const step1 = name.trim().replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+  return step1.replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
 /**
  * Resolve the exact build file the packager produced for a network using the
  * output-naming template, trying the network's format ext plus html/zip. Returns
@@ -77,6 +91,21 @@ function resolveTemplatedBuildPath(
       });
       const full = join(outputDir, rel);
       if (existsSync(full)) return { path: full, isZip: ext === 'zip' || full.toLowerCase().endsWith('.zip') };
+
+      // htmlMatchesZipName networks: the packager sanitized the outer filename
+      // to match the inner HTML name (spaces/dashes → `_`). Retry with that
+      // same sanitization before giving up on this ext.
+      if (net?.htmlMatchesZipName) {
+        const dir = dirname(full);
+        const base = basename(full, extname(full));
+        const sanitized = sanitizeLikeKitZipName(base);
+        if (sanitized && sanitized !== base) {
+          const sanitizedFull = join(dir, `${sanitized}${extname(full)}`);
+          if (existsSync(sanitizedFull)) {
+            return { path: sanitizedFull, isZip: ext === 'zip' || sanitizedFull.toLowerCase().endsWith('.zip') };
+          }
+        }
+      }
     } catch {
       // Bad template/var for this ext — try the next.
     }
