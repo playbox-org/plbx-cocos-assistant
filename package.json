@@ -190,6 +190,21 @@
           "uploadMolocoCdn"
         ]
       },
+      "get-repack-token": {
+        "methods": [
+          "getRepackToken"
+        ]
+      },
+      "save-repack-token": {
+        "methods": [
+          "saveRepackToken"
+        ]
+      },
+      "upload-for-packaging": {
+        "methods": [
+          "uploadForPackaging"
+        ]
+      },
       "get-networks": {
         "methods": [
           "getNetworks"

@@ -49,6 +49,10 @@ export interface ProjectSettings {
   molocoAssetProvider: string;
   /** Moloco launcher ASSET_TITLE metadata override (empty → project name). */
   molocoAssetTitle: string;
+  /** Base URL of the Playbox repack door ("Upload for packaging"); per-project.
+   *  Empty → the button refuses with a status line. The bearer is global
+   *  (`getRepackToken`), like the Moloco API key. */
+  repackUrl: string;
 }
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
@@ -73,6 +77,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   molocoAdAccountId: '',
   molocoAssetProvider: '',
   molocoAssetTitle: '',
+  repackUrl: '',
 };
 
 /**
@@ -172,6 +177,19 @@ export async function getMolocoApiKey(): Promise<string> {
 
 export async function saveMolocoApiKey(key: string): Promise<void> {
   await Editor.Profile.setConfig('plbx-cocos-extension', 'molocoApiKey', key, 'local');
+}
+
+/** Repack door bearer token — secret, global (per-developer), never in project files. */
+export async function getRepackToken(): Promise<string> {
+  try {
+    return (await Editor.Profile.getConfig('plbx-cocos-extension', 'repackToken', 'local')) || '';
+  } catch {
+    return '';
+  }
+}
+
+export async function saveRepackToken(token: string): Promise<void> {
+  await Editor.Profile.setConfig('plbx-cocos-extension', 'repackToken', token, 'local');
 }
 
 /**

@@ -76,6 +76,15 @@ export const LOCALES: Record<Lang, LocaleDict> = {
     'package.molocoNoAccount': 'Moloco Ad Account ID not set — add it in Settings (⚙)',
     'package.molocoNoPayload': 'payload.js not found — package Moloco V2.0 first',
     'package.molocoFailed': 'Moloco CDN upload failed: {msg}',
+    'package.uploadForPackaging': 'Upload for packaging',
+    'package.repackUploading': 'Packaging plbx archive and uploading to the repack service…',
+    'package.repackDone': 'Repack done: {n} artifacts, {f} failures → {dir}',
+    'package.repackFailed': 'Upload for packaging failed: {msg}',
+    'package.repackNoUrl': 'Repack service URL not set — add it in Settings (⚙)',
+    'package.repackNoToken': 'Repack token not set — add it in Settings (⚙)',
+    'settings.repack': 'Server-side packaging',
+    'settings.repackUrl': 'Repack service URL',
+    'settings.repackToken': 'Repack token',
 
     // Shared words
     'common.type': 'Type',
@@ -348,6 +357,15 @@ export const LOCALES: Record<Lang, LocaleDict> = {
     'package.molocoNoAccount': 'Moloco Ad Account ID не задан — добавьте в настройках (⚙)',
     'package.molocoNoPayload': 'payload.js не найден — сначала упакуйте Moloco V2.0',
     'package.molocoFailed': 'Ошибка загрузки на Moloco CDN: {msg}',
+    'package.uploadForPackaging': 'Отправить на упаковку',
+    'package.repackUploading': 'Сборка plbx-архива и отправка в сервис упаковки…',
+    'package.repackDone': 'Упаковка завершена: артефактов {n}, ошибок {f} → {dir}',
+    'package.repackFailed': 'Отправка на упаковку не удалась: {msg}',
+    'package.repackNoUrl': 'URL сервиса упаковки не задан — добавьте в настройках (⚙)',
+    'package.repackNoToken': 'Токен сервиса упаковки не задан — добавьте в настройках (⚙)',
+    'settings.repack': 'Серверная упаковка',
+    'settings.repackUrl': 'URL сервиса упаковки',
+    'settings.repackToken': 'Токен сервиса упаковки',
 
     // Shared words
     'common.type': 'Тип',
@@ -620,6 +638,15 @@ export const LOCALES: Record<Lang, LocaleDict> = {
     'package.molocoNoAccount': '未设置 Moloco 广告账户 ID — 请在设置 (⚙) 中添加',
     'package.molocoNoPayload': '未找到 payload.js — 请先打包 Moloco V2.0',
     'package.molocoFailed': 'Moloco CDN 上传失败: {msg}',
+    'package.uploadForPackaging': '上传以打包',
+    'package.repackUploading': '正在生成 plbx 归档并上传到打包服务…',
+    'package.repackDone': '打包完成: {n} 个产物，{f} 个失败 → {dir}',
+    'package.repackFailed': '上传打包失败: {msg}',
+    'package.repackNoUrl': '未设置打包服务 URL — 请在设置 (⚙) 中添加',
+    'package.repackNoToken': '未设置打包服务令牌 — 请在设置 (⚙) 中添加',
+    'settings.repack': '服务端打包',
+    'settings.repackUrl': '打包服务 URL',
+    'settings.repackToken': '打包服务令牌',
 
     // Shared words (zh: best-effort, pending native review)
     'common.type': '类型',

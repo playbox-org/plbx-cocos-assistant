@@ -97,3 +97,11 @@ describe('legacy splash migration', () => {
     expect(resolveSplashMode(undefined)).toBeUndefined();
   });
 });
+
+describe('repack upload settings', () => {
+  it('defaults repackUrl to empty', () => {
+    // The upload button refuses with a clear status when the URL is unset —
+    // no default door, no accidental upload.
+    expect(DEFAULT_SETTINGS.repackUrl).toBe('');
+  });
+});
