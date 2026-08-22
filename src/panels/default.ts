@@ -5,6 +5,7 @@ import { join } from 'path';
 import { translate, normalizeLang } from '../core/i18n/locales';
 import { railVerdict } from './rail-verdict';
 import { formatLogoDimensions } from '../core/splash/logo-dimensions';
+import { repackSummaryToRows, mergeOutputListing } from '../core/repack/rows';
 import { AXON_SPEC_URL } from '@playbox-ai/playable-kit';
 
 const template = readFileSync(join(__dirname, '../../static/template/index.html'), 'utf-8');
@@ -2617,16 +2618,13 @@ module.exports = Editor.Panel.define({
           );
           if (res?.ok) {
             const summary = res.summary || { artifacts: [], failures: [] };
-            const rows: any[] = [];
-            for (const a of summary.artifacts || []) {
-              for (const f of a.files || []) {
-                rows.push({ networkId: a.network, format: f.format, outputSize: f.bytes, maxSize: f.maxSize, withinLimit: f.bytes <= f.maxSize });
-              }
-            }
-            for (const failure of summary.failures || []) {
-              rows.push({ networkId: failure.network, error: failure.reason, withinLimit: false });
-            }
+            const rows = repackSummaryToRows(summary);
             this._renderPackageResults(rows);
+            // Re-walk outputDir as the panel does on open: lends the kit's display
+            // names and the Created column, and lists builds left by earlier packs.
+            Editor.Message.request('plbx-cocos-extension', 'list-output-builds', outputDir)
+              .then((listed: any[]) => { this._renderPackageResults(mergeOutputListing(rows, listed)); })
+              .catch((e: any) => { console.warn('[plbx]', e); });
             if (statusEl) {
               statusEl.textContent = t('package.repackDone')
                 .replace('{n}', String((summary.artifacts || []).length))

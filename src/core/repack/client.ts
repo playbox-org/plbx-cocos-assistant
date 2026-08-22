@@ -64,8 +64,10 @@ export async function uploadForRepack(opts: RepackUploadOptions): Promise<Repack
   if (!opts.archive || opts.archive.length === 0) return { ok: false, error: 'no_archive' };
 
   const fetchFn = opts.fetchFn ?? fetch;
-  // Registry ids are plain `[A-Za-z0-9]` — the door reads `networks=a,b` literally.
-  const url = `${repackUrl.replace(/\/$/, '')}/repack?networks=${opts.networks.join(',')}&kind=${opts.kind ?? 'prod'}`;
+  // The door reads `networks=a,b` literally, so the commas stay bare; each id
+  // is encoded on its own so a stray space, `&` or `#` cannot bend the query.
+  const networks = opts.networks.map((id) => encodeURIComponent(id)).join(',');
+  const url = `${repackUrl.replace(/\/+$/, '')}/repack?networks=${networks}&kind=${opts.kind ?? 'prod'}`;
 
   let res: Response;
   try {

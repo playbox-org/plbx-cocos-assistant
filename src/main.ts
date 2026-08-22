@@ -677,9 +677,9 @@ export const methods: Record<string, (...args: any[]) => any> = {
     if (!repackUrl) return { ok: false, error: 'no_repack_url' };
     if (!token) return { ok: false, error: 'no_repack_token' };
 
-    const projectRoot = Editor.Project.path || '';
     let tmp = '';
     try {
+      const projectRoot = Editor.Project.path || '';
       tmp = mkdtempSync(join(tmpdir(), 'plbx-repack-'));
       const request = buildPackageRequest({
         settings,

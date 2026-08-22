@@ -79,6 +79,19 @@ describe('uploadForRepack', () => {
     expect(Buffer.from(init.body as Uint8Array).equals(archive)).toBe(true);
   });
 
+  it('strips every trailing slash from the door URL and encodes each network id', async () => {
+    const fetchFn = vi.fn(async () => zipResponse('b_1', Buffer.from('zip')));
+    await uploadForRepack({
+      archive: Buffer.from('PK'),
+      repackUrl: 'https://repack.example//',
+      token: 'secret',
+      networks: ['applovin', 'odd id&#'],
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    const [url] = fetchFn.mock.calls[0] as unknown as [string];
+    expect(url).toBe('https://repack.example/repack?networks=applovin,odd%20id%26%23&kind=prod');
+  });
+
   it('returns the build id and the zip on success', async () => {
     const body = Buffer.from('the-response-zip');
     const fetchFn = vi.fn(async () => zipResponse('b_xyz', body));
