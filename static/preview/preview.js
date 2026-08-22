@@ -71,6 +71,7 @@
   var networks = [];
   var currentNetwork = null;
   var checks = {};
+  var telemetryRequests = 0; // expected collector calls seen for the loaded network
   var timeouts = {};
   var currentDevice = DEFAULT_DEVICE;
   var isLandscape = false;
@@ -853,6 +854,33 @@
     return prev === false ? false : viaInstall;
   }
 
+  // ========== TELEMETRY ALLOWANCE ==========
+  // An instrumented build phones home by design, so its own collector requests
+  // must not fail no_external. The rule is strict: expected iff origin +
+  // pathname equal the collector or error URL the artifact's OWN manifest
+  // declares (served on /api/networks as net.telemetry). Query strings are
+  // ignored on both sides; anything unparsable is not expected.
+  // `baseHref` is passed in (the page's location.href) so the helper stays pure
+  // and testable outside a browser.
+  function isExpectedTelemetryRequest(url, telemetry, baseHref) {
+    if (!telemetry || !url) return false;
+    try {
+      var u = new URL(url, baseHref);
+      var c = new URL(telemetry.collectorUrl), e = new URL(telemetry.errorUrl);
+      var key = u.origin + u.pathname;
+      return key === c.origin + c.pathname || key === e.origin + e.pathname;
+    } catch (err) { return false; }
+  }
+
+  function currentTelemetry() {
+    var n = networks.find(function(x) { return x.id === currentNetwork; });
+    return (n && n.telemetry) || null;
+  }
+
+  function hostOf(url) {
+    try { return new URL(url, location.href).host; } catch (err) { return 'unknown'; }
+  }
+
   function recordLunaLifecycle(name) {
     if (typeof name !== 'string' || !name) return;
     if (!lunaLifecycle[name]) {
@@ -1124,6 +1152,7 @@
       }
     }
 
+    telemetryRequests = 0;
     setCheck('no_external', 'pass', 'No external requests detected');
     setCheck('no_errors', 'pass', 'No exceptions');
 
@@ -1319,7 +1348,19 @@
         }
         setCheck('no_errors', 'fail', data.message || 'Exception detected');
         break;
-      case 'external_request': setCheck('no_external', 'fail', data.url || 'External request detected'); break;
+      case 'external_request':
+        if (isExpectedTelemetryRequest(data.url, currentTelemetry(), location.href)) {
+          telemetryRequests++;
+          // Sticky-false: a real external request seen earlier keeps the row
+          // failed — an expected one must never repaint it green.
+          if (checks.no_external && checks.no_external.status !== 'fail') {
+            setCheck('no_external', 'pass',
+              'expected telemetry request \u2192 ' + hostOf(data.url) + ' (' + telemetryRequests + ')');
+          }
+        } else {
+          setCheck('no_external', 'fail', data.url || 'External request detected');
+        }
+        break;
       case 'axon_event':
         if (data.name) {
           axonFired[data.name] = (axonFired[data.name] || 0) + 1;

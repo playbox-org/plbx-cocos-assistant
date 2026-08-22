@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { startPreviewServer, stopPreviewServer } from '../../../src/core/preview/server';
+import { startPreviewServer, stopPreviewServer, readTelemetryManifest } from '../../../src/core/preview/server';
 import { join } from 'path';
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs';
 import http from 'http';
@@ -525,5 +525,151 @@ describe('Preview Server', () => {
     await stopPreviewServer();
 
     await expect(httpGet('http://127.0.0.1:' + port + '/')).rejects.toThrow();
+  });
+
+  // ===== Telemetry manifest allowance (phase 2) =====
+  // A telemetry build phones home by design, so the preview's no_external
+  // verdict must not fail the build on its OWN collector requests. The rule is
+  // strict: only the collector/error URL declared in that artifact's own
+  // manifest is expected; every other external request still fails.
+
+  it('reports the telemetry manifest of a built artifact on /api/networks, and null when there is none', async () => {
+    const MANIFEST =
+      '<!--plbx-telemetry-manifest: {"b":"b_1","net":"applovin","v":1,' +
+      '"c":"https://c.plbx.ai/api/v1/stats/collect",' +
+      '"e":"https://c.plbx.ai/api/v1/stats/errors/collect"}-->';
+    mkdirSync(join(TMP, 'applovin'), { recursive: true });
+    writeFileSync(join(TMP, 'applovin', 'index.html'),
+      '<html><head></head><body>t</body>' + MANIFEST + '</html>');
+    // no manifest at all — an ordinary build
+    mkdirSync(join(TMP, 'unity'), { recursive: true });
+    writeFileSync(join(TMP, 'unity', 'index.html'), '<html><head></head><body>t</body></html>');
+    // a phase-1 artifact: manifest present, but it carries no collector URLs
+    mkdirSync(join(TMP, 'ironsource'), { recursive: true });
+    writeFileSync(join(TMP, 'ironsource', 'index.html'),
+      '<html><head></head><body>t</body>'
+      + '<!--plbx-telemetry-manifest: {"b":"b_1","net":"ironsource","v":1}--></html>');
+
+    const { url } = await startPreviewServer({
+      outputDir: TMP,
+      networks: ['applovin', 'unity', 'ironsource'],
+    });
+    const data = JSON.parse((await httpGet(url + '/api/networks')).body);
+    expect(data[0].telemetry).toEqual({
+      buildId: 'b_1',
+      network: 'applovin',
+      collectorUrl: 'https://c.plbx.ai/api/v1/stats/collect',
+      errorUrl: 'https://c.plbx.ai/api/v1/stats/errors/collect',
+    });
+    expect(data[1].telemetry).toBeNull();
+    expect(data[2].telemetry).toBeNull();
+  });
+
+  it('reads the manifest out of a zip artifact too', async () => {
+    const JSZip = (await import('jszip')).default;
+    const zip = new JSZip();
+    zip.file('index.html',
+      '<html><head></head><body>z</body>'
+      + '<!--plbx-telemetry-manifest: {"b":"b_z","net":"google","v":1,'
+      + '"c":"https://c.plbx.ai/api/v1/stats/collect",'
+      + '"e":"https://c.plbx.ai/api/v1/stats/errors/collect"}--></html>');
+    const zipBuf = await zip.generateAsync({ type: 'nodebuffer' });
+
+    mkdirSync(join(TMP, 'google'), { recursive: true });
+    writeFileSync(join(TMP, 'google', 'index.zip'), zipBuf);
+
+    const { url } = await startPreviewServer({ outputDir: TMP, networks: ['google'] });
+    const data = JSON.parse((await httpGet(url + '/api/networks')).body);
+    expect(data[0].telemetry).toEqual({
+      buildId: 'b_z',
+      network: 'google',
+      collectorUrl: 'https://c.plbx.ai/api/v1/stats/collect',
+      errorUrl: 'https://c.plbx.ai/api/v1/stats/errors/collect',
+    });
+  });
+
+  // The injector escapes every '-' as - so a value can never terminate the
+  // HTML comment early (plbx-collector src/inject.ts manifestLiteral) — reading
+  // the manifest is therefore a plain JSON.parse, and the escapes round-trip.
+  it('parses a manifest whose dashes were escaped, and refuses garbage', () => {
+    const ok = readTelemetryManifest(
+      '<!--plbx-telemetry-manifest: {"b":"b_a\\u002db","net":"applovin","v":1,'
+      + '"c":"https://c.plbx.ai/api/v1/stats/collect",'
+      + '"e":"https://c.plbx.ai/api/v1/stats/errors/collect"}-->');
+    expect(ok).toEqual({
+      buildId: 'b_a-b',
+      network: 'applovin',
+      collectorUrl: 'https://c.plbx.ai/api/v1/stats/collect',
+      errorUrl: 'https://c.plbx.ai/api/v1/stats/errors/collect',
+    });
+    expect(readTelemetryManifest('<html></html>')).toBeNull();
+    expect(readTelemetryManifest('<!--plbx-telemetry-manifest: {not json}-->')).toBeNull();
+    // c present, e missing — a half-declared channel is not a manifest
+    expect(readTelemetryManifest(
+      '<!--plbx-telemetry-manifest: {"b":"b_1","net":"a","v":1,"c":"https://c.plbx.ai/x"}-->'))
+      .toBeNull();
+  });
+
+  // preview.js is browser JS: pull the pure helper out of the served file and
+  // drive it directly (the lunaCtaVerdict precedent). baseHref is an explicit
+  // argument because vitest runs in the node environment, where `location` is
+  // undefined. NOTE the fixture uses a NON-local host: the kit's preview util
+  // whitelists location.hostname/localhost/127.0.0.1 (sdk-mocks.ts), so a
+  // collector on localhost is never reported as external in the first place.
+  it('treats only the artifact\'s own collector and error URLs as expected requests', async () => {
+    mkdirSync(join(TMP, 'applovin'), { recursive: true });
+    writeFileSync(join(TMP, 'applovin', 'index.html'), '<html><head></head><body>t</body></html>');
+
+    const { url } = await startPreviewServer({ outputDir: TMP, networks: ['applovin'] });
+    const js = await httpGet(url + '/static/preview/preview.js');
+    expect(js.status).toBe(200);
+
+    const src = js.body.match(/function isExpectedTelemetryRequest\([\s\S]*?\n  \}/);
+    expect(src, 'isExpectedTelemetryRequest() must exist in the served preview.js').toBeTruthy();
+    const expected = new Function(src![0] + '; return isExpectedTelemetryRequest;')() as
+      (url: string | null, telemetry: unknown, baseHref: string) => boolean;
+
+    const BASE = 'http://127.0.0.1:4321/';
+    const tel = {
+      buildId: 'b_1',
+      network: 'applovin',
+      collectorUrl: 'https://c.plbx.ai/api/v1/stats/collect',
+      errorUrl: 'https://c.plbx.ai/api/v1/stats/errors/collect',
+    };
+
+    expect(expected('https://c.plbx.ai/api/v1/stats/collect', tel, BASE)).toBe(true);
+    // the sender appends a query string; the path is what identifies the door
+    expect(expected('https://c.plbx.ai/api/v1/stats/collect?t=1', tel, BASE)).toBe(true);
+    expect(expected('https://c.plbx.ai/api/v1/stats/errors/collect', tel, BASE)).toBe(true);
+    // same host, another path — not this artifact's channel
+    expect(expected('https://c.plbx.ai/api/v1/other', tel, BASE)).toBe(false);
+    // another host entirely
+    expect(expected('https://evil.example/api/v1/stats/collect', tel, BASE)).toBe(false);
+    // a relative URL resolves against the PREVIEW origin, not the collector
+    expect(expected('/api/v1/stats/collect', tel, BASE)).toBe(false);
+    expect(expected('data:text/plain,x', tel, BASE)).toBe(false);
+    expect(expected('https://c.plbx.ai/api/v1/stats/collect', null, BASE)).toBe(false);
+    expect(expected(null, tel, BASE)).toBe(false);
+  });
+
+  // Sticky-false, the lunaCtaVerdict rule again: a real external request seen
+  // earlier in the session must stay on the row — an expected telemetry request
+  // arriving afterwards may never repaint it green and hide the violation.
+  it('keeps no_external failed once a real external request was seen, even if telemetry follows', async () => {
+    mkdirSync(join(TMP, 'applovin'), { recursive: true });
+    writeFileSync(join(TMP, 'applovin', 'index.html'), '<html><head></head><body>t</body></html>');
+
+    const { url } = await startPreviewServer({ outputDir: TMP, networks: ['applovin'] });
+    const js = await httpGet(url + '/static/preview/preview.js');
+    expect(js.status).toBe(200);
+
+    expect(js.body).toContain(
+      'isExpectedTelemetryRequest(data.url, currentTelemetry(), location.href)');
+    expect(js.body).toContain("checks.no_external.status !== 'fail'");
+    // the unexpected branch is untouched
+    expect(js.body).toContain(
+      "setCheck('no_external', 'fail', data.url || 'External request detected')");
+    // and the counter resets per network load, beside the optimistic pass
+    expect(js.body).toContain('telemetryRequests = 0');
   });
 });

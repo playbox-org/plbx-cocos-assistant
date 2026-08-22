@@ -296,6 +296,71 @@ async function buildZipRootFiles(outputDir: string, networkId: string) {
   }
 }
 
+/**
+ * The telemetry manifest the collector's injector leaves in an instrumented
+ * artifact: `<!--plbx-telemetry-manifest: {"b":…,"net":…,"v":1,"c":…,"e":…}-->`
+ * (`b` build id, `net` the network label baked in at repack time, `v` the wire
+ * version, `c` the collector URL, `e` the error URL).
+ *
+ * KEEP IN SYNC with `manifestLiteral()` in plbx-collector `src/inject.ts`,
+ * which writes it. Every `-` inside is emitted as `-` so a value can
+ * never terminate the HTML comment early, and every `<` as `<` — both
+ * are plain JSON escapes, so reading it is a plain `JSON.parse`.
+ *
+ * A phase-1 artifact carries only `{b,net,v}`: no channel is declared, so
+ * there is nothing to allow and this reads as `null`.
+ */
+export interface TelemetryManifest {
+  buildId: string;
+  network: string;
+  collectorUrl: string;
+  errorUrl: string;
+}
+
+export const TELEMETRY_MANIFEST_RE = /<!--plbx-telemetry-manifest: (\{[\s\S]*?\})-->/;
+
+/** Pure: manifest → the declared channel, or null when absent/unparsable/incomplete. */
+export function readTelemetryManifest(html: string): TelemetryManifest | null {
+  const m = html.match(TELEMETRY_MANIFEST_RE);
+  if (!m) return null;
+  try {
+    const raw = JSON.parse(m[1]) as Record<string, unknown>;
+    const collectorUrl = typeof raw.c === 'string' ? raw.c : '';
+    const errorUrl = typeof raw.e === 'string' ? raw.e : '';
+    // Half a channel is not a channel: the preview allows exactly the two URLs
+    // an artifact declares, so a manifest missing either one allows nothing.
+    if (!collectorUrl || !errorUrl) return null;
+    return {
+      buildId: typeof raw.b === 'string' ? raw.b : '',
+      network: typeof raw.net === 'string' ? raw.net : '',
+      collectorUrl,
+      errorUrl,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Static read of the built artifact's telemetry manifest (zip-aware), so the
+ * preview page can tell an instrumented build's own collector requests from a
+ * genuine external one. Same body as the other static readers; a read error
+ * returns null, which is the strict answer (nothing is allowed).
+ */
+async function buildTelemetry(
+  outputDir: string,
+  networkId: string,
+): Promise<TelemetryManifest | null> {
+  try {
+    const file = findBuildFile(outputDir, networkId);
+    if (!file) return null;
+    const html = file.isZip ? await extractHtmlFromZip(file.path) : readFileSync(file.path, 'utf-8');
+    return readTelemetryManifest(html);
+  } catch {
+    return null;
+  }
+}
+
 async function buildStoreUrlRegional(
   outputDir: string,
   networkId: string,
@@ -708,6 +773,10 @@ export async function startPreviewServer(options: {
                 id,
               );
               const zipRootFiles = await buildZipRootFiles(outputDir, id);
+              // Telemetry channel this artifact declares, if it was injected.
+              // The preview page allows exactly these two URLs through
+              // no_external; null means nothing is allowed.
+              const telemetry = await buildTelemetry(outputDir, id);
               return {
                 id,
                 name: config?.name || id,
@@ -723,6 +792,7 @@ export async function startPreviewServer(options: {
                 hostileMp3,
                 forbiddenLiterals,
                 zipRootFiles,
+                telemetry,
                 checks,
                 launcherChecks,
                 loaderHealth,
