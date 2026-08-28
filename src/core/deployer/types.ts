@@ -81,6 +81,8 @@ export interface ListProjectsResponse {
       type: string;
       status: string;
     }>;
+    /** Rows in the org, not rows in this page. Absent on older API builds. */
+    total?: number;
   };
   error?: string;
 }

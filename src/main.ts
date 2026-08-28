@@ -46,6 +46,20 @@ import { existsSync, readFileSync } from 'fs';
 let lastBuildResult: any = null;
 let _deployProgress: any = null;
 
+/** The org behind the saved token. Opening the Deploy tab used to spend three
+ *  round-trips — `whoami` on login, `whoami` again to learn the org, then the
+ *  projects themselves — and every one of them is a chance to lose the socket.
+ *  Keyed by token so a re-login with a different key cannot reuse a stale org. */
+let _orgIdCache: { token: string; orgId?: string } | null = null;
+
+async function resolveOrgId(client: PlayboxApiClient, token: string): Promise<string | undefined> {
+  if (_orgIdCache?.token === token) return _orgIdCache.orgId;
+  const whoami = await client.whoami();
+  const orgId = whoami.organizationId || whoami.organizations?.[0]?.id;
+  _orgIdCache = { token, orgId: orgId ?? undefined };
+  return orgId ?? undefined;
+}
+
 /** Repo root of this extension — symlinked git working tree (dist/ → ..). */
 const REPO_ROOT = join(__dirname, '..');
 
@@ -608,8 +622,7 @@ export const methods: Record<string, (...args: any[]) => any> = {
       apiUrl: 'https://app.plbx.ai/api/cli',
       apiKey: token,
     });
-    const whoami = await authClient.whoami();
-    const orgId = whoami.organizationId || whoami.organizations?.[0]?.id;
+    const orgId = await resolveOrgId(authClient, token);
     if (!orgId) throw new Error('No organization found for this API key');
 
     const client = new PlayboxApiClient({
@@ -733,20 +746,26 @@ export const methods: Record<string, (...args: any[]) => any> = {
       apiUrl: 'https://app.plbx.ai/api/cli',
       apiKey: token,
     });
-    return client.whoami();
+    const whoami = await client.whoami();
+    _orgIdCache = { token, orgId: whoami.organizationId || whoami.organizations?.[0]?.id };
+    return whoami;
   },
 
-  async plbxListProjects() {
+  /** `all` walks every page; without it the panel gets the first page only. */
+  async plbxListProjects(all?: boolean) {
     const token = await getGlobalToken();
     if (!token) throw new Error('Not authenticated');
     const client = new PlayboxApiClient({
       apiUrl: 'https://app.plbx.ai/api/cli',
       apiKey: token,
     });
-    // Resolve organization to pass as query param
-    const whoami = await client.whoami();
-    const orgId = whoami.organizationId || whoami.organizations?.[0]?.id;
-    return client.listProjects(orgId ?? undefined);
+    const orgId = await resolveOrgId(client, token);
+    if (all) {
+      const projects = await client.listAllProjects(orgId);
+      return { projects, total: projects.length, complete: true };
+    }
+    const page = await client.listProjects(orgId);
+    return { ...page, complete: page.total !== undefined && page.projects.length >= page.total };
   },
 
   async 'plbx-list-deployments'(projectSlug: string) {
@@ -756,8 +775,7 @@ export const methods: Record<string, (...args: any[]) => any> = {
       apiUrl: 'https://app.plbx.ai/api/cli',
       apiKey: token,
     });
-    const whoami = await client.whoami();
-    const orgId = whoami.organizationId || whoami.organizations?.[0]?.id;
+    const orgId = await resolveOrgId(client, token);
     if (orgId) (client as any).config.organizationId = orgId;
     return client.listDeployments(projectSlug);
   },

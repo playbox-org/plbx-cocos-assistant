@@ -2287,10 +2287,22 @@ module.exports = Editor.Panel.define({
 
       // Combobox: filter, select, toggle
       this._projectsList = [] as Array<{ id: string; slug: string; name: string }>;
+      this._projectsComplete = false;
+      this._projectsRestLoaded = false;
 
       const clearDropdown = (el: HTMLElement) => {
         while (el.firstChild) el.removeChild(el.firstChild);
       };
+
+      // The first screen is one page of projects, newest first. Typing something
+      // that page does not contain pulls the rest — once. Costs a request only
+      // for the orgs big enough to need it, and never on tab open.
+      const loadRestOnce = () => {
+        if (this._projectsRestLoaded || this._projectsComplete) return;
+        this._projectsRestLoaded = true;
+        this._loadProjects(true).then(() => renderDropdown(projectInput?.value ?? ''));
+      };
+      this._loadRestOfProjects = loadRestOnce;
 
       const renderDropdown = (filter: string) => {
         if (!projectDropdown) return;
@@ -2299,6 +2311,7 @@ module.exports = Editor.Panel.define({
         const filtered = this._projectsList.filter((p: any) =>
           !q || p.name.toLowerCase().includes(q)
         );
+        if (q && !filtered.length) loadRestOnce();
         for (const p of filtered) {
           const div = document.createElement('div');
           div.className = 'combobox-item';
@@ -2383,7 +2396,12 @@ module.exports = Editor.Panel.define({
         }
         this._checkDeployBuild?.();
       });
-      projectNameInput?.addEventListener('input', () => this._checkDeployBuild?.());
+      // Naming a new project checks it against existing names, so that check
+      // needs the whole catalogue, not just the first page.
+      projectNameInput?.addEventListener('input', () => {
+        this._loadRestOfProjects?.();
+        this._checkDeployBuild?.();
+      });
 
       btnSaveToken?.addEventListener('click', async () => {
         const token = tokenInput?.value.trim();
@@ -2412,7 +2430,10 @@ module.exports = Editor.Panel.define({
         }
       });
 
-      btnRefresh?.addEventListener('click', () => this._loadProjects());
+      btnRefresh?.addEventListener('click', () => {
+        this._projectsRestLoaded = false;
+        this._loadProjects();
+      });
 
       // Check deploy readiness: project selected + build exists
       this._checkDeployBuild = async () => {
@@ -2650,13 +2671,16 @@ module.exports = Editor.Panel.define({
       }
     },
 
-    async _loadProjects(this: any) {
+    async _loadProjects(this: any, all?: boolean) {
       const projectHidden = this.$.deployProject as HTMLInputElement;
       const projectInput  = this.$.deployProjectInput as HTMLInputElement;
       if (!projectHidden) return;
       try {
-        const projects = await Editor.Message.request('plbx-cocos-extension', 'plbx-list-projects');
+        const projects = await Editor.Message.request('plbx-cocos-extension', 'plbx-list-projects', all);
         const list = Array.isArray(projects) ? projects : projects?.projects ?? projects?.data ?? [];
+        // Assume more exist unless the API said otherwise — an older build that
+        // reports no total must not look like a complete catalogue.
+        this._projectsComplete = projects?.complete === true;
         this._projectsList = list.map((p: any) => ({
           id:   p.id ?? p.projectId ?? '',
           slug: p.slug ?? '',
@@ -2672,6 +2696,12 @@ module.exports = Editor.Panel.define({
             projectHidden.dataset.slug = saved.slug;
             if (projectInput) projectInput.value = saved.name;
             this._loadDeployments(saved.slug);
+          } else if (!all && !this._projectsComplete) {
+            // Saved project sits past the first page — a project nobody has
+            // touched in a while is exactly the case, since rows come back
+            // newest-first. Pull the rest so the field restores as before.
+            this._projectsRestLoaded = true;
+            await this._loadProjects(true);
           }
         }
       } catch (e: any) {
