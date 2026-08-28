@@ -1570,3 +1570,50 @@ body,
   font-size: 11px;
   color: #e0a000;
 }
+
+/* ===== Build overlay ===== */
+.settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid #3a3a3a;
+}
+
+.build-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.build-check-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: #ccc;
+}
+
+.build-check-icon { width: 14px; text-align: center; }
+.build-check-row.is-ok    .build-check-icon { color: #4caf50; }
+.build-check-row.is-fail  .build-check-icon { color: #e05252; }
+.build-check-row.is-na    .build-check-icon { color: #777; }
+.build-check-row.is-na    { color: #888; }
+.build-check-label { flex: 1; }
+.build-check-value { font-family: Menlo, Consolas, monospace; color: #eee; }
+.build-check-row.is-fail .build-check-value { color: #e0a000; }
+
+.build-progress-track {
+  height: 6px;
+  background: #1e1e1e;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.build-progress-bar {
+  height: 100%;
+  width: 0;
+  background: #4a90d9;
+  transition: width 0.2s ease;
+}

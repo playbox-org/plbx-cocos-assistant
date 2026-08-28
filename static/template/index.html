@@ -292,6 +292,7 @@
       <!-- ── Actions ── -->
       <div class="toolbar" style="flex-shrink:0;">
         <button id="btn-preview" class="btn btn-danger" style="display:none;" data-i18n="package.validate">Validate</button>
+        <button id="btn-build" class="btn" data-i18n="build.button">Build</button>
         <button id="btn-build-all" class="btn" data-i18n="package.packAll">Pack All</button>
         <button id="btn-open-output" class="btn btn-secondary" data-i18n="package.openOutput">Open Output Folder</button>
         <button id="btn-generate-adapter" class="btn btn-secondary" data-i18n="package.generateAdapter">Generate plbx_html.ts</button>
@@ -437,6 +438,37 @@
   </div><!-- end .tab-content -->
 
   <div id="panel-footer" class="panel-footer">Playbox v<span id="panel-version">—</span></div>
+
+  <!-- ===================== BUILD OVERLAY ===================== -->
+  <div id="build-overlay" class="settings-overlay" style="display:none;">
+    <div class="settings-backdrop" id="build-backdrop"></div>
+    <div class="settings-modal">
+      <div class="settings-header">
+        <span class="settings-title" data-i18n="build.title">Build</span>
+        <button id="build-close" class="preview-close-btn">&times;</button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-group">
+          <div class="settings-group-title" data-i18n="build.checksTitle">Build settings</div>
+          <div id="build-checks" class="build-checks"></div>
+          <div class="settings-row">
+            <button id="build-fix" class="btn btn-small" style="display:none;" data-i18n="build.fix">Fix settings</button>
+            <span id="build-check-status" class="settings-status"></span>
+          </div>
+          <div class="pkg-hint" data-i18n="build.checksHint">Project build defaults — what a build started from the Cocos panel inherits.</div>
+        </div>
+
+        <div class="settings-group">
+          <div class="build-progress-track"><div id="build-progress-bar" class="build-progress-bar"></div></div>
+          <div id="build-progress-text" class="settings-status"></div>
+        </div>
+      </div>
+      <div class="settings-footer">
+        <button id="build-validate" class="btn btn-danger" style="display:none;" data-i18n="package.validate">Validate</button>
+        <button id="build-start" class="btn" data-i18n="build.start">Build</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ===================== SETTINGS OVERLAY ===================== -->
   <div id="settings-overlay" class="settings-overlay" style="display:none;">
