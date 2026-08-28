@@ -61,9 +61,114 @@ describe('PlayboxApiClient', () => {
       }),
     });
 
-    const projects = await client.listProjects();
+    const { projects } = await client.listProjects();
     expect(projects).toHaveLength(1);
     expect(projects[0].name).toBe('My Project');
+  });
+
+  it('should ask for one page by default and report the org total', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: {
+          organization: { id: 'org-1', name: 'Test Org', slug: 'test-org' },
+          projects: [{ id: '1', name: 'My Project', slug: 'my-project', description: null, type: 'playable_ad', status: 'draft' }],
+          total: 221,
+        },
+      }),
+    });
+
+    const result = await client.listProjects('org-1');
+    expect(result.total).toBe(221);
+    expect(mockFetch.mock.calls[0][0]).toContain('limit=50');
+  });
+
+  const page = (ids: string[], total?: number) => ({
+    ok: true,
+    json: async () => ({
+      success: true,
+      data: {
+        organization: { id: 'org-1', name: 'Test Org', slug: 'test-org' },
+        projects: ids.map((id) => ({ id, name: `Project ${id}`, slug: `p-${id}`, description: null, type: 'playable_ad', status: 'draft' })),
+        ...(total === undefined ? {} : { total }),
+      },
+    }),
+  });
+
+  const idRange = (from: number, count: number) =>
+    Array.from({ length: count }, (_, i) => String(from + i));
+
+  it('should walk pages until one comes back short', async () => {
+    mockFetch
+      .mockResolvedValueOnce(page(idRange(1, 50)))
+      .mockResolvedValueOnce(page(idRange(51, 50)))
+      .mockResolvedValueOnce(page(idRange(101, 7)));
+
+    const projects = await client.listAllProjects('org-1');
+    expect(projects).toHaveLength(107);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch.mock.calls[1][0]).toContain('offset=50');
+    expect(mockFetch.mock.calls[2][0]).toContain('offset=100');
+  });
+
+  it('should stop paging when the server ignores offset', async () => {
+    // The API build on `dev` drops limit/offset entirely — every page would come
+    // back identical, and walking it would never end.
+    mockFetch.mockResolvedValue(page(idRange(1, 50)));
+
+    const projects = await client.listAllProjects('org-1');
+    expect(projects).toHaveLength(50);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('should not repeat a project that shifted between pages', async () => {
+    // Rows come back updatedAt desc, so a deploy mid-walk pushes everything
+    // down and page two hands back a row page one already had.
+    mockFetch
+      .mockResolvedValueOnce(page(idRange(1, 50)))
+      .mockResolvedValueOnce(page(['50', ...idRange(51, 20)]));
+
+    const projects = await client.listAllProjects('org-1');
+    expect(projects.map((p) => p.id)).toHaveLength(new Set(projects.map((p) => p.id)).size);
+    expect(projects).toHaveLength(70);
+  });
+
+  it('should stop once it holds the reported total', async () => {
+    // A server that honours offset but returns everything per page would
+    // otherwise be walked again and again.
+    mockFetch.mockResolvedValue(page(idRange(1, 60), 60));
+
+    const projects = await client.listAllProjects('org-1');
+    expect(projects).toHaveLength(60);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('should leave total absent when the API does not report it', async () => {
+    mockFetch.mockResolvedValueOnce(page(['1']));
+    const result = await client.listProjects('org-1');
+    expect(result.total).toBeUndefined();
+  });
+
+  it('should retry a cut response body and surface the undici cause', async () => {
+    // Node's fetch rejects with a bare `TypeError: terminated` when the body is
+    // truncated; without the cause the panel can only log "terminated".
+    const terminated = Object.assign(new TypeError('terminated'), {
+      cause: new Error('other side closed'),
+    });
+    mockFetch.mockRejectedValueOnce(terminated).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: { organization: { id: 'org-1', name: 'Test Org', slug: 'test-org' }, projects: [], total: 0 },
+      }),
+    });
+
+    await expect(client.listProjects()).resolves.toEqual({ projects: [], total: 0 });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+
+    mockFetch.mockRejectedValue(terminated);
+    await expect(client.listProjects()).rejects.toThrow('terminated (other side closed)');
   });
 
   it('should create deployment and get upload URLs', async () => {

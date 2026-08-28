@@ -9,6 +9,39 @@ import {
   CreateProjectResponse,
 } from './types';
 
+/** How many projects the first screen asks for. The org's whole catalogue is
+ *  ~75 KB of uncompressed JSON — big enough that a flaky link cuts the body
+ *  mid-stream and Node's fetch rejects with a bare `TypeError: terminated`.
+ *  50 rows is ~19 KB; the panel pulls the rest only when a search misses. */
+export const PROJECTS_PAGE_SIZE = 50;
+
+/** Ceiling on the page walk, so a server that ignores `offset` cannot spin
+ *  forever. 20 pages of 50 covers far more than any org holds today. */
+export const PROJECTS_MAX_PAGES = 20;
+
+/** GET with one retry, and the undici `cause` folded into the message.
+ *  A cut body is usually transient, so a second attempt costs little. The cause
+ *  ("other side closed", "incorrect header check") is what tells a broken link
+ *  apart from a broken proxy, and it does not survive Cocos IPC serialization —
+ *  without this the panel only ever logs "terminated".
+ *  ponytail: GET only. Retrying a POST could deploy twice. */
+async function getWithRetry(url: string, init: RequestInit): Promise<Response> {
+  let lastError: any;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    // Retrying into the same millisecond usually lands in the same trouble;
+    // a short pause is what makes the second attempt worth making.
+    if (attempt) await new Promise((r) => setTimeout(r, 250));
+    try {
+      return await fetch(url, init);
+    } catch (e: any) {
+      lastError = e;
+    }
+  }
+  const cause = lastError?.cause?.message || lastError?.cause?.code;
+  const message = String(lastError?.message ?? lastError);
+  throw new Error(cause ? `${message} (${cause})` : message);
+}
+
 export class PlayboxApiClient {
   private config: PlayboxConfig;
 
@@ -38,23 +71,71 @@ export class PlayboxApiClient {
   }
 
   async whoami(): Promise<{ userId: string; organizationId?: string | null; organizations: Array<{ id: string; name: string; slug: string }> }> {
-    const res = await fetch(`${this.baseUrl}/whoami`, { headers: this.authHeaders() });
+    const res = await getWithRetry(`${this.baseUrl}/whoami`, { headers: this.authHeaders() });
     if (!res.ok) throw new Error(`Auth failed: ${res.status}`);
     const body: WhoAmIResponse = await res.json();
     if (!body.success || !body.data) throw new Error(body.error || 'Auth failed');
     return body.data;
   }
 
-  async listProjects(organizationId?: string): Promise<Project[]> {
+  /** One page. `total` is what the org holds, and it is optional: the API build
+   *  on the `dev` branch drops it (and ignores `limit`/`offset` outright), so
+   *  nothing here may depend on it being present. */
+  async listProjects(
+    organizationId?: string,
+    limit = PROJECTS_PAGE_SIZE,
+    offset = 0,
+  ): Promise<{ projects: Project[]; total?: number }> {
     const orgId = organizationId || this.config.organizationId;
     const qs = new URLSearchParams();
     if (orgId) qs.set('organizationId', orgId);
-    qs.set('limit', '200');
-    const res = await fetch(`${this.baseUrl}/projects?${qs}`, { headers: this.authHeaders() });
+    qs.set('limit', String(limit));
+    if (offset) qs.set('offset', String(offset));
+    const res = await getWithRetry(`${this.baseUrl}/projects?${qs}`, { headers: this.authHeaders() });
     if (!res.ok) throw new Error(`Failed to list projects: ${res.status}`);
     const body: ListProjectsResponse = await res.json();
     if (!body.success || !body.data) throw new Error(body.error || 'Failed to list projects');
-    return body.data.projects;
+    return { projects: body.data.projects, total: body.data.total };
+  }
+
+  /** Walk pages until one comes back short. Keeps every response body small —
+   *  the whole catalogue in one shot is the ~75 KB that gets cut mid-stream on
+   *  a bad link, which is the bug this all exists to avoid.
+   *  Stops if a page repeats the previous page's first id: that means the server
+   *  ignored `offset`, and paging it would never end. */
+  async listAllProjects(organizationId?: string): Promise<Project[]> {
+    const all: Project[] = [];
+    // Pages are offsets into a list ordered by updatedAt desc, so anyone
+    // deploying mid-walk shifts rows under us: a row can arrive twice, or be
+    // skipped entirely — and a skip is the silent miss this walk exists to
+    // prevent. Dedupe by id and let a repeat count as progress.
+    const seen = new Set<string>();
+    let previousFirstId: string | undefined;
+    let reportedTotal: number | undefined;
+    for (let page = 0; page < PROJECTS_MAX_PAGES; page++) {
+      const { projects, total } = await this.listProjects(
+        organizationId,
+        PROJECTS_PAGE_SIZE,
+        page * PROJECTS_PAGE_SIZE,
+      );
+      if (total !== undefined) reportedTotal = total;
+      if (!projects.length) break;
+      if (projects[0]?.id === previousFirstId) break;
+      previousFirstId = projects[0]?.id;
+      for (const project of projects) {
+        if (seen.has(project.id)) continue;
+        seen.add(project.id);
+        all.push(project);
+      }
+      if (projects.length < PROJECTS_PAGE_SIZE) break;
+      // A server that honours offset but caps limit its own way returns a full
+      // catalogue per page; without this the walk would fetch it over and over.
+      if (reportedTotal !== undefined && all.length >= reportedTotal) break;
+      if (page === PROJECTS_MAX_PAGES - 1) {
+        console.warn(`[plbx] project list truncated at ${all.length} — more pages exist`);
+      }
+    }
+    return all;
   }
 
   async createProject(name: string): Promise<Project> {
@@ -79,7 +160,7 @@ export class PlayboxApiClient {
     qs.set('projectSlug', projectSlug);
     if (this.config.organizationId) qs.set('organizationId', this.config.organizationId);
     qs.set('limit', '50');
-    const res = await fetch(`${this.baseUrl}/deployments?${qs}`, { headers: this.authHeaders() });
+    const res = await getWithRetry(`${this.baseUrl}/deployments?${qs}`, { headers: this.authHeaders() });
     if (!res.ok) return [];
     const body = await res.json();
     return body?.data ?? [];
@@ -103,7 +184,7 @@ export class PlayboxApiClient {
   }
 
   async checkDeploymentExists(projectSlug: string, deploymentSlug: string): Promise<{ exists: boolean; deployment?: { id: string; slug: string; status: string | null; publicUrl: string | null } }> {
-    const res = await fetch(
+    const res = await getWithRetry(
       `${this.baseUrl}/deployments/by-slug?projectSlug=${encodeURIComponent(projectSlug)}&deploymentSlug=${encodeURIComponent(deploymentSlug)}`,
       { headers: this.authHeaders() },
     );

@@ -2287,10 +2287,29 @@ module.exports = Editor.Panel.define({
 
       // Combobox: filter, select, toggle
       this._projectsList = [] as Array<{ id: string; slug: string; name: string }>;
+      this._projectsComplete = false;
+      this._projectsRestLoaded = false;
 
       const clearDropdown = (el: HTMLElement) => {
         while (el.firstChild) el.removeChild(el.firstChild);
       };
+
+      // The first screen is one page of projects, newest first. Typing something
+      // that page does not contain pulls the rest — once. Costs a request only
+      // for the orgs big enough to need it, and never on tab open.
+      const loadRestOnce = () => {
+        if (this._projectsRestLoaded || this._projectsComplete) return;
+        this._projectsRestLoaded = true;
+        this._loadProjects(true).then((ok: boolean) => {
+          // A walk that died leaves a short list behind. Clearing the guard is
+          // what lets the next keystroke try again instead of searching a
+          // 50-row subset forever.
+          if (!ok) this._projectsRestLoaded = false;
+          renderDropdown(projectInput?.value ?? '');
+          this._checkDeployBuild?.();
+        });
+      };
+      this._loadRestOfProjects = loadRestOnce;
 
       const renderDropdown = (filter: string) => {
         if (!projectDropdown) return;
@@ -2299,6 +2318,11 @@ module.exports = Editor.Panel.define({
         const filtered = this._projectsList.filter((p: any) =>
           !q || p.name.toLowerCase().includes(q)
         );
+        // Expand on "the list may be short", not on "nothing matched": a query
+        // that hits one recent project would otherwise hide an older namesake
+        // sitting past the first page, and the user sees a non-empty dropdown
+        // with no hint that anything is missing.
+        if (q && !this._projectsComplete) loadRestOnce();
         for (const p of filtered) {
           const div = document.createElement('div');
           div.className = 'combobox-item';
@@ -2383,7 +2407,12 @@ module.exports = Editor.Panel.define({
         }
         this._checkDeployBuild?.();
       });
-      projectNameInput?.addEventListener('input', () => this._checkDeployBuild?.());
+      // Naming a new project checks it against existing names, so that check
+      // needs the whole catalogue, not just the first page.
+      projectNameInput?.addEventListener('input', () => {
+        this._loadRestOfProjects?.();
+        this._checkDeployBuild?.();
+      });
 
       btnSaveToken?.addEventListener('click', async () => {
         const token = tokenInput?.value.trim();
@@ -2412,7 +2441,10 @@ module.exports = Editor.Panel.define({
         }
       });
 
-      btnRefresh?.addEventListener('click', () => this._loadProjects());
+      btnRefresh?.addEventListener('click', () => {
+        this._projectsRestLoaded = false;
+        this._loadProjects();
+      });
 
       // Check deploy readiness: project selected + build exists
       this._checkDeployBuild = async () => {
@@ -2650,13 +2682,25 @@ module.exports = Editor.Panel.define({
       }
     },
 
-    async _loadProjects(this: any) {
+    /** Resolves true when the list is loaded (or was superseded by a newer
+     *  load), false when the request failed. Callers use that to decide whether
+     *  a retry is still allowed. */
+    async _loadProjects(this: any, all?: boolean): Promise<boolean> {
       const projectHidden = this.$.deployProject as HTMLInputElement;
       const projectInput  = this.$.deployProjectInput as HTMLInputElement;
-      if (!projectHidden) return;
+      if (!projectHidden) return false;
+      // Two loads can be in flight — the tab opens with page one while the user
+      // is already typing, which starts a full walk. Without a generation the
+      // slower reply wins, and a late page one would overwrite the full list
+      // with 50 rows while the "already walked" guard stays set.
+      const generation = (this._projectsGeneration = (this._projectsGeneration ?? 0) + 1);
       try {
-        const projects = await Editor.Message.request('plbx-cocos-extension', 'plbx-list-projects');
+        const projects = await Editor.Message.request('plbx-cocos-extension', 'plbx-list-projects', all);
+        if (generation !== this._projectsGeneration) return true;
         const list = Array.isArray(projects) ? projects : projects?.projects ?? projects?.data ?? [];
+        // Assume more exist unless the API said otherwise — an older build that
+        // reports no total must not look like a complete catalogue.
+        this._projectsComplete = projects?.complete === true;
         this._projectsList = list.map((p: any) => ({
           id:   p.id ?? p.projectId ?? '',
           slug: p.slug ?? '',
@@ -2672,10 +2716,18 @@ module.exports = Editor.Panel.define({
             projectHidden.dataset.slug = saved.slug;
             if (projectInput) projectInput.value = saved.name;
             this._loadDeployments(saved.slug);
+          } else if (!all && !this._projectsComplete) {
+            // Saved project sits past the first page — a project nobody has
+            // touched in a while is exactly the case, since rows come back
+            // newest-first. Pull the rest so the field restores as before.
+            this._projectsRestLoaded = true;
+            if (!(await this._loadProjects(true))) this._projectsRestLoaded = false;
           }
         }
+        return true;
       } catch (e: any) {
         console.error('[plbx] loadProjects error:', e?.message ?? e);
+        return false;
       }
     },
 
