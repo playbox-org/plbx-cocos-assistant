@@ -37,6 +37,9 @@ rules are the kit's. See "Shared kit" below.
   - `preview/server.ts` — dev preview HTTP server (editor runtime; unzips
     builds with `jszip`, serves the kit's `generatePreviewUtil` mock + UI in
     `static/preview/`). The only thing left under `preview/`.
+  - `build/` — the Package tab's Build button: `build-policy.ts` (pure rules —
+    `web-mobile`, splash off, `nativeCodeBundleMode: 'asmjs'`) and
+    `build-task.ts` (the only caller of the Cocos `builder` IPC).
   - `build-report/` — asset scan for the panel's Build Report tab.
   - `compression/` — sharp (images) + ffmpeg (audio).
   - `deployer/` — Playbox API client + uploader.
@@ -141,6 +144,20 @@ rules are the kit's. See "Shared kit" below.
   injected POSTs.
 - i18n files (`src/core/i18n/locales.ts`) are flat; Cocos namespaces them by
   extension name.
+- The Cocos `builder` IPC is undocumented except for `open` /
+  `query-worker-ready`, but the full map is declared in
+  `builtin/builder/@types/protected/message.d.ts` inside the editor's
+  `app.asar`. `add-task(options, shouldWait?)` both creates AND runs a build —
+  there is no separate build message. GOTCHA: `builder:task-changed` carries NO
+  payload (every argument `undefined`, hundreds of times per build) — it is a
+  "go ask" tick, so progress must be POLLED via `query-task`. And a task keeps
+  its last result, so a read right after `add-task` can report the previous
+  run's success. Because the surface is undocumented, `build-task.ts` degrades
+  to opening the Cocos build panel instead of throwing.
+- Build settings live in `<project>/profiles/v2/packages/builder.json`:
+  `common` holds the defaults a NEW task inherits, `BuildTaskManager.taskMap`
+  holds each saved task's own options — and the two do drift apart (seen in the
+  wild: `common` on `asmjs`, a saved task on `both`). Say which one you mean.
 - Moloco V2 launcher has a strict 3 KB ceiling (`LAUNCHER_MAX_BYTES`) —
   packaging aborts if exceeded; the splash uses compact mode there.
 

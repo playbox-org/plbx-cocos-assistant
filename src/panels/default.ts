@@ -97,7 +97,20 @@ module.exports = Editor.Panel.define({
     networkGridMore:  '#network-grid-more',
     networkMoreWrap:  '#network-more-wrap',
     btnToggleMoreNets:'#btn-toggle-more-nets',
+    btnBuild:         '#btn-build',
     btnBuildAll:      '#btn-build-all',
+
+    // Build overlay
+    buildOverlay:      '#build-overlay',
+    buildBackdrop:     '#build-backdrop',
+    buildClose:        '#build-close',
+    buildChecks:       '#build-checks',
+    buildFix:          '#build-fix',
+    buildCheckStatus:  '#build-check-status',
+    buildStart:        '#build-start',
+    buildValidate:     '#build-validate',
+    buildProgressBar:  '#build-progress-bar',
+    buildProgressText: '#build-progress-text',
     btnPreview:       '#btn-preview',
     btnOpenOutput:    '#btn-open-output',
     pkgStatus:        '#pkg-status',
@@ -238,6 +251,7 @@ module.exports = Editor.Panel.define({
     // Surface a footer banner + Update button when the checkout is behind GitHub.
     this._initFreshness();
     this._initSettings();
+    this._initBuild();
     this._initI18n();
 
     this._initBuildReport();
@@ -289,6 +303,189 @@ module.exports = Editor.Panel.define({
         const l = normalizeLang(sel.value);
         Editor.Message.request('plbx-cocos-extension', 'saveLanguage', l).catch(() => {});
         apply(l);
+      });
+    },
+
+    /**
+     * Package tab → Build: verify the three settings a playable build needs,
+     * offer a one-click fix, then run the build with progress.
+     *
+     * Deliberately NOT merged with Pack All — building and packaging are two
+     * processes, and one button that silently did both would hide which half
+     * failed.
+     */
+    _initBuild(this: any) {
+      const overlay = this.$.buildOverlay as HTMLElement | null;
+      if (!overlay) return;
+
+      const t = (key: string) => translate(this._lang || 'en', key);
+      const checksEl = this.$.buildChecks as HTMLElement | null;
+      const fixBtn = this.$.buildFix as HTMLButtonElement | null;
+      const startBtn = this.$.buildStart as HTMLButtonElement | null;
+      const validateBtn = this.$.buildValidate as HTMLButtonElement | null;
+      const statusEl = this.$.buildCheckStatus as HTMLElement | null;
+      const barEl = this.$.buildProgressBar as HTMLElement | null;
+      const progressTextEl = this.$.buildProgressText as HTMLElement | null;
+
+      const ICONS: Record<string, string> = { ok: '✓', fail: '✗', na: '–' };
+
+      /**
+       * Show what auto-package produced in the Package tab's results table.
+       *
+       * The hook packages and reports through `on-auto-package-done`, which
+       * main stores; the panel is never called directly. A couple of retries
+       * cover the gap between the task reporting success and that message
+       * landing.
+       */
+      this._pullAutoPackageResults = async () => {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const last = await Editor.Message.request('plbx-cocos-extension', 'get-last-build-result');
+            const results = last?.autoPackageResult?.results;
+            if (Array.isArray(results) && results.length) {
+              this._renderPackageResults(results);
+              if (this.$.btnPreview) (this.$.btnPreview as HTMLElement).style.display = '';
+              return;
+            }
+          } catch (e: any) {
+            console.warn('[plbx]', e);
+          }
+          await new Promise((r) => setTimeout(r, 700));
+        }
+      };
+
+      const renderChecks = (checks: any[]) => {
+        if (!checksEl) return;
+        checksEl.innerHTML = '';
+        for (const c of checks || []) {
+          const row = document.createElement('div');
+          row.className = `build-check-row is-${c.status}`;
+          const icon = document.createElement('span');
+          icon.className = 'build-check-icon';
+          icon.textContent = ICONS[c.status] ?? '';
+          const label = document.createElement('span');
+          label.className = 'build-check-label';
+          label.textContent = t(c.labelKey);
+          const value = document.createElement('span');
+          value.className = 'build-check-value';
+          // An n/a check is a fact about the editor, not about the project —
+          // showing "— → asmjs" there would read as something to fix.
+          value.textContent =
+            c.status === 'na' ? t('build.na')
+            : c.status === 'ok' ? c.actual
+            : `${c.actual} → ${c.expected}`;
+          row.append(icon, label, value);
+          checksEl.appendChild(row);
+        }
+      };
+
+      const refreshChecks = async () => {
+        try {
+          const res = await Editor.Message.request('plbx-cocos-extension', 'verify-build-settings');
+          renderChecks(res?.checks ?? []);
+          if (fixBtn) fixBtn.style.display = res?.needsFix ? '' : 'none';
+          if (statusEl) statusEl.textContent = res?.needsFix ? '' : t('build.allOk');
+        } catch (e: any) {
+          console.warn('[plbx]', e);
+        }
+      };
+
+      const setProgress = (fraction: number, text: string) => {
+        if (barEl) barEl.style.width = `${Math.max(0, Math.min(1, fraction)) * 100}%`;
+        if (progressTextEl) progressTextEl.textContent = text;
+      };
+
+      const open = () => {
+        overlay.style.display = 'flex';
+        setProgress(0, '');
+        // A modal reopened after a previous build must not still offer to
+        // validate that build's output as if it were this session's result.
+        if (startBtn) startBtn.textContent = t('build.start');
+        if (validateBtn) validateBtn.style.display = 'none';
+        refreshChecks();
+      };
+      const close = () => { overlay.style.display = 'none'; };
+
+      this.$.btnBuild?.addEventListener('click', open);
+      this.$.buildClose?.addEventListener('click', close);
+      this.$.buildBackdrop?.addEventListener('click', close);
+
+      fixBtn?.addEventListener('click', async () => {
+        fixBtn.disabled = true;
+        try {
+          const res = await Editor.Message.request('plbx-cocos-extension', 'fix-build-settings');
+          renderChecks(res?.checks ?? []);
+          fixBtn.style.display = res?.needsFix ? '' : 'none';
+          if (statusEl) statusEl.textContent = t(res?.needsFix ? 'build.allOk' : 'build.fixed');
+        } catch (e: any) {
+          console.warn('[plbx]', e);
+        } finally {
+          fixBtn.disabled = false;
+        }
+      });
+
+      startBtn?.addEventListener('click', async () => {
+        startBtn.disabled = true;
+        setProgress(0, t('build.running'));
+        // Deliberately not awaited: `add-task` may only answer when the build
+        // ends, and awaiting it would freeze the bar for the whole build by
+        // construction. The poll below is what drives the UI.
+        Editor.Message.request('plbx-cocos-extension', 'start-build')
+          .catch((e: any) => console.warn('[plbx] start-build failed', e));
+        // Poll rather than push: same shape as the update/deploy progress that
+        // already works here, and it survives a panel reload mid-build.
+        const poll = setInterval(async () => {
+          let state: any;
+          try {
+            state = await Editor.Message.request('plbx-cocos-extension', 'get-build-progress');
+          } catch {
+            return; // transient; keep polling
+          }
+          if (!state || state.state === 'running') {
+            setProgress(state?.progress ?? 0, `${t('build.running')} ${state?.message || ''}`.trim());
+            return;
+          }
+          clearInterval(poll);
+          startBtn.disabled = false;
+          if (state.state === 'success') {
+            // The build wrote a fresh directory and main adopted it — reflect
+            // that in the Build Directory field the packager reads.
+            this._reloadBuildDirField?.();
+            const autoPacked = (this.$.pkgAutoPackage as HTMLInputElement | null)?.checked;
+            setProgress(1, t(autoPacked ? 'build.successPacked' : 'build.success'));
+            // The button's job changed: the build exists now, so pressing it
+            // again is a rebuild, and there is finally something to validate.
+            startBtn.textContent = t('build.again');
+            // Shown after any successful build, not only an auto-packaged one:
+            // a button that appears under some conditions and not others reads
+            // as broken. With nothing packaged yet the validator says so.
+            if (validateBtn) validateBtn.style.display = '';
+            // Packaging runs inside the build hook, which the builder awaits —
+            // so by the time the task reports success the artifacts exist. The
+            // results reach main as a separate message, hence the short retry.
+            if (autoPacked) this._pullAutoPackageResults?.();
+          } else if (state.state === 'busy') {
+            setProgress(0, t('build.busy'));
+          } else {
+            setProgress(0, state.fallback ? t('build.fallback') : t('build.failed'));
+          }
+          refreshChecks();
+        }, 500);
+      });
+
+      // Same preview validator the Package toolbar's Validate button starts —
+      // one implementation, shared through `_startPreview`.
+      validateBtn?.addEventListener('click', async () => {
+        validateBtn.disabled = true;
+        try {
+          const url = await this._startPreview();
+          setProgress(1, t('status.previewUrl').replace('{url}', url));
+        } catch (e: any) {
+          console.error('[plbx] Preview failed:', e?.message ?? e);
+          setProgress(1, t('status.previewError').replace('{msg}', String(e?.message ?? e)));
+        } finally {
+          validateBtn.disabled = false;
+        }
       });
     },
 
@@ -1665,6 +1862,21 @@ module.exports = Editor.Panel.define({
           })
           .catch((e: any) => { console.warn('[plbx]', e); });
       };
+      // After a build started from our own Build button, main has already
+      // adopted the output directory into settings — pull it back into the
+      // field so the packager and the panel agree without a manual step.
+      this._reloadBuildDirField = () => {
+        Editor.Message.request('plbx-cocos-extension', 'get-settings')
+          .then((s: any) => {
+            const input = this.$.pkgBuildDir as HTMLInputElement | null;
+            if (input && s?.buildDir) input.value = s.buildDir;
+            refreshBuildDirState();
+            refreshPackAvailability(s?.buildDir);
+            if (s?.buildDir) refreshDetectedStoreUrls(s.buildDir);
+          })
+          .catch((e: any) => { console.warn('[plbx]', e); });
+      };
+
       (this.$.pkgBuildDirUse as HTMLElement)?.addEventListener('click', () => {
         const input = this.$.pkgBuildDir as HTMLInputElement | null;
         if (!input || !lastBuildDestRel) return;
@@ -1801,6 +2013,7 @@ module.exports = Editor.Panel.define({
 
         if (buildDirInput && settings?.buildDir) buildDirInput.value = settings.buildDir;
         refreshBuildDirState();
+        refreshPackAvailability(settings?.buildDir);
         refreshDetectedStoreUrls(settings?.buildDir);
         refreshAxonAdvisory(settings?.buildDir, settings?.selectedNetworks);
         if (outputDirInput && settings?.outputDir) outputDirInput.value = settings.outputDir;
@@ -1966,10 +2179,39 @@ module.exports = Editor.Panel.define({
         })
         .catch(() => {});
 
+      /**
+       * Pack All is only meaningful when a Cocos build actually sits at the
+       * Build Directory. Packaging a path with no build there fails deep inside
+       * the kit with a message about a missing file; disabling the button says
+       * the same thing before the click.
+       *
+       * `src/settings.json` is the marker — the same one `detectBuildDir` uses
+       * to recognise a build directory. A directory that merely exists (an
+       * emptied `build/`, a typo that matches a real folder) is not a build.
+       */
+      const refreshPackAvailability = async (buildDir?: string) => {
+        if (!btnBuildAll) return;
+        const dir = (buildDir ?? (this.$.pkgBuildDir as HTMLInputElement)?.value ?? '').trim();
+        let hasBuild = false;
+        if (dir) {
+          try {
+            hasBuild = await Editor.Message.request(
+              'plbx-cocos-extension', 'check-path-exists', `${dir}/src/settings.json`,
+            );
+          } catch (e: any) {
+            console.warn('[plbx]', e);
+          }
+        }
+        btnBuildAll.disabled = !hasBuild;
+        btnBuildAll.title = hasBuild ? '' : translate(this._lang || 'en', 'package.noBuildAtPath');
+      };
+      this._refreshPackAvailability = refreshPackAvailability;
+
       // Re-detect store URLs when the build directory changes.
       (this.$.pkgBuildDir as HTMLInputElement)?.addEventListener('change', () => {
         refreshDetectedStoreUrls();
         refreshAxonAdvisory();
+        refreshPackAvailability();
       });
 
       // --- Build All ---
@@ -2037,18 +2279,33 @@ module.exports = Editor.Panel.define({
         }
       });
 
+      /**
+       * Serve the packaged output through the preview validator.
+       *
+       * Shared by the toolbar's Validate button and the one the Build modal
+       * shows after a successful build — one implementation so the two cannot
+       * drift. Throws a translated message; each caller decides where to put it.
+       */
+      const startPreview = async (): Promise<string> => {
+        const outputDir = (this.$.pkgOutputDir as HTMLInputElement)?.value.trim() ?? '';
+        const networkIds = Array.from(
+          contentPkg?.querySelectorAll('input[name="network"]:checked') ?? []
+        ).map((cb: any) => (cb as HTMLInputElement).value);
+        if (!outputDir) throw new Error(translate(this._lang || 'en', 'status.setOutputDir'));
+        if (!networkIds.length) throw new Error(translate(this._lang || 'en', 'status.selectNetwork'));
+        const result = await Editor.Message.request(
+          'plbx-cocos-extension', 'start-preview', outputDir, networkIds,
+        );
+        console.log('[plbx] Preview opened:', result.url);
+        return result.url;
+      };
+      this._startPreview = startPreview;
+
       btnPreview?.addEventListener('click', async () => {
         try {
           btnPreview.disabled = true;
-          const outputDir = (this.$.pkgOutputDir as HTMLInputElement)?.value.trim() ?? '';
-          const networkIds = Array.from(
-            contentPkg?.querySelectorAll('input[name="network"]:checked') ?? []
-          ).map((cb: any) => (cb as HTMLInputElement).value);
-          if (!outputDir) { if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.setOutputDir'); return; }
-          if (!networkIds.length) { if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.selectNetwork'); return; }
-          const result = await Editor.Message.request('plbx-cocos-extension', 'start-preview', outputDir, networkIds);
-          console.log('[plbx] Preview opened:', result.url);
-          if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.previewUrl').replace('{url}', result.url);
+          const url = await startPreview();
+          if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.previewUrl').replace('{url}', url);
         } catch (err: any) {
           console.error('[plbx] Preview failed:', err.message || err);
           if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.previewError').replace('{msg}', String(err?.message ?? err));

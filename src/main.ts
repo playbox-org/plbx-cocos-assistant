@@ -30,7 +30,14 @@ import {
   defaultSharpInstallIO,
 } from './core/compression/sharp-status';
 import { buildSplashPreview, playboxSplashBytes } from './core/splash/splash-preview';
-import { resolveBuildDir } from './core/build-dir';
+import { resolveBuildDir, toRelative } from './core/build-dir';
+import {
+  verifyBuildSettings,
+  fixBuildSettings,
+  startBuild,
+  getBuildProgress,
+  claimOwnBuild,
+} from './core/build/build-task';
 import { buildPackageRequest } from './core/package-request';
 import { classifyKit, formatKitBanner } from './core/kit/kit-freshness';
 import {
@@ -330,11 +337,36 @@ export const methods: Record<string, (...args: any[]) => any> = {
     // stale leftover directory. In-memory alone would lose this on restart.
     const dest = args[0]?.dest;
     if (dest) {
-      saveProjectSettings({ lastBuildDest: dest }).catch((e: any) =>
+      const patch: Record<string, string> = { lastBuildDest: dest };
+      // A build started from our own Build button is one the operator chose
+      // here, so its output is adopted outright — no mismatch prompt for a
+      // directory they just asked us to fill.
+      if (claimOwnBuild()) {
+        const relative = toRelative(dest, Editor.Project.path || '');
+        if (relative) patch.buildDir = relative;
+      }
+      saveProjectSettings(patch).catch((e: any) =>
         console.warn('[plbx] lastBuildDest save failed:', e?.message ?? e),
       );
     }
     Editor.Panel.open('plbx-cocos-extension');
+  },
+
+  /** Package tab → Build: the three settings a playable build must have. */
+  async verifyBuildSettings() {
+    return verifyBuildSettings();
+  },
+
+  async fixBuildSettings() {
+    return fixBuildSettings();
+  },
+
+  async startBuild() {
+    return startBuild();
+  },
+
+  async getBuildProgress() {
+    return getBuildProgress();
   },
 
   /** Reconcile the Build Directory field with the last real build output, so the

@@ -332,6 +332,41 @@ describe('package.json panel config', () => {
     // …and none of them reaches for the packager module deleted at kit adoption.
     expect(mainSrc).not.toContain('./core/packager/');
   });
+
+  it('exposes every Build overlay element through the $ selector map', () => {
+    // The reverse of the check above: an id present in the template but absent
+    // from `$` is invisible to the panel — `this.$.<name>` is undefined, so the
+    // element silently never renders. That shipped once: the modal's Validate
+    // button existed in the markup and could never be shown.
+    const panelSrc = readFileSync(SRC, 'utf-8');
+    const template = readFileSync(TEMPLATE, 'utf-8');
+    const overlay = template.split('id="build-overlay"')[1].split('SETTINGS OVERLAY')[0];
+    const ids = [...overlay.matchAll(/id="(build-[a-z-]+)"/g)].map((m) => m[1]);
+    expect(ids.length).toBeGreaterThan(5);
+    for (const id of ids) {
+      expect(panelSrc, `$ selector for #${id}`).toContain(`'#${id}'`);
+    }
+  });
+
+  it('registers every message the Build overlay sends, wired to a real method', () => {
+    // A panel request whose name is missing from contributions.messages fails
+    // silently in the editor — nothing throws, the button simply does nothing.
+    const mainSrc = readFileSync(join(ROOT, 'src/main.ts'), 'utf-8');
+    const panelSrc = readFileSync(SRC, 'utf-8');
+    const msgs = pkg.contributions.messages as Record<string, { methods: string[] }>;
+    const used = ['verify-build-settings', 'fix-build-settings', 'start-build', 'get-build-progress'];
+    for (const name of used) {
+      expect(panelSrc, `panel sends ${name}`).toContain(`'${name}'`);
+      expect(msgs[name], `${name} registered`).toBeDefined();
+      for (const method of msgs[name].methods) {
+        expect(mainSrc, `${name} → ${method}`).toMatch(new RegExp(`\\b${method}\\s*\\(`));
+      }
+    }
+    // Progress is READ from the builder, never pushed: `builder:task-changed`
+    // fires with every argument undefined, so subscribing to it bought nothing
+    // and left the bar at zero for the whole build.
+    expect(msgs['builder:task-changed']).toBeUndefined();
+  });
 });
 
 describe('i18n keys', () => {

@@ -45,7 +45,7 @@ function samePath(a: string, b: string): boolean {
 }
 
 /** Strip the project root so stored settings stay portable across machines. */
-function toRelative(absolute: string, projectRoot: string): string {
+export function toRelative(absolute: string, projectRoot: string): string {
   const a = absolute.replace(/[\\/]+/g, '/').replace(/\/+$/, '');
   const root = projectRoot.replace(/[\\/]+/g, '/').replace(/\/+$/, '');
   if (a.toLowerCase().startsWith(root.toLowerCase() + '/')) {
