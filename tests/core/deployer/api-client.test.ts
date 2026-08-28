@@ -122,6 +122,28 @@ describe('PlayboxApiClient', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
+  it('should not repeat a project that shifted between pages', async () => {
+    // Rows come back updatedAt desc, so a deploy mid-walk pushes everything
+    // down and page two hands back a row page one already had.
+    mockFetch
+      .mockResolvedValueOnce(page(idRange(1, 50)))
+      .mockResolvedValueOnce(page(['50', ...idRange(51, 20)]));
+
+    const projects = await client.listAllProjects('org-1');
+    expect(projects.map((p) => p.id)).toHaveLength(new Set(projects.map((p) => p.id)).size);
+    expect(projects).toHaveLength(70);
+  });
+
+  it('should stop once it holds the reported total', async () => {
+    // A server that honours offset but returns everything per page would
+    // otherwise be walked again and again.
+    mockFetch.mockResolvedValue(page(idRange(1, 60), 60));
+
+    const projects = await client.listAllProjects('org-1');
+    expect(projects).toHaveLength(60);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
   it('should leave total absent when the API does not report it', async () => {
     mockFetch.mockResolvedValueOnce(page(['1']));
     const result = await client.listProjects('org-1');

@@ -56,7 +56,10 @@ async function resolveOrgId(client: PlayboxApiClient, token: string): Promise<st
   if (_orgIdCache?.token === token) return _orgIdCache.orgId;
   const whoami = await client.whoami();
   const orgId = whoami.organizationId || whoami.organizations?.[0]?.id;
-  _orgIdCache = { token, orgId: orgId ?? undefined };
+  // Only a real org is worth remembering. Caching "this key has none" would
+  // outlive the fix: create the org in the web UI, come back, and the editor
+  // keeps answering from the cache until it restarts.
+  if (orgId) _orgIdCache = { token, orgId };
   return orgId ?? undefined;
 }
 
@@ -747,7 +750,8 @@ export const methods: Record<string, (...args: any[]) => any> = {
       apiKey: token,
     });
     const whoami = await client.whoami();
-    _orgIdCache = { token, orgId: whoami.organizationId || whoami.organizations?.[0]?.id };
+    const orgId = whoami.organizationId || whoami.organizations?.[0]?.id;
+    if (orgId) _orgIdCache = { token, orgId };
     return whoami;
   },
 

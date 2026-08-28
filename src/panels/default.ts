@@ -2300,7 +2300,14 @@ module.exports = Editor.Panel.define({
       const loadRestOnce = () => {
         if (this._projectsRestLoaded || this._projectsComplete) return;
         this._projectsRestLoaded = true;
-        this._loadProjects(true).then(() => renderDropdown(projectInput?.value ?? ''));
+        this._loadProjects(true).then((ok: boolean) => {
+          // A walk that died leaves a short list behind. Clearing the guard is
+          // what lets the next keystroke try again instead of searching a
+          // 50-row subset forever.
+          if (!ok) this._projectsRestLoaded = false;
+          renderDropdown(projectInput?.value ?? '');
+          this._checkDeployBuild?.();
+        });
       };
       this._loadRestOfProjects = loadRestOnce;
 
@@ -2311,7 +2318,11 @@ module.exports = Editor.Panel.define({
         const filtered = this._projectsList.filter((p: any) =>
           !q || p.name.toLowerCase().includes(q)
         );
-        if (q && !filtered.length) loadRestOnce();
+        // Expand on "the list may be short", not on "nothing matched": a query
+        // that hits one recent project would otherwise hide an older namesake
+        // sitting past the first page, and the user sees a non-empty dropdown
+        // with no hint that anything is missing.
+        if (q && !this._projectsComplete) loadRestOnce();
         for (const p of filtered) {
           const div = document.createElement('div');
           div.className = 'combobox-item';
@@ -2671,12 +2682,21 @@ module.exports = Editor.Panel.define({
       }
     },
 
-    async _loadProjects(this: any, all?: boolean) {
+    /** Resolves true when the list is loaded (or was superseded by a newer
+     *  load), false when the request failed. Callers use that to decide whether
+     *  a retry is still allowed. */
+    async _loadProjects(this: any, all?: boolean): Promise<boolean> {
       const projectHidden = this.$.deployProject as HTMLInputElement;
       const projectInput  = this.$.deployProjectInput as HTMLInputElement;
-      if (!projectHidden) return;
+      if (!projectHidden) return false;
+      // Two loads can be in flight — the tab opens with page one while the user
+      // is already typing, which starts a full walk. Without a generation the
+      // slower reply wins, and a late page one would overwrite the full list
+      // with 50 rows while the "already walked" guard stays set.
+      const generation = (this._projectsGeneration = (this._projectsGeneration ?? 0) + 1);
       try {
         const projects = await Editor.Message.request('plbx-cocos-extension', 'plbx-list-projects', all);
+        if (generation !== this._projectsGeneration) return true;
         const list = Array.isArray(projects) ? projects : projects?.projects ?? projects?.data ?? [];
         // Assume more exist unless the API said otherwise — an older build that
         // reports no total must not look like a complete catalogue.
@@ -2701,11 +2721,13 @@ module.exports = Editor.Panel.define({
             // touched in a while is exactly the case, since rows come back
             // newest-first. Pull the rest so the field restores as before.
             this._projectsRestLoaded = true;
-            await this._loadProjects(true);
+            if (!(await this._loadProjects(true))) this._projectsRestLoaded = false;
           }
         }
+        return true;
       } catch (e: any) {
         console.error('[plbx] loadProjects error:', e?.message ?? e);
+        return false;
       }
     },
 

@@ -28,6 +28,9 @@ export const PROJECTS_MAX_PAGES = 20;
 async function getWithRetry(url: string, init: RequestInit): Promise<Response> {
   let lastError: any;
   for (let attempt = 0; attempt < 2; attempt++) {
+    // Retrying into the same millisecond usually lands in the same trouble;
+    // a short pause is what makes the second attempt worth making.
+    if (attempt) await new Promise((r) => setTimeout(r, 250));
     try {
       return await fetch(url, init);
     } catch (e: any) {
@@ -102,18 +105,35 @@ export class PlayboxApiClient {
    *  ignored `offset`, and paging it would never end. */
   async listAllProjects(organizationId?: string): Promise<Project[]> {
     const all: Project[] = [];
+    // Pages are offsets into a list ordered by updatedAt desc, so anyone
+    // deploying mid-walk shifts rows under us: a row can arrive twice, or be
+    // skipped entirely — and a skip is the silent miss this walk exists to
+    // prevent. Dedupe by id and let a repeat count as progress.
+    const seen = new Set<string>();
     let previousFirstId: string | undefined;
+    let reportedTotal: number | undefined;
     for (let page = 0; page < PROJECTS_MAX_PAGES; page++) {
-      const { projects } = await this.listProjects(
+      const { projects, total } = await this.listProjects(
         organizationId,
         PROJECTS_PAGE_SIZE,
         page * PROJECTS_PAGE_SIZE,
       );
+      if (total !== undefined) reportedTotal = total;
       if (!projects.length) break;
       if (projects[0]?.id === previousFirstId) break;
       previousFirstId = projects[0]?.id;
-      all.push(...projects);
+      for (const project of projects) {
+        if (seen.has(project.id)) continue;
+        seen.add(project.id);
+        all.push(project);
+      }
       if (projects.length < PROJECTS_PAGE_SIZE) break;
+      // A server that honours offset but caps limit its own way returns a full
+      // catalogue per page; without this the walk would fetch it over and over.
+      if (reportedTotal !== undefined && all.length >= reportedTotal) break;
+      if (page === PROJECTS_MAX_PAGES - 1) {
+        console.warn(`[plbx] project list truncated at ${all.length} — more pages exist`);
+      }
     }
     return all;
   }
@@ -164,7 +184,7 @@ export class PlayboxApiClient {
   }
 
   async checkDeploymentExists(projectSlug: string, deploymentSlug: string): Promise<{ exists: boolean; deployment?: { id: string; slug: string; status: string | null; publicUrl: string | null } }> {
-    const res = await fetch(
+    const res = await getWithRetry(
       `${this.baseUrl}/deployments/by-slug?projectSlug=${encodeURIComponent(projectSlug)}&deploymentSlug=${encodeURIComponent(deploymentSlug)}`,
       { headers: this.authHeaders() },
     );
