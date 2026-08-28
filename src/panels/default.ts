@@ -108,6 +108,7 @@ module.exports = Editor.Panel.define({
     buildFix:          '#build-fix',
     buildCheckStatus:  '#build-check-status',
     buildStart:        '#build-start',
+    buildValidate:     '#build-validate',
     buildProgressBar:  '#build-progress-bar',
     buildProgressText: '#build-progress-text',
     btnPreview:       '#btn-preview',
@@ -455,7 +456,10 @@ module.exports = Editor.Panel.define({
             // The button's job changed: the build exists now, so pressing it
             // again is a rebuild, and there is finally something to validate.
             startBtn.textContent = t('build.again');
-            if (validateBtn && autoPacked) validateBtn.style.display = '';
+            // Shown after any successful build, not only an auto-packaged one:
+            // a button that appears under some conditions and not others reads
+            // as broken. With nothing packaged yet the validator says so.
+            if (validateBtn) validateBtn.style.display = '';
             // Packaging runs inside the build hook, which the builder awaits —
             // so by the time the task reports success the artifacts exist. The
             // results reach main as a separate message, hence the short retry.
