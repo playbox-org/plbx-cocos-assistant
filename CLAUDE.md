@@ -134,9 +134,15 @@ rules are the kit's. See "Shared kit" below.
 
 ## Key gotchas
 
-- Lifecycle: `gameReady` is defined by network validators and called by us;
-  `gameStart` is defined by us and called by the validator. Never overwrite
-  validator lifecycle functions.
+- Lifecycle: a `game*` global's NAME does not say who calls it, and the same
+  identifier means different things per network. The creative CALLS
+  `gameReady`/`gameEnd`/`gameRetry`; the creative DEFINES `gameStart`/
+  `gameClose` and the container calls them (so a preview mock must invoke
+  them, never assign them). Luna's `startGame` is a third contract — it GATES
+  boot, unlike Mintegral's `gameStart`, despite the transposed name. TikTok
+  has no lifecycle at all. Full table + the traps live in the kit:
+  `playable-kit/docs/networks/lifecycle-call-direction.md` — read it before
+  touching any of these.
 - Mintegral CTA is `window.install()`, not `mraid.open()`.
 - Games detect the build via `window.super_html_channel` and route CTA
   through `super_html`/`plbx_html` — the packager must set that marker.
