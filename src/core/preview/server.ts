@@ -254,9 +254,10 @@ async function buildHostileMp3(outputDir: string, networkId: string): Promise<st
 }
 
 /**
- * Static validator: forbidden string literals ('mraid.js') in the built HTML.
- * Non-MRAID upload validators (Moloco, Facebook) substring-scan the raw markup
- * and reject the creative on any hit — even inside a comment or a conditional.
+ * Static validator: the network's forbidden string literals in the built HTML.
+ * Upload validators substring-scan the raw markup and reject the creative on
+ * any hit — even inside a comment or a conditional. The list is per-network
+ * (Moloco/Facebook: 'mraid.js'; Unity: 'window.top'; Mintegral: 'preview-util').
  * Reads the built HTML (zip-aware); mirrors the package-time guard
  * (assertNoForbiddenStrings) so stale builds from older packagers get caught here.
  */
@@ -672,12 +673,16 @@ export async function startPreviewServer(options: {
                   hint: IOS_AUDIO_RISK_CTA + ' Safari/iOS WebAudio decodeAudioData can reject ultra-short VBR/Xing MP3s (written by some LAME encoders) even though Chrome/ffmpeg decode them — one bad clip can hang the playable. Re-encode to plain CBR (e.g. ffmpeg -c:a libmp3lame -write_xing 0).',
                 });
               }
-              // Forbidden literals ('mraid.js') — non-MRAID upload validators
-              // reject the raw HTML on any hit. Static scan of the built file;
-              // the check def comes from getNetworkChecks for !mraid networks.
-              const forbiddenLiterals = config?.mraid
-                ? []
-                : await buildForbiddenLiterals(outputDir, id);
+              // Forbidden literals — the network's upload validator rejects the
+              // raw HTML on any hit. Which strings apply is per-network
+              // (kit: forbiddenStringsFor), NOT "every non-MRAID network gets
+              // mraid.js": Unity is MRAID and forbids window.top. Gating this on
+              // !mraid used to skip Unity entirely. The check def comes from
+              // getNetworkChecks, which is keyed off the same list.
+              const forbiddenLiterals = await buildForbiddenLiterals(
+                outputDir,
+                id,
+              );
               return {
                 id,
                 name: config?.name || id,

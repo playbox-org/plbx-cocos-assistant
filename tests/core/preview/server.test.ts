@@ -79,6 +79,36 @@ describe('Preview Server', () => {
     expect(applovin.checks.map((c: { id: string }) => c.id)).not.toContain('no_forbidden_literals');
   });
 
+  // Unity is an MRAID network that still forbids a literal ('window.top', which
+  // Phaser's input manager emits by default). The scan used to be gated on
+  // !mraid, so a Unity artifact from an older packager showed a clean checklist
+  // for a creative Unity's uploader rejects.
+  it('flags window.top in a unity build even though unity is MRAID', async () => {
+    mkdirSync(join(TMP, 'unity'), { recursive: true });
+    // One minified line, the shape a real Phaser bundle has.
+    writeFileSync(join(TMP, 'unity', 'index.html'),
+      '<html><head><script src="mraid.js"></script></head><body><script>' +
+      'a.game.config.inputWindowEvents&&(this.isTop?window.top:window)' +
+      '.addEventListener("mousedown",t.onMouseDownWindow,!1);' +
+      '</script></body></html>');
+    mkdirSync(join(TMP, 'ironsource'), { recursive: true });
+    writeFileSync(join(TMP, 'ironsource', 'index.html'),
+      '<html><head><script src="mraid.js"></script></head><body></body></html>');
+
+    const { url } = await startPreviewServer({ outputDir: TMP, networks: ['unity', 'ironsource'] });
+    const data = JSON.parse((await httpGet(url + '/api/networks')).body);
+    const unity = data.find((n: { id: string }) => n.id === 'unity');
+    const ironsource = data.find((n: { id: string }) => n.id === 'ironsource');
+
+    expect(unity.forbiddenLiterals).toEqual(['window.top']);
+    expect(unity.checks.map((c: { id: string }) => c.id)).toContain('no_forbidden_literals');
+    // ...and the mraid.js tag it legitimately ships is not flagged.
+    expect(unity.forbiddenLiterals).not.toContain('mraid.js');
+    // Another MRAID network with nothing to forbid keeps no row at all.
+    expect(ironsource.forbiddenLiterals).toEqual([]);
+    expect(ironsource.checks.map((c: { id: string }) => c.id)).not.toContain('no_forbidden_literals');
+  });
+
   // molocoV2 launcher-payload: the launcher is a <3 KB tag with no loader — the
   // loader ships inside payload.js as an ESCAPED JS string ('\\.' on disk where
   // the plain loader has '\.'). Loader-health must scan launcher + unescaped

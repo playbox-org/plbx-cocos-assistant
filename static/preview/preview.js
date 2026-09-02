@@ -1075,15 +1075,17 @@
         net.hasAppStoreUrl ? 'Found in build' : 'MISSING — set via set_app_store_url(...) in game code');
     }
 
-    // Forbidden literals ('mraid.js') — non-MRAID upload validators (Moloco,
-    // Facebook) substring-scan the raw HTML and reject on any hit, even in a
-    // comment. Set from the server-side scan; the check def only exists for
-    // non-MRAID networks (setCheck is a no-op otherwise).
-    if (net && !net.mraid) {
+    // Forbidden literals — upload validators substring-scan the raw HTML and
+    // reject on any hit, even in a comment. The list is per-network, and NOT
+    // "mraid.js for non-MRAID networks": Unity is MRAID and forbids window.top.
+    // Set from the server-side scan; the check def exists only when the network
+    // forbids something (setCheck is a no-op otherwise), so no gate is needed
+    // here — the row carries the remediation text in its hint.
+    if (net) {
       var forbidden = net.forbiddenLiterals || [];
       setCheck('no_forbidden_literals', forbidden.length ? 'fail' : 'pass',
         forbidden.length
-          ? 'Found: ' + forbidden.join(', ') + ' — repackage with the current kit'
+          ? 'Found: ' + forbidden.join(', ') + ' — see hint'
           : 'Not found in build');
     }
 
