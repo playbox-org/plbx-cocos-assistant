@@ -37,6 +37,13 @@
         "message": "open-panel"
       }
     ],
+    "shortcuts": [
+      {
+        "message": "open-panel",
+        "win": "ctrl+shift+p",
+        "mac": "cmd+shift+p"
+      }
+    ],
     "messages": {
       "open-panel": {
         "methods": [
@@ -241,6 +248,16 @@
       "list-output-builds": {
         "methods": [
           "listOutputBuilds"
+        ]
+      },
+      "validate-outputs": {
+        "methods": [
+          "validateOutputs"
+        ]
+      },
+      "get-build-info": {
+        "methods": [
+          "getBuildInfo"
         ]
       },
       "open-folder": {

@@ -1656,3 +1656,262 @@ body,
   background: #4a90d9;
   transition: width 0.2s ease;
 }
+
+/* ===================================================================
+   Package tab: left column + full-height results rail
+   ===================================================================
+   The rail spans the whole pane height rather than sitting under the
+   settings, so results are readable while the form is being edited, and
+   it folds to a 34px strip when the operator wants the width back. */
+
+.pkg-body { display: flex; flex: 1; min-height: 0; }
+
+.pkg-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pkg-left-scroll { flex: 1; overflow-y: auto; padding: 14px 20px 12px; }
+
+/* The actions stay reachable however far the form is scrolled. Inside the left
+   column, not across the pane, so the results rail keeps its full height. */
+.pkg-footer {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 9px 20px;
+  border-top: 1px solid #3a3a3a;
+  background: #292929;
+}
+
+.pkg-rail {
+  width: 420px;
+  flex-shrink: 0;
+  border-left: 1px solid #3a3a3a;
+  background: #262626;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.18s ease;
+}
+
+.rail-head {
+  height: 34px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.rail-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #888;
+}
+
+.rail-meta { font-size: 11px; color: #666; margin-left: auto; white-space: nowrap; }
+
+.rail-fold {
+  background: none;
+  border: none;
+  color: #777;
+  cursor: pointer;
+  font-size: 12px;
+  /* Comfortable target in both states — the glyph itself is ~6px wide. */
+  min-width: 20px;
+  padding: 3px 6px;
+  border-radius: 3px;
+}
+
+.rail-fold:hover { color: #4a9eff; background: #2f2f2f; }
+
+.rail-body { flex: 1; overflow-y: auto; }
+
+.pkg-rail.folded { width: 32px; }
+
+/* Folded, the head stops being a 34px bar and becomes the whole strip: the
+   vertical caption needs the full height to sit in, and cramming it into the
+   fixed-height header left it clipped and off-centre. */
+.pkg-rail.folded .rail-head {
+  height: auto;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: none;
+  cursor: pointer;
+}
+
+.pkg-rail.folded .rail-title,
+.pkg-rail.folded .rail-meta,
+.pkg-rail.folded .rail-body { display: none; }
+
+/* The chevron is a glyph a few pixels wide; give it a real target so it is as
+   clickable as the strip around it. */
+.pkg-rail.folded .rail-fold {
+  padding: 0;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Fills the strip so any point in it is clickable, not just the two glyphs. */
+.pkg-rail.folded .rail-head::after { content: ''; flex: 1; align-self: stretch; }
+.pkg-rail.folded:hover .rail-fold,
+.pkg-rail.folded:hover .rail-folded-label { color: #4a9eff; }
+
+/* Vertical caption so a folded rail still says what it is. */
+.rail-folded-label {
+  display: none;
+  writing-mode: vertical-rl;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #6e6e6e;
+  padding: 0;
+  margin: 0;
+  white-space: nowrap;
+  user-select: none;
+  /* The strip handles the click; the caption must not swallow it. */
+  pointer-events: none;
+}
+
+.pkg-rail.folded .rail-folded-label { display: block; }
+.rail-folded-label:hover { color: #4a9eff; }
+
+.rail-dot { color: #4caf50; }
+.rail-dot.warn { color: #ff9800; }
+.rail-dot.fail { color: #f44336; }
+
+.pkg-rail .data-table td:first-child { max-width: 176px; }
+
+.pkg-rail .col-created {
+  width: 90px;
+  white-space: nowrap;
+  color: #999;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pkg-rail .col-status { width: 48px; padding-right: 10px; }
+
+/* Group header row separating this session's artifacts from ones already
+   on disk when the panel opened. */
+.rail-group td {
+  padding: 4px 8px 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #666;
+  background: #242424 !important;
+  border-bottom: 1px solid #303030;
+}
+
+/* A row whose checks have not run yet shows a dash rather than a verdict we
+   cannot vouch for; it fills in as soon as validate-outputs answers. */
+.rail-nostatus { color: #5c5c5c; }
+
+/* A network can emit several artifacts (Google's orientation archives, an
+   html+zip pair). Without naming the variant the rail repeats one row. */
+.rail-variant { font-size: 10px; color: #6e6e6e; margin-left: 6px; }
+
+.rail-empty {
+  padding: 34px 18px;
+  text-align: center;
+  color: #777;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.rail-empty .ic { font-size: 26px; opacity: 0.35; display: block; margin-bottom: 8px; }
+.rail-empty b { color: #aaa; font-weight: 600; }
+.rail-empty code { color: #888; font-size: 11px; font-family: Menlo, Consolas, monospace; }
+
+/* ===== Networks selector =====
+   Selected networks are always visible as real checkboxes; the full
+   alphabetical list is one quiet toggle away. No per-item borders, badges
+   or fills — one rhythm of 24px rows and a single accent. */
+
+.net-block { margin-bottom: 4px; }
+
+.net-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  border-bottom: 1px solid #3a3a3a;
+  padding-bottom: 4px;
+  margin: 0 0 7px;
+}
+
+.net-title {
+  color: #888;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.net-head-meta { font-size: 11px; color: #666; margin-left: auto; }
+
+.net-head-actions { display: flex; gap: 4px; }
+
+.net-cols { columns: 4 168px; column-gap: 22px; }
+
+.net-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  padding: 0 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  break-inside: avoid;
+}
+
+.net-item:hover { background: #333333; }
+
+.net-item input[type='checkbox'] {
+  accent-color: #4a9eff;
+  cursor: pointer;
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.net-item-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: #9a9a9a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.net-item.is-checked .net-item-name { color: #e6e6e6; }
+
+.net-empty { color: #777; font-size: 12px; font-style: italic; padding: 2px 4px; }
+
+.net-more-toggle {
+  background: none;
+  border: none;
+  color: #777;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px;
+  margin-top: 2px;
+}
+
+.net-more-toggle:hover { color: #4a9eff; }
+.net-more-toggle .arrow { font-size: 9px; display: inline-block; }

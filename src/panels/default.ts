@@ -3,6 +3,7 @@ declare const Editor: any;
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { translate, normalizeLang } from '../core/i18n/locales';
+import { railVerdict } from './rail-verdict';
 import { formatLogoDimensions } from '../core/splash/logo-dimensions';
 import { AXON_SPEC_URL } from '@playbox-ai/playable-kit';
 
@@ -93,10 +94,19 @@ module.exports = Editor.Panel.define({
     // Package tab
     btnGenerateAdapter: '#btn-generate-adapter',
     btnGenerateAxon:    '#btn-generate-axon',
-    networkGrid:      '#network-grid',
-    networkGridMore:  '#network-grid-more',
-    networkMoreWrap:  '#network-more-wrap',
-    btnToggleMoreNets:'#btn-toggle-more-nets',
+    netSelected:      '#net-selected',
+    netSelectedEmpty: '#net-selected-empty',
+    netCount:         '#net-count',
+    netMoreToggle:    '#net-more-toggle',
+    netAllWrap:       '#net-all-wrap',
+    netAllCols:       '#net-all-cols',
+    netSelectAll:     '#net-select-all',
+    netSelectNone:    '#net-select-none',
+    pkgRail:          '#pkg-rail',
+    railFold:         '#rail-fold',
+    railFoldedLabel:  '#rail-folded-label',
+    railMeta:         '#rail-meta',
+    railBody:         '#rail-body',
     btnBuild:         '#btn-build',
     btnBuildAll:      '#btn-build-all',
 
@@ -125,7 +135,6 @@ module.exports = Editor.Panel.define({
     pkgBuildDirWarnText: '#pkg-build-dir-warn-text',
     pkgBuildDirUse:   '#pkg-build-dir-use',
     pkgOutputDir:     '#pkg-output-dir',
-    pkgResultsTbody:  '#pkg-results-tbody',
     pkgWarnings:      '#pkg-warnings',
     pkgAutoPackage:   '#pkg-auto-package',
     pkgSplashMode:    '#pkg-splash-mode',
@@ -215,11 +224,14 @@ module.exports = Editor.Panel.define({
   },
 
   ready(this: any) {
+    // Order here IS the tab order on screen, and must match the buttons in
+    // static/template/index.html. Package first: it is what the panel is opened
+    // for, and Deploy is what follows it.
     const tabs = [
-      { btn: this.$.tabBuildReport, content: this.$.contentBuildReport },
-      { btn: this.$.tabCompress,    content: this.$.contentCompress    },
-      { btn: this.$.tabPackage,     content: this.$.contentPackage     },
-      { btn: this.$.tabDeploy,      content: this.$.contentDeploy      },
+      { id: 'package',      btn: this.$.tabPackage,     content: this.$.contentPackage     },
+      { id: 'deploy',       btn: this.$.tabDeploy,      content: this.$.contentDeploy      },
+      { id: 'build-report', btn: this.$.tabBuildReport, content: this.$.contentBuildReport },
+      { id: 'compress',     btn: this.$.tabCompress,    content: this.$.contentCompress    },
     ];
 
     const activateTab = (index: number) => {
@@ -227,8 +239,10 @@ module.exports = Editor.Panel.define({
         if (t.btn) t.btn.classList.toggle('active', i === index);
         if (t.content) (t.content as HTMLElement).style.display = i === index ? 'flex' : 'none';
       });
-      // Re-check build availability when switching to Deploy tab
-      if (index === 3 && typeof this._checkDeployBuild === 'function') {
+      // Re-check build availability when switching to Deploy. Keyed off the
+      // tab's id, not its position — this was `index === 3`, which silently
+      // pointed at Compress the moment the tabs were reordered.
+      if (tabs[index]?.id === 'deploy' && typeof this._checkDeployBuild === 'function') {
         this._checkDeployBuild();
         this._checkMolocoCdnCard?.();
       }
@@ -238,6 +252,41 @@ module.exports = Editor.Panel.define({
       if (t.btn) t.btn.addEventListener('click', () => activateTab(i));
     });
     activateTab(0);
+
+    // Results rail fold. Collapsed it keeps a vertical caption, so a folded
+    // rail still says what it is instead of reading as a stray border.
+    this._toggleRail = (folded?: boolean) => {
+      const rail = this.$.pkgRail as HTMLElement | null;
+      if (!rail) return;
+      const next = folded ?? !rail.classList.contains('folded');
+      rail.classList.toggle('folded', next);
+      if (next) this._paintFoldedLabel?.();
+      const btn = this.$.railFold as HTMLElement | null;
+      if (btn) btn.textContent = next ? '\u2039' : '\u203A';
+    };
+    // Folded, the caption is all that is left — so it carries the count.
+    this._paintFoldedLabel = () => {
+      const el = this.$.railFoldedLabel as HTMLElement | null;
+      if (!el) return;
+      const base = translate(this._lang || 'en', 'package.results');
+      el.textContent = this._railCount ? `${base} · ${this._railCount}` : base;
+    };
+    this.$.railFold?.addEventListener('click', (e: any) => {
+      // The head below also listens; without this the two would fight over the
+      // same click and the rail would toggle twice.
+      e.stopPropagation();
+      this._toggleRail();
+    });
+    // Folded, the whole 32px strip is the target — the arrow alone is a 12px
+    // hit area, and the caption was the only part that actually responded.
+    (this.$.pkgRail as HTMLElement | null)
+      ?.querySelector('.rail-head')
+      ?.addEventListener('click', () => {
+        const rail = this.$.pkgRail as HTMLElement | null;
+        // Only ever opens: a click near the title of an open rail collapsing it
+        // would be a surprise, and the arrow already does that job.
+        if (rail?.classList.contains('folded')) this._toggleRail(false);
+      });
 
     this._reportData = null;
 
@@ -424,6 +473,8 @@ module.exports = Editor.Panel.define({
             }
             if (Array.isArray(results) && results.length) {
               this._renderPackageResults(results);
+              this._openRail?.();
+              this._validateResults?.(results);
               renderPackedList(results);
               if (this.$.btnPreview) (this.$.btnPreview as HTMLElement).style.display = '';
               return;
@@ -1646,10 +1697,12 @@ module.exports = Editor.Panel.define({
     },
 
     _initPackage(this: any) {
-      const grid          = this.$.networkGrid as HTMLElement | null;
-      const gridMore      = this.$.networkGridMore as HTMLElement | null;
-      const moreWrap      = this.$.networkMoreWrap as HTMLElement | null;
-      const btnToggleMore = this.$.btnToggleMoreNets as HTMLButtonElement | null;
+      const netSelected   = this.$.netSelected as HTMLElement | null;
+      const netSelEmpty   = this.$.netSelectedEmpty as HTMLElement | null;
+      const netAllWrap    = this.$.netAllWrap as HTMLElement | null;
+      const netAllCols    = this.$.netAllCols as HTMLElement | null;
+      const netMoreToggle = this.$.netMoreToggle as HTMLButtonElement | null;
+      const netCount      = this.$.netCount as HTMLElement | null;
       const btnBuildAll   = this.$.btnBuildAll as HTMLButtonElement;
       const btnPreview    = this.$.btnPreview as HTMLButtonElement;
       const btnOpenOutput = this.$.btnOpenOutput as HTMLButtonElement;
@@ -1660,7 +1713,7 @@ module.exports = Editor.Panel.define({
       const templateVarsEl  = this.$.pkgTemplateVars as HTMLElement | null;
       const userVarsContainer = this.$.pkgUserVarsContainer as HTMLElement | null;
 
-      if (!grid) return;
+      if (!netSelected) return;
 
       /**
        * Persist the Package tab's form into the project profile.
@@ -1684,9 +1737,10 @@ module.exports = Editor.Panel.define({
         // failure this helper exists to prevent, with the arrow reversed.
         if (!this._packageFormRestored) return;
         const contentPackage = this.$.contentPackage as HTMLElement | null;
-        const selectedNetworks = Array.from(
-          contentPackage?.querySelectorAll('input[name="network"]:checked') ?? [],
-        ).map((cb: any) => (cb as HTMLInputElement).value);
+        // From the state set, not the DOM: a selected network is rendered in
+        // the resting list AND in the expanded full list, so counting checked
+        // inputs would persist every one of them twice.
+        const selectedNetworks = this._selectedNetworks();
         const orientation =
           ((contentPackage?.querySelector('input[name="orientation"]:checked') as HTMLInputElement | null)
             ?.value ?? 'portrait');
@@ -1712,119 +1766,160 @@ module.exports = Editor.Panel.define({
       };
       this._persistPackageForm = persistPackageForm;
 
-      // Primary networks shown by default (sorted alphabetically)
-      const PRIMARY_NETS = ['applovin', 'facebook', 'google', 'ironsource', 'unity', 'mintegral', 'moloco'];
       const SYSTEM_VARS = ['network', 'networkId', 'format', 'ext'];
       const TEMPLATE_PRESETS: Record<string, string> = {
         standard: '{networkId}/index.{ext}',
         flat: '{networkId}.{ext}',
       };
 
-      // --- Helper: create a network checkbox label ---
-      const createNetLabel = (net: any, defaultChecked: string[]) => {
-        const label = document.createElement('label');
-        label.className = 'network-check-label';
-        label.dataset.networkId = net.id;
-        label.dataset.format = net.format ?? '';
+      /**
+       * Networks selector.
+       *
+       * Selection is sticky and rarely changed, so the resting state lists only
+       * what is selected — as real checkboxes, not a text summary: the operator
+       * must be able to see the control and untick one in place. The full
+       * alphabetical list is one quiet toggle away, which is where All/None
+       * live; they are scoped to the list they act on instead of sitting in the
+       * header permanently.
+       *
+       * The format (html/zip) is deliberately NOT shown here. It does not
+       * inform the choice of network — it only says which file lands on disk,
+       * which is the results rail's job.
+       *
+       * State lives in a Set rather than in the checkboxes, because a selected
+       * network is rendered TWICE (resting list + expanded list) and reading
+       * the DOM would count it twice.
+       */
+      this._netAll = [];
+      this._netSel = new Set<string>();
+      /** Ids the resting list draws. Deliberately a snapshot: unticking must not
+       *  yank the row out from under the cursor — it leaves on the next refresh. */
+      this._netShown = [] as string[];
+      this._selectedNetworks = () => this._netAll
+        .map((n: any) => n.id)
+        .filter((id: string) => this._netSel.has(id));
+
+      const netItem = (net: any) => {
+        const row = document.createElement('label');
+        row.className = 'net-item';
+        row.dataset.networkId = net.id;
+        row.title = net.name ?? net.id;
 
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.name = 'network';
         cb.value = net.id;
-        cb.checked = defaultChecked.includes(net.id);
-        if (cb.checked) label.classList.add('checked');
+        cb.checked = this._netSel.has(net.id);
+
+        const name = document.createElement('span');
+        name.className = 'net-item-name';
+        name.textContent = net.name ?? net.id;
+
+        row.classList.toggle('is-checked', cb.checked);
         cb.addEventListener('change', () => {
-          label.classList.toggle('checked', cb.checked);
+          if (cb.checked) this._netSel.add(net.id); else this._netSel.delete(net.id);
+          // Repaint every rendering of this network — it may be on screen twice.
+          (this.$.contentPackage as HTMLElement | null)
+            ?.querySelectorAll(`input[name="network"][value="${net.id}"]`)
+            .forEach((other: any) => {
+              (other as HTMLInputElement).checked = cb.checked;
+              other.closest('.net-item')?.classList.toggle('is-checked', cb.checked);
+            });
+          // A network ticked in the expanded list has to show up in the
+          // resting list right away — that list is the answer to "what will be
+          // packaged", and it must not lag behind the click.
+          if (cb.checked && !this._netShown.includes(net.id)) renderSelected();
+          paintCount();
           persistPackageForm();
+          this._refreshAxonAdvisory?.();
         });
 
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'network-check-name';
-        nameSpan.textContent = net.name ?? net.id;
-        // Long names ("Moloco V2.0 (Launcher API)") truncate — full name on hover.
-        label.title = net.name ?? net.id;
-
-        const fmtTag = document.createElement('span');
-        fmtTag.className = 'network-format-tag';
-        // Long format names ("launcher-payload") would eat the whole card width
-        // and squeeze the network name to nothing — show a short label instead.
-        const FORMAT_SHORT: Record<string, string> = { 'launcher-payload': 'L+P' };
-        const fmt = net.format ?? '';
-        fmtTag.textContent = FORMAT_SHORT[fmt] ?? fmt;
-        if (FORMAT_SHORT[fmt]) fmtTag.title = fmt;
-
-        label.appendChild(cb);
-        label.appendChild(nameSpan);
-        label.appendChild(fmtTag);
-        return label;
+        row.append(cb, name);
+        return row;
       };
 
-      // --- Load networks: sort by name, split primary/more ---
+      const paintCount = () => {
+        if (netCount) netCount.textContent = String(this._netSel.size);
+      };
+
+      /**
+       * Repaint the resting list.
+       *
+       * `prune` decides what happens to a row whose box was just unticked:
+       *   - without it the row stays (union of selected and already-shown), so
+       *     unticking never yanks a row out from under the cursor;
+       *   - with it the list is re-snapshotted from the selection alone.
+       *
+       * Ticking is deliberately NOT symmetric: a newly checked network appears
+       * in the resting list immediately, because an action that leaves the
+       * screen unchanged reads as an action that did nothing.
+       */
+      const renderSelected = (opts?: { prune?: boolean }) => {
+        if (!netSelected) return;
+        const shown = new Set(this._netShown);
+        this._netShown = this._netAll
+          .map((n: any) => n.id)
+          .filter((id: string) =>
+            this._netSel.has(id) || (!opts?.prune && shown.has(id)));
+        clearChildren(netSelected);
+        for (const id of this._netShown) {
+          const net = this._netAll.find((n: any) => n.id === id);
+          if (net) netSelected.appendChild(netItem(net));
+        }
+        if (netSelEmpty) netSelEmpty.style.display = this._netShown.length ? 'none' : '';
+        paintCount();
+      };
+
+      const renderAll = () => {
+        if (!netAllCols) return;
+        clearChildren(netAllCols);
+        for (const net of this._netAll) netAllCols.appendChild(netItem(net));
+      };
+
+      const isAllOpen = () => !!netAllWrap && netAllWrap.style.display !== 'none';
+
+      const setAllOpen = (open: boolean) => {
+        if (!netAllWrap) return;
+        netAllWrap.style.display = open ? '' : 'none';
+        const arrow = netMoreToggle?.querySelector('.arrow');
+        if (arrow) arrow.textContent = open ? '\u25BE' : '\u25B8';
+        if (open) renderAll();
+        // Collapsing is the moment a row unticked above may leave the list.
+        else renderSelected({ prune: true });
+      };
+
+      netMoreToggle?.addEventListener('click', () => setAllOpen(!isAllOpen()));
+
+      // All / None act on the list they sit in, so their scope is unambiguous.
+      (this.$.netSelectAll as HTMLButtonElement | null)?.addEventListener('click', () => {
+        this._netAll.forEach((n: any) => this._netSel.add(n.id));
+        renderAll(); renderSelected({ prune: true }); persistPackageForm(); this._refreshAxonAdvisory?.();
+      });
+      (this.$.netSelectNone as HTMLButtonElement | null)?.addEventListener('click', () => {
+        this._netSel.clear();
+        renderAll(); renderSelected({ prune: true }); persistPackageForm(); this._refreshAxonAdvisory?.();
+      });
+
+      /** Called once the profile's saved selection has arrived. */
+      this._applyNetworkSelection = (ids: string[]) => {
+        this._netSel = new Set(ids || []);
+        renderSelected({ prune: true });
+        if (isAllOpen()) renderAll();
+      };
+
       Editor.Message.request('plbx-cocos-extension', 'get-networks').then((networks: any[]) => {
-        const sorted = [...networks].sort((a: any, b: any) =>
+        this._netAll = [...networks].sort((a: any, b: any) =>
           (a.name ?? a.id).localeCompare(b.name ?? b.id),
         );
-
-        const primary = sorted.filter((n: any) => PRIMARY_NETS.includes(n.id));
-        const more = sorted.filter((n: any) => !PRIMARY_NETS.includes(n.id));
-
-        clearChildren(grid);
-        for (const net of primary) {
-          grid.appendChild(createNetLabel(net, PRIMARY_NETS));
-        }
-
-        if (gridMore && moreWrap && more.length > 0) {
-          moreWrap.style.display = '';
-          clearChildren(gridMore);
-          for (const net of more) {
-            gridMore.appendChild(createNetLabel(net, PRIMARY_NETS));
-          }
-        }
+        renderSelected();
       }).catch((e: any) => {
         console.warn('[plbx]', e);
         if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.couldNotLoadNetworks');
       });
 
-      // --- More networks toggle ---
-      btnToggleMore?.addEventListener('click', () => {
-        const moreGrid = this.$.networkGridMore as HTMLElement | null;
-        if (!moreGrid) return;
-        const isHidden = moreGrid.style.display === 'none';
-        moreGrid.style.display = isHidden ? '' : 'none';
-        const arrow = btnToggleMore.querySelector('.more-arrow');
-        arrow?.classList.toggle('expanded', isHidden);
-      });
-
-      // --- Network filter actions (All/None/HTML/ZIP) ---
+      // contentPkg is used by the store-URL and Axon helpers below.
       const contentPkg = this.$.contentPackage as HTMLElement | null;
-      contentPkg?.querySelectorAll('[data-net-action]').forEach((btn: any) => {
-        btn.addEventListener('click', () => {
-          const action = btn.dataset.netAction;
-          const allCbs = contentPkg.querySelectorAll('input[name="network"]');
-          allCbs.forEach((cb: any) => {
-            const input = cb as HTMLInputElement;
-            const label = input.closest('label') as HTMLElement | null;
-            const fmt = label?.dataset.format ?? '';
-            if (action === 'all') input.checked = true;
-            else if (action === 'none') input.checked = false;
-            else if (action === 'html') input.checked = fmt === 'html';
-            else if (action === 'zip') input.checked = fmt === 'zip';
-            label?.classList.toggle('checked', input.checked);
-          });
-          // Programmatic .checked does NOT fire 'change', so the per-checkbox
-          // listener never runs for these — persist explicitly.
-          this._persistPackageForm?.();
-          // Expand "more" section if filter was applied
-          const moreGrid = this.$.networkGridMore as HTMLElement | null;
-          if (moreGrid && action !== 'none') {
-            moreGrid.style.display = '';
-            const arrow = btnToggleMore?.querySelector('.more-arrow');
-            arrow?.classList.add('expanded');
-          }
-        });
-      });
 
-      // --- Output Naming: template logic ---
       const updateTemplatePreview = () => {
         if (!templateInput || !templatePreview) return;
         const tmpl = templateInput.value || '{networkId}/index.{ext}';
@@ -1977,9 +2072,7 @@ module.exports = Editor.Panel.define({
       // when AppLovin is selected (Axon is AppLovin-specific) so other projects
       // aren't nagged. Mirrors the fresh-pack warnings into the same box.
       const refreshAxonAdvisory = (buildDir?: string, selectedNetworks?: string[]) => {
-        const selected = selectedNetworks ?? Array.from(
-          contentPkg?.querySelectorAll('input[name="network"]:checked') ?? [],
-        ).map((cb: any) => (cb as HTMLInputElement).value);
+        const selected = selectedNetworks ?? this._selectedNetworks();
         if (!selected.includes('applovin')) return;
         const dir = (buildDir ?? (this.$.pkgBuildDir as HTMLInputElement)?.value ?? '').trim();
         if (!dir) return;
@@ -2221,15 +2314,10 @@ module.exports = Editor.Panel.define({
 
         // From here on the form mirrors the profile, so persisting it is safe.
         this._packageFormRestored = true;
-        // Restore selected networks
-        if (settings?.selectedNetworks?.length) {
-          const allCbs = contentPkg?.querySelectorAll('input[name="network"]');
-          allCbs?.forEach((cb: any) => {
-            const input = cb as HTMLInputElement;
-            input.checked = settings.selectedNetworks.includes(input.value);
-            input.closest('label')?.classList.toggle('checked', input.checked);
-          });
-        }
+        // Restore selected networks. Feeds the state set, which repaints both
+        // the resting list and the expanded one — the checkboxes are a view of
+        // that set, never the source of truth.
+        this._applyNetworkSelection?.(settings?.selectedNetworks ?? []);
 
         // Check if builds already exist — show Validate button + list them
         if (settings?.outputDir) {
@@ -2243,14 +2331,26 @@ module.exports = Editor.Panel.define({
           Editor.Message.request('plbx-cocos-extension', 'list-output-builds', settings.outputDir)
             .then((rows: any[]) => {
               if (Array.isArray(rows) && rows.length > 0) {
+                // Same path as a fresh pack: render, then run the checks. The
+                // two used to differ — artifacts found on disk were muted and
+                // statusless purely because nothing validated them, which is a
+                // gap in the code, not a fact about the artifacts.
                 this._renderPackageResults(rows);
+                this._validateResults?.(rows);
                 if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.existingBuilds').replace('{n}', String(rows.length));
                 // _renderPackageResults clears the warnings box; re-run the Axon
                 // advisory so it survives the existing-builds render.
                 refreshAxonAdvisory(settings?.buildDir, settings?.selectedNetworks);
+              } else {
+                // Output directory scanned and genuinely empty — the rail says
+                // what to do next rather than showing an empty table.
+                this._renderPackageResults([]);
               }
             })
-            .catch((e: any) => { console.warn('[plbx]', e); });
+            .catch((e: any) => {
+              console.warn('[plbx]', e);
+              this._renderPackageResults([]);
+            });
         }
       }).catch((e: any) => { console.warn('[plbx]', e); });
 
@@ -2369,11 +2469,35 @@ module.exports = Editor.Panel.define({
       };
       this._refreshPackAvailability = refreshPackAvailability;
 
+      this._refreshAxonAdvisory = refreshAxonAdvisory;
+
+      /** Read the web-mobile build's own timestamp for the results header. */
+      const refreshBuildInfo = (buildDir?: string) => {
+        const dir = (buildDir ?? (this.$.pkgBuildDir as HTMLInputElement | null)?.value ?? '').trim();
+        if (!dir) return;
+        Editor.Message.request('plbx-cocos-extension', 'get-build-info', dir)
+          .then((info: any) => {
+            const label = info?.createdAtLabel || '';
+            if (label === this._buildCreatedAtLabel) return;
+            this._buildCreatedAtLabel = label;
+            // Repaint whatever the rail is currently showing so the header
+            // picks the label up without waiting for the next pack.
+            const group = (this.$.railBody as HTMLElement | null)?.querySelector('.rail-group td');
+            if (group && this._lastRailRender) {
+              this._renderPackageResults(this._lastRailRender.rows, this._lastRailRender.opts);
+            }
+          })
+          .catch((e: any) => console.warn('[plbx]', e));
+      };
+      this._refreshBuildInfo = refreshBuildInfo;
+      refreshBuildInfo();
+
       // Re-detect store URLs when the build directory changes.
       (this.$.pkgBuildDir as HTMLInputElement)?.addEventListener('change', () => {
         refreshDetectedStoreUrls();
         refreshAxonAdvisory();
         refreshPackAvailability();
+        refreshBuildInfo();
         persistPackageForm();
       });
       (this.$.pkgOutputDir as HTMLInputElement)?.addEventListener('change', () => persistPackageForm());
@@ -2398,10 +2522,7 @@ module.exports = Editor.Panel.define({
           }
         });
 
-        // Gather selected from both grids
-        const selected = Array.from(
-          contentPkg?.querySelectorAll('input[name="network"]:checked') ?? []
-        ).map((cb: any) => (cb as HTMLInputElement).value);
+        const selected = this._selectedNetworks();
 
         if (!buildDir)        { if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.setBuildDir');    return; }
         if (!outputDir)       { if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.setOutputDir');   return; }
@@ -2427,6 +2548,10 @@ module.exports = Editor.Panel.define({
           );
           const results = Array.isArray(response) ? response : response?.results ?? [];
           this._renderPackageResults(results);
+          // Fresh results are the reason the button was pressed — show them
+          // even if the rail was folded.
+          this._openRail?.();
+          this._validateResults?.(results);
           refreshDetectedStoreUrls(buildDir);
           if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.packComplete');
           if (btnPreview) btnPreview.style.display = '';
@@ -2456,9 +2581,7 @@ module.exports = Editor.Panel.define({
        */
       const startPreview = async (): Promise<string> => {
         const outputDir = (this.$.pkgOutputDir as HTMLInputElement)?.value.trim() ?? '';
-        const networkIds = Array.from(
-          contentPkg?.querySelectorAll('input[name="network"]:checked') ?? []
-        ).map((cb: any) => (cb as HTMLInputElement).value);
+        const networkIds = this._selectedNetworks();
         if (!outputDir) throw new Error(translate(this._lang || 'en', 'status.setOutputDir'));
         if (!networkIds.length) throw new Error(translate(this._lang || 'en', 'status.selectNetwork'));
         const result = await Editor.Message.request(
@@ -2520,32 +2643,95 @@ module.exports = Editor.Panel.define({
 
     },
 
+    /**
+     * Render the results rail.
+     *
+     * Three states, because "no rows" is three different facts:
+     *   - artifacts packed in THIS session — full validation status;
+     *   - artifacts already on disk when the panel opened — shown, but muted
+     *     and WITHOUT a status: nothing validated them in this session, and a
+     *     green badge we cannot vouch for is worse than an honest dash;
+     *   - nothing anywhere — say what to do next instead of an empty table.
+     */
     _renderPackageResults(this: any, results: any[]) {
-      const tbody = this.$.pkgResultsTbody;
-      if (!tbody) return;
-      clearChildren(tbody);
+      const body = this.$.railBody as HTMLElement | null;
+      const meta = this.$.railMeta as HTMLElement | null;
+      if (!body) return;
+      clearChildren(body);
 
-      if (!results || results.length === 0) {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 6;
-        td.textContent = translate(this._lang || 'en', 'status.noResults');
-        tr.appendChild(td);
-        tbody.appendChild(tr);
+      const rows = Array.isArray(results) ? results : [];
+      this._lastRailRender = { rows };
+
+      if (!rows.length) {
+        const empty = document.createElement('div');
+        empty.className = 'rail-empty';
+        const ic = document.createElement('span');
+        ic.className = 'ic';
+        ic.textContent = '\u{1F4E6}';
+        const line = document.createElement('div');
+        line.textContent = translate(this._lang || 'en', 'package.railEmpty');
+        const where = document.createElement('div');
+        where.style.marginTop = '6px';
+        const code = document.createElement('code');
+        code.textContent = (this.$.pkgOutputDir as HTMLInputElement | null)?.value?.trim()
+          || 'build/plbx-html';
+        where.append(document.createTextNode(
+          translate(this._lang || 'en', 'package.railEmptyWhere') + ' '), code);
+        empty.append(ic, line, where);
+        body.appendChild(empty);
+        if (meta) meta.textContent = '';
+      this._railCount = 0;
+      this._paintFoldedLabel?.();
+        this._renderPackageWarnings(rows);
         return;
       }
 
-      const maxSize = Math.max(...results.map(r => r.outputSize ?? r.size ?? 0), 1);
+      const table = document.createElement('table');
+      table.className = 'data-table';
+      const tbody = document.createElement('tbody');
 
-      for (const r of results) {
+      const group = document.createElement('tr');
+      group.className = 'rail-group';
+      const gtd = document.createElement('td');
+      gtd.colSpan = 4;
+      // Pack time alone says when the packager ran, not what it ran over.
+      // Naming the build's own date is what makes "packaged just now, from
+      // yesterday's build" visible instead of merely possible — and it works
+      // for artifacts found on disk exactly as it does for fresh ones.
+      gtd.textContent = this._buildCreatedAtLabel
+        ? `${translate(this._lang || 'en', 'package.railFromBuild')} ${this._buildCreatedAtLabel}`
+        : translate(this._lang || 'en', 'package.results');
+      group.appendChild(gtd);
+      tbody.appendChild(group);
+
+      const maxSize = Math.max(...rows.map((r) => r.outputSize ?? r.size ?? 0), 1);
+
+      for (const r of rows) {
         const tr = document.createElement('tr');
-        const fileSize = r.outputSize ?? r.size ?? 0;
+        const v = this._validation?.[r.networkId ?? r.id];
+        const verdict = railVerdict(r, v);
+        const fileSize = verdict.sizeBytes;
+        const limit = verdict.limitBytes;
+        const overLimit = verdict.overLimit;
 
         const tdNet = document.createElement('td');
-        tdNet.textContent = r.networkName ?? r.network ?? r.id ?? '—';
-
-        const tdFmt = document.createElement('td');
-        tdFmt.textContent = r.format ?? '—';
+        const baseName = r.networkName ?? r.network ?? r.id ?? '\u2014';
+        tdNet.textContent = baseName;
+        // One network can produce several artifacts — Google's three
+        // orientation archives, an html+zip pair. They arrive with the same
+        // display name and only the synthetic id differs, so without this the
+        // rail shows the same row two or three times over.
+        const rowId: string = r.networkId ?? r.id ?? '';
+        const variant = /-(.+)$/.exec(rowId.replace(/^[a-z0-9]+/i, ''))?.[1];
+        if (variant && !baseName.toLowerCase().includes(variant.toLowerCase())) {
+          const v = document.createElement('span');
+          v.className = 'rail-variant';
+          v.textContent = variant;
+          tdNet.appendChild(v);
+        }
+        // No title here: the row's own title carries the failure reason, and a
+        // cell title would shadow it exactly where the pointer lands most.
+        if (variant) tdNet.dataset.variant = variant;
 
         const tdSize = document.createElement('td');
         tdSize.className = 'col-size size-bar-cell';
@@ -2553,52 +2739,98 @@ module.exports = Editor.Panel.define({
         const barBg = document.createElement('div');
         barBg.className = 'size-bar-bg';
         const barFill = document.createElement('div');
-        // A falsy maxSize (e.g. an existing build for an unknown network) means "no known limit".
-        const limit = r.maxSize ?? r.limit;
-        const overLimit = !r.withinLimit || (!!limit && fileSize > limit);
         barFill.className = 'size-bar-fill' + (overLimit ? ' over-limit' : '');
         barFill.style.width = Math.round((fileSize / maxSize) * 100) + '%';
         barBg.appendChild(barFill);
         tdSize.appendChild(barBg);
+        if (limit) tdSize.title = `${fmt(fileSize)} of ${fmt(limit)}`;
 
-        const tdLimit = document.createElement('td');
-        tdLimit.className = 'col-size';
-        tdLimit.textContent = limit ? fmt(limit) : '—';
-
-        // Created date/time (populated for existing builds; em dash for fresh packs)
+        // Full date AND time: the operator needs to tell today's artifact from
+        // one produced last week, which a bare clock time cannot answer.
         const tdCreated = document.createElement('td');
         tdCreated.className = 'col-created';
-        tdCreated.textContent = r.createdAtLabel ?? '—';
+        // PackageResult carries no timestamp — only list-output-builds did, so
+        // everything packed in this session showed a dash. validateOutputs
+        // stats the file anyway, so it hands the time back with the verdict.
+        tdCreated.textContent =
+          r.createdAtLabel
+          ?? this._validation?.[r.networkId ?? r.id]?.createdAtLabel
+          ?? '\u2014';
 
         const tdStatus = document.createElement('td');
-        const warnings: string[] = Array.isArray(r.warnings) ? r.warnings : [];
-        if (r.error) {
-          const b = makeBadge('badge-fail', 'error');
-          b.title = r.error;
-          tdStatus.appendChild(b);
-        } else if (overLimit) {
-          tdStatus.appendChild(makeBadge('badge-warn', 'over limit'));
-        } else if (warnings.length) {
-          const b = makeBadge('badge-warn', 'warning');
-          b.title = warnings.join('\n');
-          tdStatus.appendChild(b);
-        } else {
-          tdStatus.appendChild(makeBadge('badge-pass', 'pass'));
+        tdStatus.className = 'col-status';
+        {
+          const { kind, reasons } = verdict;
+          if (kind) {
+            const b = makeBadge(
+              kind === 'pass' ? 'badge-pass' : kind === 'warn' ? 'badge-warn' : 'badge-fail', kind);
+            b.title = reasons.length
+              ? reasons.join('\n')
+              : `${(v?.checks || []).length} checks passed`;
+            // The badge is a small target; hovering the row shows the same text.
+            tr.title = b.title;
+            tdStatus.appendChild(b);
+          } else {
+            // Checks have not answered yet — an honest dash beats a verdict we
+            // cannot vouch for. It fills in a moment later.
+            const dash = document.createElement('span');
+            dash.className = 'rail-nostatus';
+            dash.textContent = '\u2014';
+            dash.title = translate(this._lang || 'en', 'package.railNotValidated');
+            tdStatus.appendChild(dash);
+          }
         }
 
-        tr.appendChild(tdNet);
-        tr.appendChild(tdFmt);
-        tr.appendChild(tdSize);
-        tr.appendChild(tdLimit);
-        tr.appendChild(tdCreated);
-        tr.appendChild(tdStatus);
+        tr.append(tdNet, tdSize, tdCreated, tdStatus);
         tbody.appendChild(tr);
       }
 
-      // Surface warnings as a visible list (the per-row badge tooltip is
-      // hover-only and easy to miss). Advisory only — e.g. AppLovin Axon
-      // event-spec conformance — the build itself still succeeds.
-      this._renderPackageWarnings(results);
+      table.appendChild(tbody);
+      body.appendChild(table);
+      if (meta) meta.textContent = String(rows.length);
+      this._railCount = rows.length;
+      this._paintFoldedLabel?.();
+
+      this._renderPackageWarnings(rows);
+    },
+
+    /**
+     * Run the kit's static checks over what was just packaged and repaint the
+     * rail with the verdicts. Best-effort: a validation that cannot run leaves
+     * the packaging-time status in place rather than blanking the table.
+     */
+    async _validateResults(this: any, results: any[]) {
+      // Send the artifact PATH, not just the id: a network can emit several
+      // artifacts (Google's three orientation archives, html+zip pairs), and
+      // they share one network id — re-deriving the file from the id would
+      // validate the same archive three times.
+      const items = (results || [])
+        .map((r: any) => ({
+          networkId: r.networkId ?? r.id,
+          path: r.outputPath || r.path || undefined,
+        }))
+        .filter((r: any) => r.networkId);
+      if (!items.length) return;
+      const outputDir = (this.$.pkgOutputDir as HTMLInputElement | null)?.value?.trim();
+      if (!outputDir) return;
+      try {
+        const rows = await Editor.Message.request(
+          'plbx-cocos-extension', 'validate-outputs', outputDir, items);
+        if (!Array.isArray(rows)) return;
+        // Rebuilt, not merged: a verdict left over from a previous set of
+        // networks would otherwise keep labelling a row nobody re-checked.
+        this._validation = {};
+        for (const row of rows) this._validation[row.networkId] = row;
+        this._renderPackageResults(results);
+      } catch (e: any) {
+        console.warn('[plbx] validate-outputs failed:', e?.message ?? e);
+      }
+    },
+
+    /** Open the rail if it is folded — called when fresh results arrive. */
+    _openRail(this: any) {
+      const rail = this.$.pkgRail as HTMLElement | null;
+      if (rail?.classList.contains('folded')) this._toggleRail?.(false);
     },
 
     _renderPackageWarnings(this: any, results: any[]) {
