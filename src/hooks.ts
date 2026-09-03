@@ -40,8 +40,9 @@ export async function onAfterBuild(options: any, result: any): Promise<void> {
   }
 
   try {
-    const networks = settings.selectedNetworks;
-    if (!networks?.length) {
+    // buildPackageRequest defaults to settings.selectedNetworks; this only
+    // guards the empty case so the log below says why nothing happened.
+    if (!settings.selectedNetworks?.length) {
       console.log('[plbx] Auto-package skipped: no networks selected');
       return;
     }
@@ -55,7 +56,13 @@ export async function onAfterBuild(options: any, result: any): Promise<void> {
       buildDir: dest,
     });
 
-    console.log(`[plbx] Auto-packaging for ${request.networks.length} networks → ${request.outputDir}`);
+    // Names, not just a count: "packaging for 4 networks" gave no way to see
+    // that the saved list was stale, which is how a build silently packaged
+    // the previous selection instead of the one on screen.
+    console.log(
+      `[plbx] Auto-packaging ${request.networks.length} networks [${request.networks.join(', ')}] ` +
+      `from ${request.buildDir} → ${request.outputDir}`,
+    );
     const result = await packageForNetworks({
       ...request,
       onProgress: (id, status, msg) => {
@@ -63,9 +70,19 @@ export async function onAfterBuild(options: any, result: any): Promise<void> {
       },
     });
 
-    const passed = result.results.filter((r: any) => r.status === 'success').length;
-    const failed = result.results.filter((r: any) => r.status === 'error').length;
-    console.log(`[plbx] Auto-package complete: ${passed} success, ${failed} failed (${(result.totalTime / 1000).toFixed(1)}s)`);
+    // PackageResult has no `status` field — this used to filter on
+    // r.status === 'success'/'error', so the line always read "0 success,
+    // 0 failed". The packager's per-network catch pushes a row with an empty
+    // outputPath, which is the real signal.
+    const passed = result.results.filter((r: any) => r.outputPath);
+    const failed = result.results.filter((r: any) => !r.outputPath);
+    console.log(
+      `[plbx] Auto-package complete: ${passed.length} success` +
+      `${passed.length ? ` [${passed.map((r: any) => r.networkId).join(', ')}]` : ''}, ` +
+      `${failed.length} failed` +
+      `${failed.length ? ` [${failed.map((r: any) => r.networkId).join(', ')}]` : ''} ` +
+      `(${(result.totalTime / 1000).toFixed(1)}s)`,
+    );
 
     // Notify panel to refresh results
     Editor.Message.send('plbx-cocos-extension', 'on-auto-package-done', result);

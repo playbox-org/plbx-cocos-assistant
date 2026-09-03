@@ -111,6 +111,7 @@ module.exports = Editor.Panel.define({
     buildValidate:     '#build-validate',
     buildProgressBar:  '#build-progress-bar',
     buildProgressText: '#build-progress-text',
+    buildPacked:       '#build-packed',
     btnPreview:       '#btn-preview',
     btnOpenOutput:    '#btn-open-output',
     pkgStatus:        '#pkg-status',
@@ -337,13 +338,93 @@ module.exports = Editor.Panel.define({
        * cover the gap between the task reporting success and that message
        * landing.
        */
+      /** Resolved per render: binding once at init makes a stale cached
+       *  template fail silently and forever. */
+      const getPackedEl = (): HTMLElement | null =>
+        (this.$.buildPacked as HTMLElement | null) ??
+        (overlay.querySelector('#build-packed') as HTMLElement | null);
+
+      /**
+       * List what auto-package actually produced, inside the build modal.
+       *
+       * The Package tab's results table already showed this, but it is behind
+       * the modal — so a build that packaged the wrong set (or nothing) looked
+       * identical to one that packaged the right set. Naming the networks in
+       * the popup is what makes that visible without closing anything.
+       *
+       * Success is `outputPath` being non-empty: PackageResult carries no
+       * status field, and the packager's per-network catch pushes a row with an
+       * empty path. (`hooks.ts` used to count `r.status === 'success'`, which is
+       * never true — its "N success, M failed" line always read 0, 0.)
+       */
+      const renderPackedList = (results: any[]) => {
+        const packedEl = getPackedEl();
+        if (!packedEl) {
+          console.warn('[plbx] #build-packed missing — panel template is stale; restart the editor');
+          return;
+        }
+        packedEl.innerHTML = '';
+        const rows = Array.isArray(results) ? results : [];
+        const ok = rows.filter((r) => r && r.outputPath);
+        const failed = rows.filter((r) => r && !r.outputPath);
+
+        packedEl.style.display = '';
+
+        const title = document.createElement('div');
+        title.className = 'build-packed-title';
+        // No rows is a result too — hiding the block is how a broken delivery
+        // looked identical to a build that simply had not packaged yet.
+        title.textContent = ok.length
+          ? `${t('build.packedTitle')} (${ok.length})`
+          : t('build.packedNone');
+        packedEl.appendChild(title);
+
+        const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(2)} MB`;
+        for (const r of [...ok, ...failed]) {
+          const row = document.createElement('div');
+          const good = !!r.outputPath && r.withinLimit !== false;
+          row.className = `build-packed-row is-${!r.outputPath ? 'fail' : good ? 'ok' : 'warn'}`;
+
+          const icon = document.createElement('span');
+          icon.className = 'build-packed-icon';
+          icon.textContent = !r.outputPath ? '✗' : good ? '✓' : '!';
+
+          const name = document.createElement('span');
+          name.className = 'build-packed-name';
+          name.textContent = r.networkName || r.networkId || '';
+
+          const note = document.createElement('span');
+          note.className = 'build-packed-note';
+          note.textContent = !r.outputPath
+            ? ''
+            : r.withinLimit === false
+              ? `${mb(r.outputSize)} — ${t('build.packedOverLimit')} ${mb(r.maxSize)}`
+              : mb(r.outputSize);
+
+          row.append(icon, name, note);
+          packedEl.appendChild(row);
+        }
+      };
+      this._renderPackedList = renderPackedList;
+
       this._pullAutoPackageResults = async () => {
-        for (let attempt = 0; attempt < 3; attempt++) {
+        for (let attempt = 0; attempt < 15; attempt++) {
           try {
             const last = await Editor.Message.request('plbx-cocos-extension', 'get-last-build-result');
             const results = last?.autoPackageResult?.results;
+            // First look and the give-up only — "the list did not appear" has
+            // four possible layers (hook ran? results stored? panel asked?
+            // panel rendered?) and guessing between them costs a whole build,
+            // but a line per poll would bury the console.
+            if (attempt === 0) {
+              console.log(
+                `[plbx] pullAutoPackageResults: keys=[${Object.keys(last || {}).join(', ')}] ` +
+                `results=${Array.isArray(results) ? results.length : 'none'}`,
+              );
+            }
             if (Array.isArray(results) && results.length) {
               this._renderPackageResults(results);
+              renderPackedList(results);
               if (this.$.btnPreview) (this.$.btnPreview as HTMLElement).style.display = '';
               return;
             }
@@ -352,6 +433,10 @@ module.exports = Editor.Panel.define({
           }
           await new Promise((r) => setTimeout(r, 700));
         }
+        // Auto-package was on but produced nothing we could read — say so
+        // rather than leaving the previous build's list on screen.
+        console.warn('[plbx] auto-package results never arrived after ~10s');
+        renderPackedList([]);
       };
 
       const renderChecks = (checks: any[]) => {
@@ -398,6 +483,9 @@ module.exports = Editor.Panel.define({
       const open = () => {
         overlay.style.display = 'flex';
         setProgress(0, '');
+        // A reopened modal must not show the previous build's packaged list.
+        const packedEl = getPackedEl();
+        if (packedEl) { packedEl.innerHTML = ''; packedEl.style.display = 'none'; }
         // A modal reopened after a previous build must not still offer to
         // validate that build's output as if it were this session's result.
         if (startBtn) startBtn.textContent = t('build.start');
@@ -452,18 +540,32 @@ module.exports = Editor.Panel.define({
             // that in the Build Directory field the packager reads.
             this._reloadBuildDirField?.();
             const autoPacked = (this.$.pkgAutoPackage as HTMLInputElement | null)?.checked;
-            setProgress(1, t(autoPacked ? 'build.successPacked' : 'build.success'));
+            console.log(`[plbx] build finished: autoPackage checkbox = ${autoPacked}`);
             // The button's job changed: the build exists now, so pressing it
-            // again is a rebuild, and there is finally something to validate.
+            // again is a rebuild.
             startBtn.textContent = t('build.again');
-            // Shown after any successful build, not only an auto-packaged one:
-            // a button that appears under some conditions and not others reads
-            // as broken. With nothing packaged yet the validator says so.
-            if (validateBtn) validateBtn.style.display = '';
-            // Packaging runs inside the build hook, which the builder awaits —
-            // so by the time the task reports success the artifacts exist. The
-            // results reach main as a separate message, hence the short retry.
-            if (autoPacked) this._pullAutoPackageResults?.();
+
+            if (!autoPacked) {
+              setProgress(1, t('build.success'));
+              if (validateBtn) validateBtn.style.display = '';
+              refreshChecks();
+              return;
+            }
+
+            // The task reporting success means the BUILD finished — it does not
+            // prove packaging did. Validate used to appear right here and the
+            // status already claimed "and packaged", so the operator could open
+            // the validator against artifacts that were still being written,
+            // and saw it come up slow or short. Wait for the results, then say
+            // so and offer the button.
+            setProgress(1, t('build.packaging'));
+            if (validateBtn) validateBtn.style.display = 'none';
+            this._pullAutoPackageResults?.().then(() => {
+              setProgress(1, t('build.successPacked'));
+              if (validateBtn) validateBtn.style.display = '';
+              refreshChecks();
+            });
+            return;
           } else if (state.state === 'busy') {
             setProgress(0, t('build.busy'));
           } else {
@@ -1560,6 +1662,56 @@ module.exports = Editor.Panel.define({
 
       if (!grid) return;
 
+      /**
+       * Persist the Package tab's form into the project profile.
+       *
+       * Auto-package runs in the build hook (hooks.onAfterBuild), which never
+       * sees this panel: it reads selectedNetworks, orientation, outputDir and
+       * the output template from the SAVED settings. Until this existed those
+       * fields reached the profile only when Pack All was pressed, so ticking a
+       * network and pressing Build packaged the list some earlier Pack All had
+       * saved — the new network was simply absent from the run.
+       *
+       * Saving inside the Build button would not have been enough: the hook
+       * fires for ANY build, including one started from Cocos's own build
+       * panel, which never goes through our code at all. So the form is
+       * persisted as it changes, and the same keys Pack All writes.
+       */
+      const persistPackageForm = () => {
+        // The checkboxes start on their built-in defaults and are corrected
+        // asynchronously from the profile. Persisting before that lands would
+        // write the defaults over the operator's saved selection — the very
+        // failure this helper exists to prevent, with the arrow reversed.
+        if (!this._packageFormRestored) return;
+        const contentPackage = this.$.contentPackage as HTMLElement | null;
+        const selectedNetworks = Array.from(
+          contentPackage?.querySelectorAll('input[name="network"]:checked') ?? [],
+        ).map((cb: any) => (cb as HTMLInputElement).value);
+        const orientation =
+          ((contentPackage?.querySelector('input[name="orientation"]:checked') as HTMLInputElement | null)
+            ?.value ?? 'portrait');
+        const templateVariables: Record<string, string> = {};
+        (this.$.pkgUserVarsContainer as HTMLElement | null)
+          ?.querySelectorAll('input[data-template-var]')
+          .forEach((inp: any) => {
+            const el = inp as HTMLInputElement;
+            if (el.dataset.templateVar && el.value.trim()) {
+              templateVariables[el.dataset.templateVar] = el.value.trim();
+            }
+          });
+        Editor.Message.request('plbx-cocos-extension', 'save-settings', {
+          selectedNetworks,
+          orientation,
+          buildDir: (this.$.pkgBuildDir as HTMLInputElement | null)?.value.trim() ?? '',
+          outputDir: (this.$.pkgOutputDir as HTMLInputElement | null)?.value.trim() ?? '',
+          outputTemplate:
+            (this.$.pkgOutputTemplate as HTMLInputElement | null)?.value.trim() ||
+            '{networkId}/index.{ext}',
+          templateVariables,
+        }).catch((e: any) => console.warn('[plbx]', e));
+      };
+      this._persistPackageForm = persistPackageForm;
+
       // Primary networks shown by default (sorted alphabetically)
       const PRIMARY_NETS = ['applovin', 'facebook', 'google', 'ironsource', 'unity', 'mintegral', 'moloco'];
       const SYSTEM_VARS = ['network', 'networkId', 'format', 'ext'];
@@ -1581,7 +1733,10 @@ module.exports = Editor.Panel.define({
         cb.value = net.id;
         cb.checked = defaultChecked.includes(net.id);
         if (cb.checked) label.classList.add('checked');
-        cb.addEventListener('change', () => label.classList.toggle('checked', cb.checked));
+        cb.addEventListener('change', () => {
+          label.classList.toggle('checked', cb.checked);
+          persistPackageForm();
+        });
 
         const nameSpan = document.createElement('span');
         nameSpan.className = 'network-check-name';
@@ -1656,6 +1811,9 @@ module.exports = Editor.Panel.define({
             else if (action === 'zip') input.checked = fmt === 'zip';
             label?.classList.toggle('checked', input.checked);
           });
+          // Programmatic .checked does NOT fire 'change', so the per-checkbox
+          // listener never runs for these — persist explicitly.
+          this._persistPackageForm?.();
           // Expand "more" section if filter was applied
           const moreGrid = this.$.networkGridMore as HTMLElement | null;
           if (moreGrid && action !== 'none') {
@@ -1718,6 +1876,8 @@ module.exports = Editor.Panel.define({
         }
       });
 
+      templateInput?.addEventListener('change', () => this._persistPackageForm?.());
+      userVarsContainer?.addEventListener('change', () => this._persistPackageForm?.());
       templateInput?.addEventListener('input', () => {
         // Auto-switch to Custom if user edits
         if (templatePreset) {
@@ -2059,6 +2219,8 @@ module.exports = Editor.Panel.define({
           }
         }
 
+        // From here on the form mirrors the profile, so persisting it is safe.
+        this._packageFormRestored = true;
         // Restore selected networks
         if (settings?.selectedNetworks?.length) {
           const allCbs = contentPkg?.querySelectorAll('input[name="network"]');
@@ -2212,7 +2374,13 @@ module.exports = Editor.Panel.define({
         refreshDetectedStoreUrls();
         refreshAxonAdvisory();
         refreshPackAvailability();
+        persistPackageForm();
       });
+      (this.$.pkgOutputDir as HTMLInputElement)?.addEventListener('change', () => persistPackageForm());
+      // Orientation feeds the packager's config through the same saved settings.
+      (this.$.contentPackage as HTMLElement | null)
+        ?.querySelectorAll('input[name="orientation"]')
+        .forEach((r: any) => r.addEventListener('change', () => persistPackageForm()));
 
       // --- Build All ---
       btnBuildAll?.addEventListener('click', async () => {
