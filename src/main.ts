@@ -329,8 +329,13 @@ export const methods: Record<string, (...args: any[]) => any> = {
   },
 
   onBuildFinished(...args: any[]) {
-    // Store build result for later use
-    if (args[0]) lastBuildResult = args[0];
+    // MERGE, don't replace. One build sends this twice: the hook posts
+    // {dest, platform} before packaging, then onAutoPackageDone forwards
+    // {autoPackageResult} after. Replacing dropped `dest` on the second call,
+    // so getBuildDir's detectBuildDir(lastBuildResult?.dest) saw undefined
+    // after every auto-packaged build — and a reader that wanted the results
+    // could never have both.
+    if (args[0]) lastBuildResult = { ...(lastBuildResult || {}), ...args[0] };
     // Persist the directory Cocos actually built into. The Build Directory field
     // is typed by hand and was never reconciled with it, so a build task named
     // anything but the default (e.g. web-mobile-001) left Pack All packaging a
@@ -381,10 +386,19 @@ export const methods: Record<string, (...args: any[]) => any> = {
   },
 
   onAutoPackageDone(result: any) {
-    // Forward auto-package results to panel for display
-    Editor.Message.send('plbx-cocos-extension', 'on-build-finished', {
-      autoPackageResult: result,
-    });
+    // Store directly. This used to Editor.Message.send('on-build-finished')
+    // from this module to a method in THIS SAME module — an IPC round-trip
+    // whose only job was to reach a function two lines away, and one that also
+    // dragged in onBuildFinished's Editor.Panel.open() side effect. The panel
+    // does not listen to on-build-finished at all; it polls
+    // get-last-build-result. Whether the editor delivers a self-addressed send,
+    // and when, decided whether the results existed by the time the panel
+    // asked — which is why the Package results table came up empty after an
+    // auto-packaged build.
+    lastBuildResult = { ...(lastBuildResult || {}), autoPackageResult: result };
+    console.log(
+      `[plbx] auto-package results stored: ${result?.results?.length ?? 0} rows`,
+    );
   },
 
   onSceneReady() {},
@@ -830,9 +844,21 @@ export const methods: Record<string, (...args: any[]) => any> = {
       outputTemplate: settings.outputTemplate,
       templateVariables: settings.templateVariables,
     });
-    // Open in default browser
+    // Open in default browser.
+    //
+    // AWAITED on purpose. This used to be fire-and-forget, so a rejected
+    // openExternal (no default browser resolved, sandbox refusal, a URL the
+    // shell declines) left startPreview returning success: the panel printed
+    // "Preview: <url>" while nothing opened, which reads as the button doing
+    // nothing at all. The URL is logged either way so it can be opened by hand.
+    console.log('[plbx] Preview server:', result.url);
     const { shell } = require('electron');
-    shell.openExternal(result.url);
+    try {
+      await shell.openExternal(result.url);
+    } catch (e: any) {
+      console.error('[plbx] could not open the browser:', e?.message ?? e);
+      throw new Error(`${result.url} — could not open the browser: ${e?.message ?? e}`);
+    }
     return result;
   },
 

@@ -1604,6 +1604,45 @@ body,
 .build-check-value { font-family: Menlo, Consolas, monospace; color: #eee; }
 .build-check-row.is-fail .build-check-value { color: #e0a000; }
 
+/* Packaged-networks list inside the build modal. Deliberately the same row
+   vocabulary as .build-check-row above — one modal, one visual language. */
+.build-packed {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #333;
+  /* A long selection must not stretch the modal — scroll the list instead. */
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+.build-packed-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+  margin-bottom: 2px;
+}
+
+.build-packed-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: #ccc;
+}
+
+.build-packed-icon { width: 14px; text-align: center; }
+.build-packed-row.is-ok   .build-packed-icon { color: #4caf50; }
+.build-packed-row.is-warn .build-packed-icon { color: #e0a000; }
+.build-packed-row.is-fail .build-packed-icon { color: #e05252; }
+.build-packed-row.is-fail { color: #888; }
+.build-packed-name { flex: 1; }
+.build-packed-note { font-family: Menlo, Consolas, monospace; color: #999; }
+.build-packed-row.is-warn .build-packed-note { color: #e0a000; }
+
 .build-progress-track {
   height: 6px;
   background: #1e1e1e;
