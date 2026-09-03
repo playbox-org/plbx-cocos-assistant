@@ -98,7 +98,7 @@ describe('panel DOM scoping', () => {
     expect(distCode).toContain('this.$.btnAnalyze');
     expect(distCode).toContain('this.$.reportTbody');
     expect(distCode).toContain('this.$.compressFormat');
-    expect(distCode).toContain('this.$.networkGrid');
+    expect(distCode).toContain('this.$.netSelected');
     expect(distCode).toContain('this.$.deployToken');
   });
 
@@ -166,9 +166,12 @@ describe('template structure', () => {
   });
 
   it('should have Package tab elements', () => {
-    expect(templateHtml).toContain('id="network-grid"');
+    // The network grid and the static results table were replaced by the
+    // selected-first checkbox list and the JS-rendered results rail.
+    expect(templateHtml).toContain('id="net-selected"');
+    expect(templateHtml).toContain('id="net-all-cols"');
     expect(templateHtml).toContain('id="btn-build-all"');
-    expect(templateHtml).toContain('id="pkg-results-tbody"');
+    expect(templateHtml).toContain('id="rail-body"');
   });
 
   it('should have Deploy tab elements', () => {
@@ -412,7 +415,7 @@ describe('panel null safety', () => {
   it('should use null guards in render methods', () => {
     expect(srcCode).toContain('if (!summary || !tbody');
     expect(srcCode).toContain('if (!tbody) return');
-    expect(srcCode).toContain('if (!grid) return');
+    expect(srcCode).toContain('if (!netSelected) return');
   });
 
   it('should use optional chaining for event handlers', () => {

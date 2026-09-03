@@ -7,10 +7,10 @@
 
   <!-- Tab Header -->
   <div class="tab-header">
-    <button id="tab-build-report" class="tab-btn active" data-i18n="tab.buildReport">Build Report</button>
-    <button id="tab-compress"     class="tab-btn" data-i18n="tab.compress">Compress</button>
-    <button id="tab-package"      class="tab-btn" data-i18n="tab.package">Package</button>
+    <button id="tab-package"      class="tab-btn active" data-i18n="tab.package">Package</button>
     <button id="tab-deploy"       class="tab-btn" data-i18n="tab.deploy">Deploy</button>
+    <button id="tab-build-report" class="tab-btn" data-i18n="tab.buildReport">Build Report</button>
+    <button id="tab-compress"     class="tab-btn" data-i18n="tab.compress">Compress</button>
     <button id="btn-settings" class="tab-gear" title="Settings" aria-label="Settings" data-i18n-title="settings.title">⚙</button>
   </div>
 
@@ -18,7 +18,7 @@
   <div class="tab-content">
 
     <!-- ===================== BUILD REPORT ===================== -->
-    <div id="content-build-report" class="tab-pane">
+    <div id="content-build-report" class="tab-pane" style="display:none;">
       <div class="toolbar">
         <button id="btn-analyze" class="btn" data-i18n="action.analyze">Analyze Project</button>
         <span id="scan-status" style="color:#777;font-size:12px;margin-left:8px;"></span>
@@ -152,23 +152,38 @@
     </div>
 
     <!-- ===================== PACKAGE ===================== -->
-    <div id="content-package" class="tab-pane" style="display:none;">
+    <div id="content-package" class="tab-pane">
+      <!-- The rail spans the whole pane height rather than sitting under the
+           settings: results stay readable while the form is edited, and the
+           fold gives the width back when they are not wanted. -->
+      <div class="pkg-body">
+      <div class="pkg-left">
+      <div class="pkg-left-scroll">
 
-      <!-- ── Networks ── -->
-      <div class="pkg-section" style="flex-shrink:0;">
-        <div class="pkg-section-bar">
-          <span class="section-header" style="margin:0;border:none;padding:0;" data-i18n="package.networks">Networks</span>
-          <div class="pkg-net-actions">
-            <button class="btn-chip" data-net-action="all" data-i18n="package.netAll">All</button>
-            <button class="btn-chip" data-net-action="none" data-i18n="package.netNone">None</button>
-            <button class="btn-chip" data-net-action="html">HTML</button>
-            <button class="btn-chip" data-net-action="zip">ZIP</button>
-          </div>
+      <!-- ── Networks ──
+           At rest the list shows only what is selected, as real checkboxes:
+           the choice is sticky and rarely changed, so the resting state is a
+           readable summary the operator can still act on. The full
+           alphabetical list is one quiet toggle away, with All/None scoped to
+           it rather than living permanently in the header. -->
+      <div class="net-block" style="flex-shrink:0;">
+        <div class="net-head">
+          <span class="net-title" data-i18n="package.networks">Networks</span>
+          <span class="net-head-meta"><span id="net-count">0</span> <span data-i18n="package.netSelected">selected</span></span>
         </div>
-        <div id="network-grid" class="network-grid network-grid-compact"></div>
-        <div id="network-more-wrap" class="pkg-more-wrap" style="display:none;">
-          <button id="btn-toggle-more-nets" class="btn-more-toggle"><span data-i18n="package.moreNetworks">More networks</span> <span class="more-arrow">&#9662;</span></button>
-          <div id="network-grid-more" class="network-grid network-grid-compact" style="display:none;"></div>
+        <div id="net-selected" class="net-cols"></div>
+        <div id="net-selected-empty" class="net-empty" style="display:none;" data-i18n="package.netNoneSelected">No networks selected</div>
+        <button id="net-more-toggle" class="net-more-toggle">
+          <span class="arrow">&#9656;</span> <span id="net-more-label" data-i18n="package.netAllNetworks">All networks</span>
+        </button>
+        <div id="net-all-wrap" style="display:none;">
+          <div class="net-head" style="border-bottom:none;margin-bottom:4px;padding-bottom:0;">
+            <span class="net-head-actions">
+              <button id="net-select-all" class="btn-secondary btn-small" data-i18n="package.netAll">All</button>
+              <button id="net-select-none" class="btn-secondary btn-small" data-i18n="package.netNone">None</button>
+            </span>
+          </div>
+          <div id="net-all-cols" class="net-cols"></div>
         </div>
       </div>
 
@@ -289,8 +304,15 @@
         </div>
       </div>
 
-      <!-- ── Actions ── -->
-      <div class="toolbar" style="flex-shrink:0;">
+      <!-- ── Advisory warnings (spec conformance, e.g. AppLovin Axon events) ── -->
+      <div id="pkg-warnings" class="pkg-warnings" style="display:none;"></div>
+
+      </div><!-- end .pkg-left-scroll -->
+
+      <!-- ── Actions ──
+           Pinned: they must stay reachable however far the form is scrolled.
+           Inside the left column, so the results rail keeps its full height. -->
+      <div class="toolbar pkg-footer">
         <button id="btn-preview" class="btn btn-danger" style="display:none;" data-i18n="package.validate">Validate</button>
         <button id="btn-build" class="btn" data-i18n="build.button">Build</button>
         <button id="btn-build-all" class="btn" data-i18n="package.packAll">Pack All</button>
@@ -300,34 +322,20 @@
         <span id="pkg-status" style="color:#777;font-size:12px;margin-left:8px;"></span>
       </div>
 
-      <!-- ── Results ── -->
-      <div class="data-table-wrap">
-        <table class="data-table" id="pkg-results-table">
-          <thead>
-            <tr>
-              <th data-i18n="package.colNetwork">Network</th>
-              <th data-i18n="common.format">Format</th>
-              <th class="col-size" data-i18n="package.colSize">Size</th>
-              <th data-i18n="package.colLimit">Limit</th>
-              <th data-i18n="package.colCreated">Created</th>
-              <th data-i18n="common.status">Status</th>
-            </tr>
-          </thead>
-          <tbody id="pkg-results-tbody">
-            <tr>
-              <td colspan="6">
-                <div class="empty-state">
-                  <div class="empty-state-icon">📦</div>
-                  <span data-i18n="package.emptyState">Select networks and click "Pack All"</span>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      </div><!-- end .pkg-left -->
+
+      <!-- ── Results rail ── -->
+      <div class="pkg-rail" id="pkg-rail">
+        <div class="rail-head">
+          <button class="rail-fold" id="rail-fold" title="Fold">&#8250;</button>
+          <span class="rail-title" data-i18n="package.results">Results</span>
+          <span class="rail-meta" id="rail-meta"></span>
+          <span class="rail-folded-label" id="rail-folded-label" data-i18n="package.results">Results</span>
+        </div>
+        <div class="rail-body" id="rail-body"></div>
       </div>
 
-      <!-- ── Advisory warnings (spec conformance, e.g. AppLovin Axon events) ── -->
-      <div id="pkg-warnings" class="pkg-warnings" style="display:none;"></div>
+      </div><!-- end .pkg-body -->
     </div>
 
     <!-- ===================== DEPLOY ===================== -->

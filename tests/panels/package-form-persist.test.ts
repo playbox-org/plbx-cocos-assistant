@@ -46,15 +46,17 @@ describe('Package form persistence', () => {
   })
 
   it('persists when a network checkbox is toggled', () => {
-    const body = after("cb.addEventListener('change'", 220)
+    const body = after("cb.addEventListener('change'", 1200)
     expect(body).toContain('persistPackageForm()')
   })
 
-  it('persists when the All/None/HTML/ZIP filters set checkboxes programmatically', () => {
-    // Assigning .checked does not fire 'change', so the per-checkbox listener
-    // never runs for these buttons.
-    const body = after("const action = btn.dataset.netAction", 900)
-    expect(body).toContain('_persistPackageForm')
+  it('persists when All / None change the selection in bulk', () => {
+    // These set the state directly, so nothing fires a checkbox 'change' —
+    // they have to persist explicitly.
+    for (const id of ['netSelectAll', 'netSelectNone']) {
+      const body = after(`this.$.${id} as HTMLButtonElement`, 320)
+      expect(body, `${id} does not persist`).toContain('persistPackageForm()')
+    }
   })
 
   it('persists when orientation changes — it feeds the packager config', () => {

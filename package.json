@@ -1,6 +1,6 @@
 {
   "package_version": 2,
-  "version": "0.6.5",
+  "version": "0.6.6",
   "name": "plbx-cocos-extension",
   "title": "i18n:plbx-cocos-extension.title",
   "description": "i18n:plbx-cocos-extension.description",
@@ -35,6 +35,13 @@
         "path": "i18n:menu.extension",
         "label": "Playbox",
         "message": "open-panel"
+      }
+    ],
+    "shortcuts": [
+      {
+        "message": "open-panel",
+        "win": "ctrl+shift+p",
+        "mac": "cmd+shift+p"
       }
     ],
     "messages": {
@@ -241,6 +248,16 @@
       "list-output-builds": {
         "methods": [
           "listOutputBuilds"
+        ]
+      },
+      "validate-outputs": {
+        "methods": [
+          "validateOutputs"
+        ]
+      },
+      "get-build-info": {
+        "methods": [
+          "getBuildInfo"
         ]
       },
       "open-folder": {

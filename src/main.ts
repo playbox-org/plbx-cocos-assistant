@@ -15,12 +15,21 @@ import {
   fillLauncherPayloadUrl,
   fixRegionalStoreUrls,
   getAllNetworks,
+  getNetwork,
+  maxSizeForFormat,
+  validateArtifact,
+  summarizeChecks,
 } from '@playbox-ai/playable-kit';
 import { PlayboxApiClient } from './core/deployer/api-client';
 import { uploadFile } from './core/deployer/uploader';
 import { getProjectSettings, saveProjectSettings, getGlobalToken, saveGlobalToken, getMolocoApiKey, saveMolocoApiKey, getShowPanelOnStart, saveShowPanelOnStart, getLanguage, saveLanguage, sanitizeProjectName, toPackageConfig } from './core/settings';
 import { MolocoCdnClient } from './core/deployer/moloco-cdn';
-import { startPreviewServer, stopPreviewServer } from './core/preview/server';
+import {
+  startPreviewServer,
+  stopPreviewServer,
+  findBuildFile,
+  extractHtmlFromZip,
+} from './core/preview/server';
 import { runFreshnessCheck, decideAction, formatCheckResult } from './core/freshness/freshness-check';
 import { runExtensionUpdate, defaultRunner } from './core/updater/update';
 import {
@@ -51,6 +60,30 @@ import { join, resolve } from 'path';
 import { existsSync, readFileSync } from 'fs';
 
 let lastBuildResult: any = null;
+
+/** birthtime reads 0 on some filesystems; mtime is the honest fallback. */
+function statCreatedAt(filePath: string): number {
+  try {
+    const { statSync } = require('fs');
+    const st = statSync(filePath);
+    return st.birthtimeMs && st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Compact "03 Sep 19:29" label.
+ *
+ * Delegates to the kit's buildOutputRows rather than formatting here: that is
+ * what labels the artifacts found on disk, and two formatters would put two
+ * date styles in one column.
+ */
+function compactDate(createdAt: number): string {
+  if (!createdAt) return '';
+  const [row] = buildOutputRows([{ path: 'x.html', size: 0, createdAt }]);
+  return row?.createdAtLabel ?? '';
+}
 let _deployProgress: any = null;
 
 /** The org behind the saved token. Opening the Deploy tab used to spend three
@@ -831,6 +864,141 @@ export const methods: Record<string, (...args: any[]) => any> = {
   },
 
   // === Preview ===
+  /**
+   * Build info for the header: when the web-mobile build itself was produced.
+   *
+   * Artifacts carry their own pack time, but that only says when the packager
+   * ran — not whether it ran over a fresh build. Surfacing the build's own
+   * timestamp is what makes "packaged 5 minutes ago, from a build made
+   * yesterday" visible instead of implied.
+   */
+  async getBuildInfo(buildDir: string) {
+    const { resolve, join } = require('path');
+    const { existsSync } = require('fs');
+    const abs = resolve(Editor.Project.path || '', buildDir || '');
+    // index.html is written last-ish and always present in a web build.
+    const marker = existsSync(join(abs, 'index.html')) ? join(abs, 'index.html') : abs;
+    if (!existsSync(marker)) return { createdAt: 0, createdAtLabel: '' };
+    const createdAt = statCreatedAt(marker);
+    return { createdAt, createdAtLabel: compactDate(createdAt) };
+  },
+
+  /**
+   * Run the kit's static checks over the packaged artifacts.
+   *
+   * Same `validateArtifact` + `summarizeChecks` the platform's web validator
+   * uses, so a report here and a report there cannot disagree. Reads the files
+   * directly (zip-aware) instead of standing up the preview HTTP server — the
+   * Package tab wants a verdict per network, not a live page.
+   *
+   * Never throws: an artifact that cannot be read reports as a failed check
+   * rather than taking the whole panel's results table down with it.
+   */
+  async validateOutputs(
+    outputDir: string,
+    rows: Array<{ networkId: string; path?: string }> | string[],
+  ) {
+    const { resolve, isAbsolute } = require('path');
+    const { existsSync, statSync, readFileSync } = require('fs');
+    const settings = await getProjectSettings();
+    const absOutputDir = resolve(Editor.Project.path || '', outputDir || '');
+    const known = getAllNetworks();
+
+    /**
+     * A result row's networkId is not always a network.
+     *
+     * The packager mints synthetic ids for its variants — `google-portrait`,
+     * `<id>-html` / `<id>-zip` when a network emits both, `-b64` for the
+     * encoding variant. Passing those to getNetwork() returns null, which is
+     * how two of Google's three archives came back "failed": nothing was wrong
+     * with them, they simply were not networks.
+     *
+     * Longest-prefix match against the real registry, so no suffix taxonomy has
+     * to be kept in sync with the packager.
+     */
+    const baseNetwork = (rowId: string) => {
+      let best: any = null;
+      for (const n of known) {
+        if (rowId === n.id || rowId.startsWith(`${n.id}-`)) {
+          if (!best || n.id.length > best.id.length) best = n;
+        }
+      }
+      return best;
+    };
+
+    const items = (rows as any[]).map((r) =>
+      typeof r === 'string' ? { networkId: r, path: undefined } : r,
+    );
+    const out: Array<{
+      networkId: string;
+      overall: string;
+      checks: any[];
+      createdAtLabel?: string;
+    }> = [];
+
+    for (const item of items) {
+      const rowId = item?.networkId;
+      if (!rowId) continue;
+      try {
+        const network = baseNetwork(rowId);
+        // Validate the artifact the row actually points at. Re-deriving it from
+        // the network id cannot work for variants: three Google archives share
+        // one network and one findBuildFile answer.
+        let filePath = '';
+        let isZip = false;
+        if (item.path) {
+          filePath = isAbsolute(item.path) ? item.path : resolve(absOutputDir, item.path);
+          isZip = /\.zip$/i.test(filePath);
+        } else if (network) {
+          const found = findBuildFile(absOutputDir, network.id, {
+            template: settings.outputTemplate,
+            templateVariables: settings.templateVariables,
+          });
+          if (found) { filePath = found.path; isZip = found.isZip; }
+        }
+
+        if (!network || !filePath || !existsSync(filePath)) {
+          out.push({
+            networkId: rowId,
+            overall: 'failed',
+            checks: [{
+              id: 'artifact',
+              label: 'Artifact present',
+              status: 'failed',
+              details: !network ? `unknown network: ${rowId}` : 'file not found',
+            }],
+          });
+          continue;
+        }
+
+        const html = isZip ? await extractHtmlFromZip(filePath) : readFileSync(filePath, 'utf-8');
+        const sizeBytes = statSync(filePath).size;
+        const checks = validateArtifact({
+          networkId: network.id,
+          html,
+          files: [{
+            kind: isZip ? 'zip' : 'html',
+            sizeBytes,
+            maxSizeBytes: maxSizeForFormat(network, isZip ? 'zip' : 'html'),
+          }],
+        });
+        out.push({
+          networkId: rowId,
+          overall: summarizeChecks(checks),
+          checks,
+          createdAtLabel: compactDate(statCreatedAt(filePath)),
+        });
+      } catch (e: any) {
+        out.push({
+          networkId: rowId,
+          overall: 'failed',
+          checks: [{ id: 'artifact', label: 'Artifact readable', status: 'failed', details: e?.message ?? String(e) }],
+        });
+      }
+    }
+    return out;
+  },
+
   async startPreview(outputDir: string, networkIds: string[]) {
     const { resolve } = require('path');
     const projectRoot = Editor.Project.path || '';
