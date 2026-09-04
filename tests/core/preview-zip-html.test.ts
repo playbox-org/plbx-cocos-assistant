@@ -3,7 +3,7 @@ import JSZip from 'jszip';
 import { writeFileSync, mkdtempSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { extractHtmlFromZip } from '../../src/core/preview/server';
+import { extractHtmlFromZip, listZipEntries } from '../../src/core/preview/server';
 
 async function makeZip(dir: string, zipName: string, innerName: string, content: string): Promise<string> {
   const zip = new JSZip();
@@ -60,5 +60,19 @@ describe('extractHtmlFromZip', () => {
   it('throws when the ZIP has no HTML', async () => {
     const p = await makeZip(dir, 'empty.zip', 'data.json', '{}');
     await expect(extractHtmlFromZip(p)).rejects.toThrow();
+  });
+});
+
+describe('listZipEntries', () => {
+  it('lists file paths only — the kit root-file rule wants entries, not folders', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'plbx-zip-'));
+    const zip = new JSZip();
+    zip.file('index.html', '<html></html>');
+    zip.file('config.json', '{}');
+    zip.folder('assets')!.file('a.png', 'x');
+    const p = join(dir, 'gdt.zip');
+    writeFileSync(p, await zip.generateAsync({ type: 'nodebuffer' }));
+    expect((await listZipEntries(p)).sort()).toEqual(['assets/a.png', 'config.json', 'index.html']);
+    rmSync(dir, { recursive: true, force: true });
   });
 });

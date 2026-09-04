@@ -1151,6 +1151,15 @@
           : 'Not found in build');
     }
 
+    // Root-file contract of ZIP networks (Tencent config.json, Luna manifests).
+    // Verdict computed server-side by the kit's zipRootFilesVerdict; the check
+    // def exists only when the network declares root files.
+    if (net && net.zipRootFiles) {
+      var rf = net.zipRootFiles;
+      setCheck('zip_root_files', rf.missing.length ? 'fail' : 'pass',
+        rf.details || (rf.required.join(', ') + ' at the archive root'));
+    }
+
     // Regional/localization params in the store URL — should be absent for global
     // delivery (all networks). The check def exists only when the build has a store
     // URL; setCheck is a no-op otherwise.

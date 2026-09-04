@@ -29,6 +29,7 @@ import {
   stopPreviewServer,
   findBuildFile,
   extractHtmlFromZip,
+  listZipEntries,
 } from './core/preview/server';
 import { runFreshnessCheck, decideAction, formatCheckResult } from './core/freshness/freshness-check';
 import { runExtensionUpdate, defaultRunner } from './core/updater/update';
@@ -976,6 +977,7 @@ export const methods: Record<string, (...args: any[]) => any> = {
         const checks = validateArtifact({
           networkId: network.id,
           html,
+          zipEntries: isZip ? await listZipEntries(filePath) : undefined,
           files: [{
             kind: isZip ? 'zip' : 'html',
             sizeBytes,
