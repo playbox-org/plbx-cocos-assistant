@@ -1,6 +1,6 @@
 {
   "package_version": 2,
-  "version": "0.6.7",
+  "version": "0.6.8",
   "name": "plbx-cocos-extension",
   "title": "i18n:plbx-cocos-extension.title",
   "description": "i18n:plbx-cocos-extension.description",
@@ -389,7 +389,7 @@
     "vitest": "^2.0.0"
   },
   "dependencies": {
-    "@playbox-ai/playable-kit": "~0.3.14",
+    "@playbox-ai/playable-kit": "~0.3.17",
     "jszip": "^3.10.0"
   },
   "optionalDependencies": {
