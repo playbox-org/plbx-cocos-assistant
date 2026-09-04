@@ -350,9 +350,10 @@ body {
 }
 
 /* A panel title heading its own column doesn't need the section divider it wears
-   when it sits below the checklist. */
-.sidebar-left .axon-title,
-.sidebar-left .luna-title {
+   when it sits below the checklist. The plbx section is always first in the
+   left column now, so only ITS title loses the divider — axon/luna titles keep
+   theirs to separate them from the plbx section above. */
+.sidebar-left #plbx-section .axon-title {
   margin-top: 0;
   padding-top: 0;
   border-top: none;

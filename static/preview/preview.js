@@ -78,6 +78,8 @@
   var axonFired = {};      // { eventName: count }
   var axonSequence = [];   // ordered fire log (with repeats) for spec validation
   var axonTimestamps = []; // ms timestamps aligned to axonSequence (CHALLENGE_* spacing)
+  var plbxCalls = {};      // { method: count } — plbx_html bridge calls, every network
+  var plbxArgs = {};       // { method: { arg: count } } — expose/log_event/report, keyed by first arg
   var currentValidatorUrl = null;
   // Luna (Unity Playworks) state
   var lunaEvents = {};           // { name: { count, kind, beforeStart, valueOk } }
@@ -366,15 +368,75 @@
     });
   }
 
-  // The left column hosts the per-network analytics panels — Axon for AppLovin,
-  // Luna for Luna. They are mutually exclusive (one network is previewed at a
-  // time), so the column itself is shown whenever either owns it and each
-  // section hides independently. Every other network gets no left column at all.
+  // The left column hosts the plbx events panel (every network) plus the
+  // per-network analytics panels — Axon for AppLovin, Luna for Luna. Axon and
+  // Luna are mutually exclusive (one network is previewed at a time) and each
+  // section hides independently; the plbx section never hides, so the column
+  // itself is now always shown.
   function updateLeftSidebar() {
     var sidebar = document.getElementById('left-sidebar');
     var axonSection = document.getElementById('axon-section');
-    if (sidebar) sidebar.style.display = (isAxonNetwork || isLunaNetwork) ? '' : 'none';
+    if (sidebar) sidebar.style.display = '';
     if (axonSection) axonSection.style.display = isAxonNetwork ? '' : 'none';
+  }
+
+  // ========== PLBX EVENTS (every network) ==========
+  // Fixed row order regardless of arrival order, and only rows with count > 0
+  // are shown. expose/log_event/report carry a distinguishing first arg — one
+  // row per distinct arg, e.g. "expose(unlock_level)".
+  var PLBX_CALL_ORDER = ['game_ready', 'tap', 'download', 'game_end', 'game_retry', 'expose', 'log_event', 'report'];
+  var PLBX_ARG_METHODS = { expose: true, log_event: true, report: true };
+
+  function renderPlbxEvents() {
+    var container = document.getElementById('plbx-events');
+    var emptyMsg = document.getElementById('plbx-empty');
+    if (!container) return;
+
+    updateLeftSidebar();
+
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    var rows = [];
+    PLBX_CALL_ORDER.forEach(function(method) {
+      if (PLBX_ARG_METHODS[method]) {
+        var args = plbxArgs[method];
+        if (!args) return;
+        Object.keys(args).forEach(function(arg) {
+          rows.push({ name: method + '(' + arg + ')', count: args[arg] });
+        });
+      } else {
+        var count = plbxCalls[method] || 0;
+        if (count > 0) rows.push({ name: method, count: count });
+      }
+    });
+
+    if (rows.length === 0) {
+      if (emptyMsg) emptyMsg.style.display = '';
+      return;
+    }
+    if (emptyMsg) emptyMsg.style.display = 'none';
+
+    rows.forEach(function(row) {
+      var div = document.createElement('div');
+      div.className = 'axon-event fired';
+
+      var icon = document.createElement('span');
+      icon.className = 'icon';
+      icon.textContent = '⚡';
+      div.appendChild(icon);
+
+      var nameSpan = document.createElement('span');
+      nameSpan.className = 'name';
+      nameSpan.textContent = row.name;
+      div.appendChild(nameSpan);
+
+      var countSpan = document.createElement('span');
+      countSpan.className = 'count';
+      countSpan.textContent = '×' + row.count;
+      div.appendChild(countSpan);
+
+      container.appendChild(div);
+    });
   }
 
   function renderAxonEvents() {
@@ -1126,12 +1188,15 @@
     axonFired = {};
     axonSequence = [];
     axonTimestamps = [];
+    plbxCalls = {};
+    plbxArgs = {};
     isAxonNetwork = (id === 'applovin');
     // Set the Luna flag here too, not only inside resetLunaState below: both
     // panels share one left column, so the first render must already know who
     // owns it — otherwise a switch renders once against the previous network.
     isLunaNetwork = (id === 'luna');
     renderAxonEvents();
+    renderPlbxEvents();
 
     // Luna Events: runtime-fired events (standard, lifecycle, custom) are
     // checked client-side against Luna's caps + preconditions
@@ -1253,6 +1318,19 @@
           axonTimestamps.push(typeof data.ts === 'number' ? data.ts : Date.now());
           log('Axon: ' + data.name + ' (×' + axonFired[data.name] + ')', 'cta');
           renderAxonEvents();
+        }
+        break;
+      case 'plbx_call':
+        if (data.method) {
+          var plbxMethod = data.method;
+          var plbxN = typeof data.n === 'number' ? data.n : (plbxCalls[plbxMethod] || 0) + 1;
+          plbxCalls[plbxMethod] = plbxN;
+          if (PLBX_ARG_METHODS[plbxMethod] && data.arg) {
+            if (!plbxArgs[plbxMethod]) plbxArgs[plbxMethod] = {};
+            plbxArgs[plbxMethod][data.arg] = (plbxArgs[plbxMethod][data.arg] || 0) + 1;
+          }
+          log('plbx: ' + plbxMethod + (data.arg ? '(' + data.arg + ')' : '') + ' (×' + plbxN + ')', plbxMethod === 'download' ? 'cta' : '');
+          renderPlbxEvents();
         }
         break;
       case 'luna_event':
