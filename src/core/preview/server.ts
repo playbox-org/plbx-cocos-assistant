@@ -19,6 +19,8 @@ import {
   LUNA_STANDARD_EVENTS,
   LUNA_EVENT_CAPS,
   detectRegionalParams,
+  STRICT_CSP,
+  strictCspByDefault,
 } from '@playbox-ai/playable-kit';
 
 /**
@@ -749,6 +751,15 @@ export async function startPreviewServer(options: {
           // Adversarial boot-harness timing (mraid builds). Unknown → happy
           // (sanitized again inside generatePreviewUtil).
           const mraidMode = new URLSearchParams(urlQuery || '').get('mraidMode') || 'happy';
+          // Content Security Policy. On by default for networks whose player is
+          // known to impose one (Meta), and available on ANY network with
+          // `?csp=strict` / `?csp=off` — what it catches is a portability bug,
+          // and which network catches it first is an accident of review order.
+          // See the kit's preview/csp.ts for what the policy is and why.
+          const cspParam = new URLSearchParams(urlQuery || '').get('csp');
+          const strictCsp =
+            cspParam === 'strict' ||
+            (cspParam !== 'off' && strictCspByDefault(networkId, getNetwork(networkId)));
           const buildFile = findBuildFile(outputDir, networkId);
 
           if (!buildFile) {
@@ -778,7 +789,13 @@ export async function startPreviewServer(options: {
           });
 
           const injectedHtml = injectPreviewUtil(html, utilScript);
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          const headers: Record<string, string> = { 'Content-Type': 'text/html; charset=utf-8' };
+          // The real thing and not a <meta> tag: a meta CSP is applied only from
+          // where it appears in the document, so the preview's own injected
+          // mocks — which run first, right after <head> — would sit outside it
+          // and a creative could load an asset the container would have refused.
+          if (strictCsp) headers['Content-Security-Policy'] = STRICT_CSP;
+          res.writeHead(200, headers);
           res.end(injectedHtml);
           return;
         }

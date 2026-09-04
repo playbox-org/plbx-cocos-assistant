@@ -271,6 +271,42 @@ Playbox panel → **Preview** button (next to Build). Opens a local browser wind
 
 All green ✅ → playable is ready for Moloco QA submission.
 
+### 5. Check it against the container's CSP
+
+The Facebook tab is served under a **Content Security Policy** — the same class
+of policy Meta's player imposes. Nothing to turn on; it is the default for that
+network.
+
+You can put any other network under it too, or take Facebook out of it, with a
+query on the preview frame:
+
+```
+/preview/unity?csp=strict     any network, under the policy
+/preview/facebook?csp=off     Facebook without it
+```
+
+**What it catches.** A packaged creative inlines every asset as a `data:` URI,
+and CSP grants `data:` to `img-src` and refuses it to `connect-src`. So anything
+that FETCHES its own inlined asset — three's `FBXLoader.loadAsync`, PIXI's
+`Assets.load`, a hand-rolled sound loader, a `FontFace` given a URL — works
+everywhere except inside the ad, and fails there **silently**: no exception, just
+a warning in a console nobody reads and a game drawing its fallback.
+
+**What it looks like.** Models missing while the board is laid out correctly.
+Textures gone but geometry fine. Text in the wrong face. Silence instead of
+sound. Every one of those is this bug, and every one of them reads as a content
+mistake rather than a load failure.
+
+**The fix is not `blob:`** — it moves the read rather than removing it, and Meta
+grants `blob:` to neither `img-src` nor `font-src`, so it trades dead binaries
+for dead images. Decode the base64 in JS and hand the parser the bytes:
+`FBXLoader.parse(buffer)`, `decodeAudioData(buffer)`, `new FontFace(f, buffer)`.
+Images stay `data:` on an `<img>`.
+
+Full explanation, with the per-loader table and the PIXI case:
+[`docs/networks/facebook-csp.md`](https://github.com/Magic-Quick/playable-kit/blob/main/docs/networks/facebook-csp.md)
+in the kit.
+
 ---
 
 ## Network behavior reference
@@ -294,6 +330,11 @@ You don't write network-specific code. Adapter abstracts it.
 
 **`game_viewable` not detected (30s timeout)**
 → `plbx.game_ready()` not called. Add it to your main scene `onLoad`.
+
+**Art missing in the Facebook tab but fine everywhere else**
+→ Content Security Policy. Something in the loading path is fetching an inlined
+`data:` URI, which `connect-src` refuses. Confirm with `?csp=off` on the same
+tab: if it comes back, that is the bug and not a packaging one. See step 5 above.
 
 **`mraid_viewable` not detected**
 → Click the **Viewable** manual trigger in preview validator. In production, the ad container fires this automatically when it becomes visible. If your defer-boot gate is missing, game won't boot — see required string check in packager output.
@@ -325,6 +366,9 @@ You don't write network-specific code. Adapter abstracts it.
 - ❌ Don't define `window.gameReady` / `window.gameStart` / `window.gameClose` manually — runtime-loader handles these
 - ❌ Don't load external trackers (Google Analytics, Facebook Pixel, etc.) — fails validator checks
 - ❌ Don't ship the `super_html_playable.ts` legacy adapter — use `plbx_html_playable.ts` only
+- ❌ Don't `fetch()` or XHR an inlined `data:` asset — `connect-src` refuses it inside the ad. Decode the base64 and hand the parser the bytes (step 5 above)
+- ❌ Don't reach for `blob:` when a `data:` URI is refused — it moves the read instead of removing it, and fails `img-src` and `font-src` too
+- ❌ Don't build image elements with `new Image()` — a patched constructor (Arc's blocker) makes `src` non-configurable and every sprite throws. Use `document.createElementNS('http://www.w3.org/1999/xhtml', 'img')`, which is what three.js does
 
 ---
 
