@@ -179,6 +179,8 @@ What stays here is editor-side:
 
 - `docs/plans/` — extension design/implementation, compress + preview server.
 - `docs/research/cocos-creator-extension-api.md` — Cocos extension API notes.
+- `docs/networks/` — editor-side notes per network (panel settings → network
+  fields, console hand-off); the rules themselves stay in the kit.
 - `docs/superpowers/specs/` + `plans/` — editor features: build report, perf
   HUD, stable delivery + sharp guard, kit freshness.
 

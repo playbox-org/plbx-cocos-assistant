@@ -21,6 +21,7 @@ import {
   detectRegionalParams,
   STRICT_CSP,
   strictCspByDefault,
+  zipRootFilesVerdict,
 } from '@playbox-ai/playable-kit';
 
 /**
@@ -271,6 +272,27 @@ async function buildForbiddenLiterals(outputDir: string, networkId: string): Pro
     return findForbiddenLiterals(networkId, html);
   } catch {
     return [];
+  }
+}
+
+/** Archive entry paths (files only) — feeds the kit's zip root-file rule. */
+export async function listZipEntries(zipPath: string): Promise<string[]> {
+  const zip = await JSZip.loadAsync(readFileSync(zipPath));
+  return Object.values(zip.files)
+    .filter((f) => !f.dir)
+    .map((f) => f.name);
+}
+
+// Root-file contract (Tencent config.json, Luna manifests). The verdict is the
+// kit's, over the real archive listing — the same call validateArtifact and
+// the platform validator make, so the panel cannot disagree with either.
+async function buildZipRootFiles(outputDir: string, networkId: string) {
+  try {
+    const file = findBuildFile(outputDir, networkId);
+    if (!file || !file.isZip) return null;
+    return zipRootFilesVerdict(networkId, await listZipEntries(file.path));
+  } catch {
+    return null;
   }
 }
 
@@ -685,6 +707,7 @@ export async function startPreviewServer(options: {
                 outputDir,
                 id,
               );
+              const zipRootFiles = await buildZipRootFiles(outputDir, id);
               return {
                 id,
                 name: config?.name || id,
@@ -699,6 +722,7 @@ export async function startPreviewServer(options: {
                 riskyAudio,
                 hostileMp3,
                 forbiddenLiterals,
+                zipRootFiles,
                 checks,
                 launcherChecks,
                 loaderHealth,

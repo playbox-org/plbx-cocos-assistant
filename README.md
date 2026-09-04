@@ -55,7 +55,7 @@ Compress images (WebP / JPEG / PNG / AVIF) and audio (MP3 / OGG) with live previ
 The packager picks the right output format and SDK adapter per network automatically.
 
 - **HTML** — AppLovin, Unity Ads, ironSource, AdColony, Tapjoy, Appreciate, Chartboost, Liftoff, Smadex, Rubeex, Facebook / Meta, Moloco, Nefta, inMobi, NewsBreak
-- **ZIP** — Google Ads, Pangle, TikTok, Vungle, MyTarget, Mintegral, Adikteev, Bigabid, Snapchat, Bigo Ads, GDT (Tencent), Kwai, Yandex
+- **ZIP** — Google Ads, Pangle, TikTok, Vungle, MyTarget, Mintegral, Adikteev, Bigabid, Snapchat, Bigo Ads, Tencent Ads (优量汇 / GDT), Kwai, Yandex
 - **Launcher API** — Moloco V2.0 (`launcher.html` + `payload.js`)
 
 ## How to Use
