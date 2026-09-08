@@ -316,8 +316,6 @@
         <button id="btn-preview" class="btn btn-danger" style="display:none;" data-i18n="package.validate">Validate</button>
         <button id="btn-build" class="btn" data-i18n="build.button">Build</button>
         <button id="btn-build-all" class="btn" data-i18n="package.packAll">Pack All</button>
-        <button id="btn-upload-repack" class="btn btn-secondary" data-i18n="package.uploadForPackaging">Upload for packaging</button>
-        <span id="upload-repack-status" style="color:#777;font-size:12px;margin-left:4px;"></span>
         <button id="btn-open-output" class="btn btn-secondary" data-i18n="package.openOutput">Open Output Folder</button>
         <button id="btn-generate-adapter" class="btn btn-secondary" data-i18n="package.generateAdapter">Generate plbx_html.ts</button>
         <button id="btn-generate-axon" class="btn btn-secondary" data-i18n="package.generateAxon">Generate AppLovin events</button>
@@ -513,18 +511,6 @@
             <input type="checkbox" id="settings-show-on-start" />
             <span data-i18n="settings.showOnStart">Show Playbox panel on editor start</span>
           </label>
-        </div>
-
-        <div class="settings-group">
-          <div class="settings-group-title" data-i18n="settings.repack">Server-side packaging</div>
-          <div class="settings-row">
-            <span class="settings-label" data-i18n="settings.repackUrl">Repack service URL</span>
-            <input type="text" id="settings-repack-url" class="form-input" placeholder="https://repack.example.com" style="max-width:320px;" />
-          </div>
-          <div class="settings-row">
-            <span class="settings-label" data-i18n="settings.repackToken">Repack token</span>
-            <input type="password" id="settings-repack-token" class="form-input" placeholder="Bearer token" style="max-width:320px;" />
-          </div>
         </div>
 
         <div class="settings-group">
