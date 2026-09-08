@@ -5,7 +5,6 @@ import { join } from 'path';
 import { translate, normalizeLang } from '../core/i18n/locales';
 import { railVerdict } from './rail-verdict';
 import { formatLogoDimensions } from '../core/splash/logo-dimensions';
-import { repackSummaryToRows, mergeOutputListing } from '../core/repack/rows';
 import { AXON_SPEC_URL } from '@playbox-ai/playable-kit';
 
 const template = readFileSync(join(__dirname, '../../static/template/index.html'), 'utf-8');
@@ -69,8 +68,6 @@ module.exports = Editor.Panel.define({
     settingsAutoPackage: '#settings-auto-package',
     settingsShowOnStart: '#settings-show-on-start',
     settingsLanguage:    '#settings-language',
-    settingsRepackUrl:   '#settings-repack-url',
-    settingsRepackToken: '#settings-repack-token',
 
     // Build Report tab
     btnAnalyze:       '#btn-analyze',
@@ -125,8 +122,6 @@ module.exports = Editor.Panel.define({
     buildProgressBar:  '#build-progress-bar',
     buildProgressText: '#build-progress-text',
     buildPacked:       '#build-packed',
-    btnUploadRepack:  '#btn-upload-repack',
-    uploadRepackStatus: '#upload-repack-status',
     btnPreview:       '#btn-preview',
     btnOpenOutput:    '#btn-open-output',
     pkgStatus:        '#pkg-status',
@@ -658,12 +653,6 @@ module.exports = Editor.Panel.define({
         Editor.Message.request('plbx-cocos-extension', 'get-settings')
           .then((s: any) => {
             if (this.$.settingsAutoPackage) (this.$.settingsAutoPackage as HTMLInputElement).checked = s?.autoPackage !== false;
-            if (this.$.settingsRepackUrl) (this.$.settingsRepackUrl as HTMLInputElement).value = s?.repackUrl || '';
-          })
-          .catch(() => {});
-        Editor.Message.request('plbx-cocos-extension', 'get-repack-token')
-          .then((t: string) => {
-            if (this.$.settingsRepackToken) (this.$.settingsRepackToken as HTMLInputElement).value = t || '';
           })
           .catch(() => {});
         Editor.Message.request('plbx-cocos-extension', 'getShowPanelOnStart')
@@ -712,16 +701,6 @@ module.exports = Editor.Panel.define({
         Editor.Message.request('plbx-cocos-extension', 'saveShowPanelOnStart', startCb.checked).catch(() => {});
       });
 
-      // Repack door: URL is a project setting, the bearer is a global secret
-      // (same split as Moloco's Ad Account ID vs API key).
-      const repackUrlEl = this.$.settingsRepackUrl as HTMLInputElement | null;
-      repackUrlEl?.addEventListener('change', () => {
-        Editor.Message.request('plbx-cocos-extension', 'save-settings', { repackUrl: repackUrlEl.value.trim() }).catch(() => {});
-      });
-      const repackTokenEl = this.$.settingsRepackToken as HTMLInputElement | null;
-      repackTokenEl?.addEventListener('change', () => {
-        Editor.Message.request('plbx-cocos-extension', 'save-repack-token', repackTokenEl.value.trim()).catch(() => {});
-      });
 
     },
 
@@ -2581,68 +2560,6 @@ module.exports = Editor.Panel.define({
           if (pkgStatus) pkgStatus.textContent = translate(this._lang || 'en', 'status.error').replace('{msg}', String(e?.message ?? e));
         } finally {
           btnBuildAll.disabled = false;
-        }
-      });
-
-      // Upload for packaging: one plbx archive to the repack door, per-network
-      // artifacts back into outputDir. Same inputs as Pack All; the door does
-      // the packaging, so the output template is not ours to apply.
-      const btnUploadRepack = this.$.btnUploadRepack as HTMLButtonElement | null;
-      btnUploadRepack?.addEventListener('click', async () => {
-        const t = (k: string) => translate(this._lang || 'en', k);
-        const statusEl = this.$.uploadRepackStatus as HTMLElement | null;
-        const buildDir  = (this.$.pkgBuildDir as HTMLInputElement)?.value.trim() ?? '';
-        const outputDir = (this.$.pkgOutputDir as HTMLInputElement)?.value.trim() ?? '';
-        const orientation = (((this.$.contentPackage as HTMLElement | null)?.querySelector('input[name="orientation"]:checked') as HTMLInputElement | null)?.value ?? 'portrait') as any;
-        // Selection lives in state (a ticked network renders in both lists,
-        // so counting checked inputs would double it) — same as Pack All.
-        const selected = this._selectedNetworks();
-
-        if (!buildDir)        { if (pkgStatus) pkgStatus.textContent = t('status.setBuildDir');    return; }
-        if (!outputDir)       { if (pkgStatus) pkgStatus.textContent = t('status.setOutputDir');   return; }
-        if (!selected.length) { if (pkgStatus) pkgStatus.textContent = t('status.selectNetwork'); return; }
-
-        await Editor.Message.request('plbx-cocos-extension', 'save-settings', {
-          selectedNetworks: selected,
-          orientation,
-          buildDir,
-          outputDir,
-        }).catch((e: any) => { console.warn('[plbx]', e); });
-
-        btnUploadRepack.disabled = true;
-        if (statusEl) statusEl.textContent = t('package.repackUploading');
-        try {
-          const res = await Editor.Message.request(
-            'plbx-cocos-extension', 'upload-for-packaging',
-            buildDir, selected, { orientation }, outputDir,
-          );
-          if (res?.ok) {
-            const summary = res.summary || { artifacts: [], failures: [] };
-            const rows = repackSummaryToRows(summary);
-            this._renderPackageResults(rows);
-            // Re-walk outputDir as the panel does on open: lends the kit's display
-            // names and the Created column, and lists builds left by earlier packs.
-            Editor.Message.request('plbx-cocos-extension', 'list-output-builds', outputDir)
-              .then((listed: any[]) => { this._renderPackageResults(mergeOutputListing(rows, listed)); })
-              .catch((e: any) => { console.warn('[plbx]', e); });
-            if (statusEl) {
-              statusEl.textContent = t('package.repackDone')
-                .replace('{n}', String((summary.artifacts || []).length))
-                .replace('{f}', String((summary.failures || []).length))
-                .replace('{dir}', outputDir);
-            }
-            if (btnPreview) btnPreview.style.display = '';
-          } else {
-            const errKey =
-              res?.error === 'no_repack_url' ? 'package.repackNoUrl' :
-              res?.error === 'no_repack_token' ? 'package.repackNoToken' : 'package.repackFailed';
-            const msg = [res?.error, res?.detail].filter(Boolean).join(': ');
-            if (statusEl) statusEl.textContent = t(errKey).replace('{msg}', msg);
-          }
-        } catch (e: any) {
-          if (statusEl) statusEl.textContent = t('package.repackFailed').replace('{msg}', String(e?.message ?? e));
-        } finally {
-          btnUploadRepack.disabled = false;
         }
       });
 
