@@ -33,12 +33,13 @@ rules are the kit's. See "Shared kit" below.
   `/networks` (fs-free registry) and `/types` subpaths. There is NO local
   `src/core/packager/`, `src/shared/`, or `src/core/preview/{sdk-mocks,
   loader-health}` — those were deleted when the kit was adopted.
-- The kit's `plbx` registry entry is the repack SOURCE target (one archive:
-  `source.html` + `build.zip` + `plbx.json`) that "Upload for packaging" POSTs to
-  the private plbx-collector repack door — never an ad network. It is hidden
-  from every network list the panel shows (`src/core/networks-for-ui.ts`,
-  `HIDDEN_NETWORK_IDS`); `getAllNetworks()` still includes it, so filter through
-  `selectableNetworks()` wherever a list means "networks to package for".
+- The kit's `plbx` registry entry is the Playbox export target: one archive
+  (`source.html` + `build.zip` + `plbx.json`) a developer hands to the Playbox
+  platform, and what "Upload for packaging" POSTs to the plbx-collector repack
+  door. It is a first-class row in the network grid like Luna (decided
+  2026-09-08) — the kit's own doc calls it a source to hide; the panel does not.
+  `selectableNetworks()` (`src/core/networks-for-ui.ts`) is the single hook if
+  an entry ever must be hidden.
 - `src/core/` — editor-specific business logic that stays out of the kit:
   - `preview/server.ts` — dev preview HTTP server (editor runtime; unzips
     builds with `jszip`, serves the kit's `generatePreviewUtil` mock + UI in

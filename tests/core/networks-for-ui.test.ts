@@ -1,24 +1,26 @@
 /**
- * The network checkbox grid lists real ad networks. The kit's `plbx` entry is
- * the repack source target (what "Upload for packaging" sends to the door), not
- * a destination a developer picks — it must never show up as a checkbox.
+ * The network checkbox grid lists every kit registry entry, the `plbx`
+ * Playbox export target included — it is a build a developer hands to the
+ * platform, like Luna, not a hidden implementation detail (decided 2026-09-08).
+ * `selectableNetworks` is the one hook for hiding an entry, should one ever
+ * need it.
  */
 import { describe, it, expect } from 'vitest';
 import { HIDDEN_NETWORK_IDS, selectableNetworks } from '../../src/core/networks-for-ui';
 
 describe('selectableNetworks', () => {
-  it('hides the plbx repack-source target from the network grid', () => {
+  it('offers the plbx Playbox export target in the network grid, like Luna', () => {
     const all = [
-      { id: 'applovin', name: 'AppLovin' },
+      { id: 'ironsource', name: 'ironSource' },
       { id: 'plbx', name: 'Playbox (repack source)' },
-      { id: 'unity', name: 'Unity' },
+      { id: 'luna', name: 'Luna' },
     ];
-    expect(selectableNetworks(all).map((n) => n.id)).toEqual(['applovin', 'unity']);
-    expect(HIDDEN_NETWORK_IDS).toContain('plbx');
+    expect(selectableNetworks(all).map((n) => n.id)).toEqual(['ironsource', 'plbx', 'luna']);
+    expect(HIDDEN_NETWORK_IDS).not.toContain('plbx');
   });
 
-  it('leaves a list without hidden ids untouched', () => {
-    const all = [{ id: 'applovin' }, { id: 'unity' }];
+  it('hides exactly the ids listed in HIDDEN_NETWORK_IDS and nothing else', () => {
+    const all = [{ id: 'a' }, { id: 'b' }];
     expect(selectableNetworks(all)).toEqual(all);
   });
 });
