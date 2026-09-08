@@ -1,6 +1,6 @@
 {
   "package_version": 2,
-  "version": "0.6.8",
+  "version": "0.7.0",
   "name": "plbx-cocos-extension",
   "title": "i18n:plbx-cocos-extension.title",
   "description": "i18n:plbx-cocos-extension.description",
@@ -188,6 +188,21 @@
       "upload-moloco-cdn": {
         "methods": [
           "uploadMolocoCdn"
+        ]
+      },
+      "get-repack-token": {
+        "methods": [
+          "getRepackToken"
+        ]
+      },
+      "save-repack-token": {
+        "methods": [
+          "saveRepackToken"
+        ]
+      },
+      "upload-for-packaging": {
+        "methods": [
+          "uploadForPackaging"
         ]
       },
       "get-networks": {
@@ -389,7 +404,7 @@
     "vitest": "^2.0.0"
   },
   "dependencies": {
-    "@playbox-ai/playable-kit": "~0.3.17",
+    "@playbox-ai/playable-kit": "~0.4.0",
     "jszip": "^3.10.0"
   },
   "optionalDependencies": {

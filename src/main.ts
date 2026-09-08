@@ -22,8 +22,10 @@ import {
 } from '@playbox-ai/playable-kit';
 import { PlayboxApiClient } from './core/deployer/api-client';
 import { uploadFile } from './core/deployer/uploader';
-import { getProjectSettings, saveProjectSettings, getGlobalToken, saveGlobalToken, getMolocoApiKey, saveMolocoApiKey, getShowPanelOnStart, saveShowPanelOnStart, getLanguage, saveLanguage, sanitizeProjectName, toPackageConfig } from './core/settings';
+import { getProjectSettings, saveProjectSettings, getGlobalToken, saveGlobalToken, getMolocoApiKey, saveMolocoApiKey, getRepackToken, saveRepackToken, getShowPanelOnStart, saveShowPanelOnStart, getLanguage, saveLanguage, sanitizeProjectName, toPackageConfig } from './core/settings';
 import { MolocoCdnClient } from './core/deployer/moloco-cdn';
+import { uploadForRepack, unpackRepackResponse, type RepackSummary, type RepackUploadError } from './core/repack/client';
+import { selectableNetworks } from './core/networks-for-ui';
 import {
   startPreviewServer,
   stopPreviewServer,
@@ -58,7 +60,8 @@ import {
   defaultKitInstallIO,
 } from './core/kit/kit-update';
 import { join, resolve } from 'path';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
 
 let lastBuildResult: any = null;
 
@@ -636,7 +639,95 @@ export const methods: Record<string, (...args: any[]) => any> = {
   },
 
   getNetworks() {
-    return getAllNetworks();
+    // The kit's `plbx` entry is the repack source, not a destination — hidden.
+    return selectableNetworks(getAllNetworks());
+  },
+
+  // === Upload for packaging (repack door) ===
+
+  /** Panel settings accessors for the repack door bearer (global, secret). */
+  async getRepackToken() {
+    return getRepackToken();
+  },
+  async saveRepackToken(token: string) {
+    await saveRepackToken(token || '');
+    return { ok: true };
+  },
+
+  /**
+   * Package the build once for the kit's `plbx` target (source.html + build.zip
+   * + plbx.json), POST that archive to `${repackUrl}/repack?networks=…`, and
+   * unpack the door's answer into `outputDir` in the same `{networkId}/index.{ext}`
+   * layout Pack All writes — so `listOutputBuilds` and the preview find the
+   * artifacts unchanged. Failure is a result and one log line: never a throw
+   * across IPC, never a wait, never a retry.
+   */
+  async uploadForPackaging(
+    buildDir: string,
+    networkIds: string[],
+    config: any,
+    outputDir: string,
+  ): Promise<
+    | { ok: true; buildId: string; summary: RepackSummary; outputDir: string }
+    | { ok: false; error: RepackUploadError | 'package_failed' | 'unpack_failed'; detail?: string }
+  > {
+    const settings = await getProjectSettings();
+    const repackUrl = (settings.repackUrl || '').trim();
+    const token = await getRepackToken();
+    if (!repackUrl) return { ok: false, error: 'no_repack_url' };
+    if (!token) return { ok: false, error: 'no_repack_token' };
+
+    let tmp = '';
+    try {
+      const projectRoot = Editor.Project.path || '';
+      tmp = mkdtempSync(join(tmpdir(), 'plbx-repack-'));
+      const request = buildPackageRequest({
+        settings,
+        projectRoot,
+        buildDir,
+        networks: ['plbx'],
+        config,
+      });
+      const packed = await packageForNetworks({
+        ...request,
+        outputDir: tmp,
+        outputTemplate: '{networkId}/index.{ext}',
+      });
+      // `withinLimit` is advisory for plbx (its registry ceiling is the kit
+      // test's 10 MB cap, not a network's) — only a missing artifact is a failure.
+      const plbx = packed.results.find((r) => r.networkId === 'plbx');
+      if (!plbx || !plbx.outputPath || !existsSync(plbx.outputPath)) {
+        console.warn('[plbx] uploadForPackaging failed: the kit produced no plbx archive', packed.results);
+        return { ok: false, error: 'package_failed', detail: 'the kit produced no plbx archive (is the installed kit new enough?)' };
+      }
+
+      const upload = await uploadForRepack({
+        archive: readFileSync(plbx.outputPath),
+        repackUrl,
+        token,
+        networks: networkIds,
+        kind: 'prod',
+      });
+      if (!upload.ok) {
+        console.warn('[plbx] uploadForPackaging failed:', upload.error, upload.status ?? '', upload.detail ?? '');
+        return { ok: false, error: upload.error, detail: upload.detail };
+      }
+
+      const absOut = resolve(projectRoot, outputDir);
+      let summary: RepackSummary;
+      try {
+        summary = await unpackRepackResponse(upload.zip, absOut);
+      } catch (e: any) {
+        console.warn('[plbx] uploadForPackaging failed: unpack', e);
+        return { ok: false, error: 'unpack_failed', detail: e?.message || String(e) };
+      }
+      return { ok: true, buildId: upload.buildId, summary, outputDir: absOut };
+    } catch (e: any) {
+      console.warn('[plbx] uploadForPackaging failed:', e);
+      return { ok: false, error: 'package_failed', detail: e?.message || String(e) };
+    } finally {
+      if (tmp) { try { rmSync(tmp, { recursive: true, force: true }); } catch { /* temp dir — best effort */ } }
+    }
   },
 
   // === Moloco CDN upload ===

@@ -5,7 +5,7 @@ ads for 25+ ad networks (HTML or ZIP per network), with compression, a local
 preview validator, and deploy to the Playbox platform (plbx.ai).
 
 The packaging engine itself is NOT in this repo — it is the shared
-`@playbox-ai/playable-kit` npm package (public, `~0.3.1`). This extension is a
+`@playbox-ai/playable-kit` npm package (public, `~0.4.0`). This extension is a
 *consumer*: it wires the kit into the Cocos editor (panels, IPC, deploy,
 compression, self-update) but the packaging/validation/preview-mock/network
 rules are the kit's. See "Shared kit" below.
@@ -33,6 +33,12 @@ rules are the kit's. See "Shared kit" below.
   `/networks` (fs-free registry) and `/types` subpaths. There is NO local
   `src/core/packager/`, `src/shared/`, or `src/core/preview/{sdk-mocks,
   loader-health}` — those were deleted when the kit was adopted.
+- The kit's `plbx` registry entry is the repack SOURCE target (one archive:
+  `source.html` + `build.zip` + `plbx.json`) that "Upload for packaging" POSTs to
+  the private plbx-collector repack door — never an ad network. It is hidden
+  from every network list the panel shows (`src/core/networks-for-ui.ts`,
+  `HIDDEN_NETWORK_IDS`); `getAllNetworks()` still includes it, so filter through
+  `selectableNetworks()` wherever a list means "networks to package for".
 - `src/core/` — editor-specific business logic that stays out of the kit:
   - `preview/server.ts` — dev preview HTTP server (editor runtime; unzips
     builds with `jszip`, serves the kit's `generatePreviewUtil` mock + UI in
@@ -60,7 +66,7 @@ rules are the kit's. See "Shared kit" below.
   sibling path). Owns packaging + validation + preview-mocks + network registry
   + packaging types. Ships prebuilt `dist` (ESM + CJS); the extension's `tsc`
   build just needs it resolvable — no bundler change.
-- Pin `~0.3.x` (patch-only) so the extension tracks kit patches, not breaking
+- Pin `~0.4.x` (patch-only) so the extension tracks kit patches, not breaking
   minors. Bump BOTH repos together on any packaging-rule change.
 - Same code by construction — the kit was extracted from this extension, so the
   packaged output is byte-identical EXCEPT the console banner (now emits the
@@ -110,7 +116,7 @@ rules are the kit's. See "Shared kit" below.
   extension release. The panel checks the npm registry (cached 10 min, IPC
   `checkKitVersion`) and offers a one-click install of any newer kit INSIDE the
   declared pin (`startKitUpdate`/`getKitUpdateState`); an out-of-pin version
-  (0.4.x under a `~0.3.1` pin) points at the extension self-update instead.
+  (0.5.x under a `~0.4.0` pin) points at the extension self-update instead.
   Range dialect is `~`/exact only — npm's caret has a 0.x special case and a 0.x
   minor may break the API, so anything else fails closed. Developer Import
   refuses (manual `npm update`). Kit install and self-update are mutually
