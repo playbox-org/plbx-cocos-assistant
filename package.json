@@ -404,7 +404,7 @@
     "vitest": "^2.0.0"
   },
   "dependencies": {
-    "@playbox-ai/playable-kit": "~0.3.17",
+    "@playbox-ai/playable-kit": "~0.4.0",
     "jszip": "^3.10.0"
   },
   "optionalDependencies": {

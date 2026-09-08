@@ -2594,9 +2594,9 @@ module.exports = Editor.Panel.define({
         const buildDir  = (this.$.pkgBuildDir as HTMLInputElement)?.value.trim() ?? '';
         const outputDir = (this.$.pkgOutputDir as HTMLInputElement)?.value.trim() ?? '';
         const orientation = (((this.$.contentPackage as HTMLElement | null)?.querySelector('input[name="orientation"]:checked') as HTMLInputElement | null)?.value ?? 'portrait') as any;
-        const selected = Array.from(
-          contentPkg?.querySelectorAll('input[name="network"]:checked') ?? []
-        ).map((cb: any) => (cb as HTMLInputElement).value);
+        // Selection lives in state (a ticked network renders in both lists,
+        // so counting checked inputs would double it) — same as Pack All.
+        const selected = this._selectedNetworks();
 
         if (!buildDir)        { if (pkgStatus) pkgStatus.textContent = t('status.setBuildDir');    return; }
         if (!outputDir)       { if (pkgStatus) pkgStatus.textContent = t('status.setOutputDir');   return; }
