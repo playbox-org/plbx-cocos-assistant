@@ -639,7 +639,8 @@ export const methods: Record<string, (...args: any[]) => any> = {
   },
 
   getNetworks() {
-    // The kit's `plbx` entry is the repack source, not a destination — hidden.
+    // Every registry entry, the `plbx` Playbox export target included (like
+    // Luna); selectableNetworks is the one hook should an entry need hiding.
     return selectableNetworks(getAllNetworks());
   },
 
