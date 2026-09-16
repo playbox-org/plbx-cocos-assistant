@@ -228,19 +228,20 @@
 
   // Spec conformance checklist \u2014 computed client-side from the fired sequence so
   // it ALWAYS renders (no async dependency). Mirrors validateAxonSequence() in
-  // src/core/packager/axon-events.ts (the unit-tested authority) \u2014 KEEP IN SYNC.
+  // @playbox-ai/playable-kit src/validation/axon-events.ts (the unit-tested
+  // authority) \u2014 KEEP IN SYNC, also with the platform's validator-preview.
   var AXON_SPEC_EVENTS = [
     'LOADING', 'LOADED', 'DISPLAYED', 'CHALLENGE_STARTED', 'CHALLENGE_FAILED', 'CHALLENGE_RETRY',
     'CHALLENGE_PASS_25', 'CHALLENGE_PASS_50', 'CHALLENGE_PASS_75', 'CHALLENGE_SOLVED', 'CTA_CLICKED', 'ENDCARD_SHOWN',
   ];
   var AXON_DEDUP_ONCE = ['LOADING', 'LOADED', 'DISPLAYED', 'ENDCARD_SHOWN', 'CHALLENGE_STARTED', 'CTA_CLICKED'];
-  var AXON_CHALLENGE_COMPLETION = ['CHALLENGE_SOLVED', 'CHALLENGE_FAILED', 'CHALLENGE_RETRY'];
+  // Spec "Conditional" events: each needs CHALLENGE_STARTED fired first; STARTED needs one of them.
+  var AXON_CHALLENGE_CONDITIONAL = [
+    'CHALLENGE_FAILED', 'CHALLENGE_RETRY', 'CHALLENGE_PASS_25', 'CHALLENGE_PASS_50', 'CHALLENGE_PASS_75', 'CHALLENGE_SOLVED',
+  ];
   var AXON_ORDER_PAIRS = [
     ['LOADING', 'LOADED'], ['LOADING', 'DISPLAYED'], ['LOADED', 'DISPLAYED'],
-    ['DISPLAYED', 'CHALLENGE_STARTED'],
-    ['CHALLENGE_STARTED', 'CHALLENGE_PASS_25'], ['CHALLENGE_STARTED', 'CHALLENGE_PASS_50'],
-    ['CHALLENGE_STARTED', 'CHALLENGE_PASS_75'], ['CHALLENGE_STARTED', 'CHALLENGE_SOLVED'],
-    ['CHALLENGE_STARTED', 'CHALLENGE_FAILED'], ['CHALLENGE_STARTED', 'CHALLENGE_RETRY'],
+    ['DISPLAYED', 'CHALLENGE_STARTED'], ['CHALLENGE_FAILED', 'CHALLENGE_RETRY'],
     ['CHALLENGE_PASS_25', 'CHALLENGE_PASS_50'], ['CHALLENGE_PASS_50', 'CHALLENGE_PASS_75'],
     ['DISPLAYED', 'ENDCARD_SHOWN'], ['DISPLAYED', 'CTA_CLICKED'], ['CHALLENGE_SOLVED', 'ENDCARD_SHOWN'],
   ];
@@ -252,8 +253,10 @@
     displayed: 'Fire ALPlayableAnalytics.trackEvent(\'DISPLAYED\') once the creative is shown and ready for interaction. It is the only mandatory Axon event.',
     no_unknown: 'Use only the 12 predefined Axon event names \u2014 AppLovin does not track custom names. Rename or remove non-spec events.',
     loaded: 'LOADING and LOADED are a pair \u2014 fire LOADING when in-playable loading starts and LOADED when it finishes, or fire neither.',
-    challenge_completion: 'After CHALLENGE_STARTED, fire one of CHALLENGE_SOLVED / CHALLENGE_FAILED / CHALLENGE_RETRY when the challenge resolves.',
-    order: 'Fire events in lifecycle order: LOADING \u2192 LOADED \u2192 DISPLAYED \u2192 CHALLENGE_* \u2192 CHALLENGE_SOLVED \u2192 ENDCARD_SHOWN. CTA_CLICKED may fire any time after DISPLAYED.',
+    challenge_requires_started: 'Fire CHALLENGE_STARTED on the first meaningful interaction, before any CHALLENGE_PASS_* / FAILED / RETRY / SOLVED \u2014 AppLovin rejects the creative otherwise (challenge_events_without_started).',
+    challenge_completion: 'After CHALLENGE_STARTED, also fire at least one of CHALLENGE_FAILED / CHALLENGE_RETRY / CHALLENGE_PASS_* / CHALLENGE_SOLVED.',
+    retry_requires_failed: 'CHALLENGE_RETRY is only valid when CHALLENGE_FAILED is implemented \u2014 fire FAILED on the failure state, then RETRY.',
+    order: 'Fire events in lifecycle order: LOADING \u2192 LOADED \u2192 DISPLAYED \u2192 CHALLENGE_STARTED \u2192 CHALLENGE_PASS_25/50/75 \u2192 CHALLENGE_SOLVED \u2192 ENDCARD_SHOWN (CHALLENGE_FAILED before CHALLENGE_RETRY). CTA_CLICKED may fire any time after DISPLAYED.',
     dedup: 'Fire-once events (LOADING, LOADED, DISPLAYED, ENDCARD_SHOWN, CHALLENGE_STARTED, CTA_CLICKED) must each fire exactly once per session.',
     challenge_spacing: 'Leave \u226550ms between CHALLENGE_* events \u2014 AppLovin forbids simultaneous dispatch; each must mark a distinct gameplay moment.',
   };
@@ -265,6 +268,7 @@
         { id: 'all_conformant', label: 'Waiting for events\u2026', status: 'pending', hint: AXON_HINTS.all_conformant },
         { id: 'displayed', label: 'DISPLAYED fired (required)', status: 'pending', hint: AXON_HINTS.displayed },
         { id: 'no_unknown', label: 'Valid spec event names', status: 'pending', hint: AXON_HINTS.no_unknown },
+        { id: 'challenge_requires_started', label: 'CHALLENGE_STARTED before other CHALLENGE_*', status: 'pending', hint: AXON_HINTS.challenge_requires_started },
         { id: 'order', label: 'Lifecycle call order', status: 'pending', hint: AXON_HINTS.order },
         { id: 'dedup', label: 'No duplicate fire-once events', status: 'pending', hint: AXON_HINTS.dedup },
         { id: 'challenge_spacing', label: 'CHALLENGE_* \u226550ms apart', status: 'pending', hint: AXON_HINTS.challenge_spacing },
@@ -290,14 +294,27 @@
       checks.push({ id: 'loaded', label: 'LOADING and LOADED both fired', ok: !!has['LOADING'] && !!has['LOADED'], level: 'warn',
         detail: 'Only ' + loadedFiredSide + ' fired \u2014 ' + loadedMissingSide + ' missing.', hint: AXON_HINTS.loaded });
     }
-    if (has['CHALLENGE_STARTED']) {
-      var done = AXON_CHALLENGE_COMPLETION.some(function(e) { return has[e]; });
-      checks.push({ id: 'challenge_completion', label: 'Challenge completion fired', ok: done, level: 'warn',
-        detail: 'CHALLENGE_STARTED fired but no completion event.', hint: AXON_HINTS.challenge_completion });
-    }
-
     var firstIdx = {};
     axonSequence.forEach(function(e, i) { if (firstIdx[e] === undefined) firstIdx[e] = i; });
+
+    var conditional = AXON_CHALLENGE_CONDITIONAL.filter(function(e) { return has[e]; });
+    if (conditional.length > 0) {
+      var early = conditional.filter(function(e) {
+        return !has['CHALLENGE_STARTED'] || firstIdx[e] < firstIdx['CHALLENGE_STARTED'];
+      });
+      checks.push({ id: 'challenge_requires_started', label: 'CHALLENGE_STARTED before other CHALLENGE_*', ok: early.length === 0, level: 'error',
+        detail: early.join(', ') + (has['CHALLENGE_STARTED'] ? ' fired before CHALLENGE_STARTED' : ' fired without CHALLENGE_STARTED') +
+          ' \u2014 AppLovin rejects this (challenge_events_without_started).',
+        hint: AXON_HINTS.challenge_requires_started });
+    }
+    if (has['CHALLENGE_STARTED']) {
+      checks.push({ id: 'challenge_completion', label: 'Challenge follow-up fired', ok: conditional.length > 0, level: 'warn',
+        detail: 'CHALLENGE_STARTED fired but no FAILED / RETRY / PASS_* / SOLVED yet.', hint: AXON_HINTS.challenge_completion });
+    }
+    if (has['CHALLENGE_RETRY']) {
+      checks.push({ id: 'retry_requires_failed', label: 'CHALLENGE_RETRY comes with CHALLENGE_FAILED', ok: !!has['CHALLENGE_FAILED'], level: 'warn',
+        detail: 'CHALLENGE_RETRY fired but CHALLENGE_FAILED never did.', hint: AXON_HINTS.retry_requires_failed });
+    }
     var ov = [];
     AXON_ORDER_PAIRS.forEach(function(p) {
       if (firstIdx[p[0]] !== undefined && firstIdx[p[1]] !== undefined && firstIdx[p[0]] > firstIdx[p[1]]) {
