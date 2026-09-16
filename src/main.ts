@@ -1674,7 +1674,7 @@ const AXON_ANALYTICS_TEMPLATE = `/**
  * Each event is deduplicated and sent at most once.
  *
  * Reference:
- * https://support.axon.ai/en/growth/promoting-your-apps/creatives/playable-analytics-integration
+ * https://support.applovin.com/en/growth/promoting-your-apps/welcome-to-applovin/playable-analytics-integration
  */
 
 export enum AppLovinEvent {

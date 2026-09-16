@@ -83,7 +83,7 @@ plbx.expose('show_endcard', () => this.showEndcard(), 'Show endcard');
 
 Call these in your game — the packager injects the correct network-specific implementation at build time.
 
-> **AppLovin — Axon analytics (optional).** AppLovin expects [Axon playable-analytics events](https://support.axon.ai/en/growth/promoting-your-apps/creatives/playable-analytics-integration) via `ALPlayableAnalytics.trackEvent(...)`. Click **Generate AppLovin events** in the Package tab to scaffold the helper next to `plbx_html`, then fire the events from your gameplay (`DISPLAYED` is mandatory). The built-in validator extracts your `trackEvent()` calls and checks they fire — in order and deduped — during Preview.
+> **AppLovin — Axon analytics (optional).** AppLovin expects [Axon playable-analytics events](https://support.applovin.com/en/growth/promoting-your-apps/welcome-to-applovin/playable-analytics-integration) via `ALPlayableAnalytics.trackEvent(...)`. Click **Generate AppLovin events** in the Package tab to scaffold the helper next to `plbx_html`, then fire the events from your gameplay (`DISPLAYED` is mandatory). The built-in validator extracts your `trackEvent()` calls and checks they fire — in order and deduped — during Preview.
 
 ### 3. Package
 

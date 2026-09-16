@@ -83,7 +83,7 @@ plbx.expose('show_endcard', () => this.showEndcard(), 'Show endcard');
 
 在游戏中调用这些方法——打包器会在构建时自动注入各平台对应的实现。
 
-> **AppLovin — Axon 分析事件（可选）。** AppLovin 需要通过 `ALPlayableAnalytics.trackEvent(...)` 上报 [Axon 可试玩分析事件](https://support.axon.ai/en/growth/promoting-your-apps/creatives/playable-analytics-integration)。在 Package 标签页点击 **Generate AppLovin events** 在 `plbx_html` 旁生成 helper，然后从游戏逻辑中触发这些事件（`DISPLAYED` 为必需）。内置验证器会提取你的 `trackEvent()` 调用，并在 Preview 时检查它们是否按正确顺序且去重触发。
+> **AppLovin — Axon 分析事件（可选）。** AppLovin 需要通过 `ALPlayableAnalytics.trackEvent(...)` 上报 [Axon 可试玩分析事件](https://support.applovin.com/en/growth/promoting-your-apps/welcome-to-applovin/playable-analytics-integration)。在 Package 标签页点击 **Generate AppLovin events** 在 `plbx_html` 旁生成 helper，然后从游戏逻辑中触发这些事件（`DISPLAYED` 为必需）。内置验证器会提取你的 `trackEvent()` 调用，并在 Preview 时检查它们是否按正确顺序且去重触发。
 
 ### 3. 打包
 

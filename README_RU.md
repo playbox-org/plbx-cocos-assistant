@@ -83,7 +83,7 @@ plbx.expose('show_endcard', () => this.showEndcard(), 'Show endcard');
 
 Вызывайте эти методы в игре — упаковщик подставит правильную реализацию для каждой сети при сборке.
 
-> **AppLovin — Axon-аналитика (опционально).** AppLovin ожидает [Axon playable-analytics события](https://support.axon.ai/en/growth/promoting-your-apps/creatives/playable-analytics-integration) через `ALPlayableAnalytics.trackEvent(...)`. Нажмите **Generate AppLovin events** во вкладке Package, чтобы сгенерировать helper рядом с `plbx_html`, затем вызывайте события из геймплея (`DISPLAYED` обязателен). Встроенный валидатор извлекает ваши вызовы `trackEvent()` и проверяет, что они срабатывают — в правильном порядке и без дублей — во время Preview.
+> **AppLovin — Axon-аналитика (опционально).** AppLovin ожидает [Axon playable-analytics события](https://support.applovin.com/en/growth/promoting-your-apps/welcome-to-applovin/playable-analytics-integration) через `ALPlayableAnalytics.trackEvent(...)`. Нажмите **Generate AppLovin events** во вкладке Package, чтобы сгенерировать helper рядом с `plbx_html`, затем вызывайте события из геймплея (`DISPLAYED` обязателен). Встроенный валидатор извлекает ваши вызовы `trackEvent()` и проверяет, что они срабатывают — в правильном порядке и без дублей — во время Preview.
 
 ### 3. Упаковать
 
