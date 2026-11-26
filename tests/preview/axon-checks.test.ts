@@ -52,3 +52,21 @@ describe('computeAxonChecks — CHALLENGE_STARTED dependency', () => {
     expect(checks.filter((c) => !c.ok).map((c) => c.id)).toEqual([]);
   });
 });
+
+describe('computeAxonChecks — dedup', () => {
+  it('lets CTA_CLICKED and ENDCARD_SHOWN repeat', () => {
+    const checks = run([
+      'DISPLAYED', 'CHALLENGE_STARTED', 'CHALLENGE_SOLVED', 'ENDCARD_SHOWN', 'CTA_CLICKED',
+      'CTA_CLICKED', 'ENDCARD_SHOWN', 'CTA_CLICKED',
+    ]);
+    expect(byId(checks, 'dedup')?.ok).toBe(true);
+    expect(checks.filter((c) => !c.ok).map((c) => c.id)).toEqual([]);
+  });
+
+  it('still flags a repeated fire-once event', () => {
+    const checks = run(['DISPLAYED', 'DISPLAYED', 'CTA_CLICKED']);
+    const check = byId(checks, 'dedup');
+    expect(check?.ok).toBe(false);
+    expect(check?.detail).toContain('DISPLAYED×2');
+  });
+});
