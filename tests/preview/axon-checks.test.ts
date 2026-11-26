@@ -70,3 +70,27 @@ describe('computeAxonChecks — dedup', () => {
     expect(check?.detail).toContain('DISPLAYED×2');
   });
 });
+
+describe('computeAxonChecks — order with a fail end card', () => {
+  it('passes a fail end card before a retry when SOLVED precedes the last ENDCARD_SHOWN', () => {
+    const checks = run([
+      'DISPLAYED', 'CHALLENGE_STARTED', 'CHALLENGE_FAILED', 'ENDCARD_SHOWN',
+      'CHALLENGE_RETRY', 'CHALLENGE_SOLVED', 'ENDCARD_SHOWN',
+    ]);
+    expect(byId(checks, 'order')?.ok).toBe(true);
+    expect(byId(checks, 'dedup')?.ok).toBe(true);
+    expect(byId(checks, 'all_conformant')?.ok).toBe(true);
+  });
+
+  it('still fails order when the only ENDCARD_SHOWN comes before SOLVED', () => {
+    const checks = run(['DISPLAYED', 'CHALLENGE_STARTED', 'ENDCARD_SHOWN', 'CHALLENGE_SOLVED']);
+    const check = byId(checks, 'order');
+    expect(check?.ok).toBe(false);
+    expect(check?.detail).toContain('CHALLENGE_SOLVED should precede ENDCARD_SHOWN');
+  });
+
+  it('passes order when SOLVED fires and no ENDCARD_SHOWN does', () => {
+    const checks = run(['DISPLAYED', 'CHALLENGE_STARTED', 'CHALLENGE_SOLVED']);
+    expect(byId(checks, 'order')?.ok).toBe(true);
+  });
+});
