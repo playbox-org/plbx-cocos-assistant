@@ -234,7 +234,7 @@
     'LOADING', 'LOADED', 'DISPLAYED', 'CHALLENGE_STARTED', 'CHALLENGE_FAILED', 'CHALLENGE_RETRY',
     'CHALLENGE_PASS_25', 'CHALLENGE_PASS_50', 'CHALLENGE_PASS_75', 'CHALLENGE_SOLVED', 'CTA_CLICKED', 'ENDCARD_SHOWN',
   ];
-  var AXON_DEDUP_ONCE = ['LOADING', 'LOADED', 'DISPLAYED', 'ENDCARD_SHOWN', 'CHALLENGE_STARTED', 'CTA_CLICKED'];
+  var AXON_DEDUP_ONCE = ['LOADING', 'LOADED', 'DISPLAYED', 'CHALLENGE_STARTED'];
   // Spec "Conditional" events: each needs CHALLENGE_STARTED fired first; STARTED needs one of them.
   var AXON_CHALLENGE_CONDITIONAL = [
     'CHALLENGE_FAILED', 'CHALLENGE_RETRY', 'CHALLENGE_PASS_25', 'CHALLENGE_PASS_50', 'CHALLENGE_PASS_75', 'CHALLENGE_SOLVED',
@@ -256,8 +256,8 @@
     challenge_requires_started: 'Fire CHALLENGE_STARTED on the first meaningful interaction, before any CHALLENGE_PASS_* / FAILED / RETRY / SOLVED \u2014 AppLovin rejects the creative otherwise (challenge_events_without_started).',
     challenge_completion: 'After CHALLENGE_STARTED, also fire at least one of CHALLENGE_FAILED / CHALLENGE_RETRY / CHALLENGE_PASS_* / CHALLENGE_SOLVED.',
     retry_requires_failed: 'CHALLENGE_RETRY is only valid when CHALLENGE_FAILED is implemented \u2014 fire FAILED on the failure state, then RETRY.',
-    order: 'Fire events in lifecycle order: LOADING \u2192 LOADED \u2192 DISPLAYED \u2192 CHALLENGE_STARTED \u2192 CHALLENGE_PASS_25/50/75 \u2192 CHALLENGE_SOLVED \u2192 ENDCARD_SHOWN (CHALLENGE_FAILED before CHALLENGE_RETRY). CTA_CLICKED may fire any time after DISPLAYED.',
-    dedup: 'Fire-once events (LOADING, LOADED, DISPLAYED, ENDCARD_SHOWN, CHALLENGE_STARTED, CTA_CLICKED) must each fire exactly once per session.',
+    order: 'Fire events in lifecycle order: LOADING \u2192 LOADED \u2192 DISPLAYED \u2192 CHALLENGE_STARTED \u2192 CHALLENGE_PASS_25/50/75 \u2192 CHALLENGE_SOLVED \u2192 ENDCARD_SHOWN (CHALLENGE_FAILED before CHALLENGE_RETRY). A fail end card before a retry is fine: CHALLENGE_SOLVED must precede the last ENDCARD_SHOWN. CTA_CLICKED may fire any time after DISPLAYED.',
+    dedup: 'Fire-once events (LOADING, LOADED, DISPLAYED, CHALLENGE_STARTED) must each fire exactly once per session. CTA_CLICKED and ENDCARD_SHOWN may repeat.',
     challenge_spacing: 'Leave \u226550ms between CHALLENGE_* events \u2014 AppLovin forbids simultaneous dispatch; each must mark a distinct gameplay moment.',
   };
 
@@ -317,7 +317,9 @@
     }
     var ov = [];
     AXON_ORDER_PAIRS.forEach(function(p) {
-      if (firstIdx[p[0]] !== undefined && firstIdx[p[1]] !== undefined && firstIdx[p[0]] > firstIdx[p[1]]) {
+      // A fail end card may show before a retry, so SOLVED only has to precede the last ENDCARD_SHOWN.
+      var laterIdx = p[0] === 'CHALLENGE_SOLVED' && p[1] === 'ENDCARD_SHOWN' ? axonSequence.lastIndexOf(p[1]) : firstIdx[p[1]];
+      if (firstIdx[p[0]] !== undefined && firstIdx[p[1]] !== undefined && firstIdx[p[0]] > laterIdx) {
         ov.push(p[0] + ' should precede ' + p[1]);
       }
     });
